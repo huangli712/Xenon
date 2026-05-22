@@ -22,19 +22,13 @@ use xenon::storage::Owned;
 use xenon::tensor::{StorageKind, TensorBase};
 
 /// Internal helper: construct tensor via fast path.
-unsafe fn make_tensor<A: Element, D: Dimension>(
-    data: Vec<A>,
-    shape: D,
-) -> TensorBase<Owned<A>, D> {
+unsafe fn make_tensor<A: Element, D: Dimension>(data: Vec<A>, shape: D) -> TensorBase<Owned<A>, D> {
     // SAFETY: caller provides data with correct length matching shape.
     unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
 }
 
 /// Access element at logical index.
-unsafe fn read_at<'a, S, D, A>(
-    tensor: &'a TensorBase<S, D>,
-    indices: &[usize],
-) -> &'a A
+unsafe fn read_at<'a, S, D, A>(tensor: &'a TensorBase<S, D>, indices: &[usize]) -> &'a A
 where
     S: xenon::storage::Storage<Elem = A>,
     D: Dimension,

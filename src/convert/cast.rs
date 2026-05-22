@@ -46,10 +46,7 @@ where
 /// Used by `cast()` and `to_owned()` after they have already proven
 /// length / shape consistency at the call site.
 #[inline]
-pub(crate) unsafe fn from_shape_vec_aligned_unchecked<A, D>(
-    shape: D,
-    data: Vec<A>,
-) -> Tensor<A, D>
+pub(crate) unsafe fn from_shape_vec_aligned_unchecked<A, D>(shape: D, data: Vec<A>) -> Tensor<A, D>
 where
     A: Element,
     D: Dimension,
@@ -107,7 +104,10 @@ where
     ///
     /// Returns `XenonError::TypeConversion` when any element cannot be
     /// converted under the rules defined in `require.md §23`.
-    #[expect(private_bounds, reason = "ConvertTo is pub(crate) sealed; public cast() is gated by it")]
+    #[expect(
+        private_bounds,
+        reason = "ConvertTo is pub(crate) sealed; public cast() is gated by it"
+    )]
     pub fn cast<B>(&self) -> Result<Tensor<B, D>>
     where
         B: CastElement,
@@ -137,10 +137,7 @@ where
 /// Panics if `compute_f_strides` fails on `dim`. This cannot happen because
 /// `dim` originates from a valid `TensorBase` whose shape was already validated.
 #[inline]
-pub(crate) fn into_owned_from_owned_storage<A, D>(
-    owned_storage: Owned<A>,
-    dim: D,
-) -> Tensor<A, D>
+pub(crate) fn into_owned_from_owned_storage<A, D>(owned_storage: Owned<A>, dim: D) -> Tensor<A, D>
 where
     A: Element,
     D: Dimension,
@@ -805,8 +802,7 @@ mod tests {
     #[test]
     fn test_cast_f32_to_f64() {
         assert_eq!(
-            <f32 as ConvertTo<f64>>::convert(1.5)
-                .expect("f32→f64 is tier-1 lossless"),
+            <f32 as ConvertTo<f64>>::convert(1.5).expect("f32→f64 is tier-1 lossless"),
             1.5_f64
         );
     }
@@ -894,15 +890,9 @@ mod tests {
 
     #[test]
     fn test_cast_i32_to_f64() {
-        let tensor: Tensor1<i32> = unsafe {
-            Tensor1::from_raw_vec_unchecked(
-                vec![1_i32, 2, 3],
-                crate::dimension::Ix1(3),
-            )
-        };
-        let converted: Tensor1<f64> = tensor
-            .cast()
-            .expect("i32→f64 cast should succeed");
+        let tensor: Tensor1<i32> =
+            unsafe { Tensor1::from_raw_vec_unchecked(vec![1_i32, 2, 3], crate::dimension::Ix1(3)) };
+        let converted: Tensor1<f64> = tensor.cast().expect("i32→f64 cast should succeed");
         let result: Vec<f64> = converted.iter().copied().collect();
         assert_eq!(result, vec![1.0, 2.0, 3.0]);
     }
@@ -910,14 +900,9 @@ mod tests {
     #[test]
     fn test_cast_reports_element_index() {
         let tensor: Tensor1<f64> = unsafe {
-            Tensor1::from_raw_vec_unchecked(
-                vec![1.0_f64, 2.0],
-                crate::dimension::Ix1(2),
-            )
+            Tensor1::from_raw_vec_unchecked(vec![1.0_f64, 2.0], crate::dimension::Ix1(2))
         };
-        let error = tensor
-            .cast::<f32>()
-            .expect_err("f64→f32 cast should fail");
+        let error = tensor.cast::<f32>().expect_err("f64→f32 cast should fail");
         assert!(matches!(
             error,
             XenonError::TypeConversion {
@@ -929,15 +914,9 @@ mod tests {
 
     #[test]
     fn test_cast_nan_to_int_returns_error() {
-        let tensor: Tensor1<f64> = unsafe {
-            Tensor1::from_raw_vec_unchecked(
-                vec![f64::NAN],
-                crate::dimension::Ix1(1),
-            )
-        };
-        let error = tensor
-            .cast::<i32>()
-            .expect_err("NaN→i32 cast should fail");
+        let tensor: Tensor1<f64> =
+            unsafe { Tensor1::from_raw_vec_unchecked(vec![f64::NAN], crate::dimension::Ix1(1)) };
+        let error = tensor.cast::<i32>().expect_err("NaN→i32 cast should fail");
         assert!(matches!(
             error,
             XenonError::TypeConversion {
@@ -956,9 +935,7 @@ mod tests {
                 crate::dimension::Ix1(2),
             )
         };
-        let error = tensor
-            .cast::<i32>()
-            .expect_err("inf→i32 cast should fail");
+        let error = tensor.cast::<i32>().expect_err("inf→i32 cast should fail");
         assert!(matches!(
             error,
             XenonError::TypeConversion {
@@ -971,12 +948,8 @@ mod tests {
 
     #[test]
     fn test_to_owned_from_view() {
-        let tensor: Tensor1<i32> = unsafe {
-            Tensor1::from_raw_vec_unchecked(
-                vec![1, 2, 3],
-                crate::dimension::Ix1(3),
-            )
-        };
+        let tensor: Tensor1<i32> =
+            unsafe { Tensor1::from_raw_vec_unchecked(vec![1, 2, 3], crate::dimension::Ix1(3)) };
         let view = tensor.view();
         let owned = view.to_owned();
         let result: Vec<i32> = owned.iter().copied().collect();
@@ -985,12 +958,8 @@ mod tests {
 
     #[test]
     fn test_into_owned_tensor() {
-        let tensor: Tensor1<f64> = unsafe {
-            Tensor1::from_raw_vec_unchecked(
-                vec![4.0, 5.0],
-                crate::dimension::Ix1(2),
-            )
-        };
+        let tensor: Tensor1<f64> =
+            unsafe { Tensor1::from_raw_vec_unchecked(vec![4.0, 5.0], crate::dimension::Ix1(2)) };
         let owned = tensor.into_owned();
         let result: Vec<f64> = owned.iter().copied().collect();
         assert_eq!(result, vec![4.0, 5.0]);

@@ -1209,11 +1209,7 @@ impl XenonError {
     // to remain `Cow::Borrowed`-friendly with no allocation.
 
     /// Construct a `Workspace::SplitOutOfBounds` error.
-    pub fn workspace_split_oob(
-        operation: &'static str,
-        mid: usize,
-        len: usize,
-    ) -> Self {
+    pub fn workspace_split_oob(operation: &'static str, mid: usize, len: usize) -> Self {
         XenonError::Workspace {
             operation: Cow::Borrowed(operation),
             category: WorkspaceErrorCategory::SplitOutOfBounds { mid, len },
@@ -1229,10 +1225,7 @@ impl XenonError {
     ) -> Self {
         XenonError::Workspace {
             operation: Cow::Borrowed(operation),
-            category: WorkspaceErrorCategory::BorrowConflict {
-                requested,
-                current,
-            },
+            category: WorkspaceErrorCategory::BorrowConflict { requested, current },
             cause: None,
         }
     }
@@ -1851,10 +1844,7 @@ mod tests {
     #[test]
     fn test_workspace_workspace_error_category() {
         // InvalidLayout
-        let cat = WorkspaceErrorCategory::InvalidLayout {
-            size: 0,
-            align: 3,
-        };
+        let cat = WorkspaceErrorCategory::InvalidLayout { size: 0, align: 3 };
         assert!(format!("{cat:?}").contains("InvalidLayout"));
 
         // AllocFailed
@@ -1873,10 +1863,7 @@ mod tests {
         assert!(format!("{cat:?}").contains("SplitActive"));
 
         // SplitOutOfBounds — field name MUST be `mid` (not `split_at`).
-        let cat = WorkspaceErrorCategory::SplitOutOfBounds {
-            mid: 42,
-            len: 10,
-        };
+        let cat = WorkspaceErrorCategory::SplitOutOfBounds { mid: 42, len: 10 };
         assert!(format!("{cat:?}").contains("SplitOutOfBounds"));
         assert!(format!("{cat:?}").contains("mid: 42"));
 
@@ -1945,11 +1932,7 @@ mod tests {
         assert!(s.contains("Exclusive"));
 
         // grow_overflow carries `operation`, `current_capacity`, `additional`.
-        let err = XenonError::workspace_grow_overflow(
-            "Workspace::ensure_capacity",
-            usize::MAX,
-            1,
-        );
+        let err = XenonError::workspace_grow_overflow("Workspace::ensure_capacity", usize::MAX, 1);
         let s = format!("{err:?}");
         assert!(s.contains("Workspace::ensure_capacity"));
         assert!(s.contains("GrowOverflow"));

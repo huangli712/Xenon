@@ -63,8 +63,7 @@ where
             out.push(value);
         }
     }
-    Tensor::from_shape_vec(Ix1(out.len()), out)
-        .expect("unique output shape matches data length")
+    Tensor::from_shape_vec(Ix1(out.len()), out).expect("unique output shape matches data length")
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -123,7 +122,8 @@ mod tests {
 
     #[test]
     fn test_unique_basic_i32() {
-        let x = Tensor1::from_shape_vec(Ix1(6), vec![3_i32, 1, 2, 1, 3, 2]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(6), vec![3_i32, 1, 2, 1, 3, 2])
+            .expect("test input shape matches data length");
         let y = unique_impl(&x);
         assert_eq!(y.len(), 3);
         assert!(y.iter().any(|v| *v == 1));
@@ -133,7 +133,8 @@ mod tests {
 
     #[test]
     fn test_unique_empty() {
-        let x = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("test input shape matches data length");
+        let x = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![])
+            .expect("test input shape matches data length");
         assert_eq!(unique_impl(&x).len(), 0);
     }
 
@@ -141,8 +142,8 @@ mod tests {
 
     #[test]
     fn test_unique_nan_preserved_f32() {
-        let x =
-            Tensor1::from_shape_vec(Ix1(3), vec![f32::NAN, f32::NAN, 1.0]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![f32::NAN, f32::NAN, 1.0])
+            .expect("test input shape matches data length");
         let y = unique_impl(&x);
         assert_eq!(y.iter().filter(|v| v.is_nan()).count(), 2);
         assert_eq!(y.iter().filter(|v| !v.is_nan()).count(), 1);
@@ -150,14 +151,15 @@ mod tests {
 
     #[test]
     fn test_unique_signed_zero_equal_f32() {
-        let x = Tensor1::from_shape_vec(Ix1(2), vec![-0.0_f32, 0.0]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![-0.0_f32, 0.0])
+            .expect("test input shape matches data length");
         assert_eq!(unique_impl(&x).len(), 1);
     }
 
     #[test]
     fn test_unique_nan_preserved_f64() {
-        let x =
-            Tensor1::from_shape_vec(Ix1(3), vec![f64::NAN, f64::NAN, 1.0]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![f64::NAN, f64::NAN, 1.0])
+            .expect("test input shape matches data length");
         let y = unique_impl(&x);
         assert_eq!(y.iter().filter(|v| v.is_nan()).count(), 2);
         assert_eq!(y.iter().filter(|v| !v.is_nan()).count(), 1);
@@ -165,7 +167,8 @@ mod tests {
 
     #[test]
     fn test_unique_signed_zero_equal_f64() {
-        let x = Tensor1::from_shape_vec(Ix1(2), vec![-0.0_f64, 0.0]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![-0.0_f64, 0.0])
+            .expect("test input shape matches data length");
         assert_eq!(unique_impl(&x).len(), 1);
     }
 
@@ -178,7 +181,8 @@ mod tests {
             Complex::new(3.0, 4.0),
             Complex::new(1.0, 2.0),
         ];
-        let x = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(values.len()), values)
+            .expect("test input shape matches data length");
         let y = unique_impl(&x);
         assert_eq!(y.len(), 2);
         assert!(y.iter().any(|v| *v == Complex::new(1.0_f64, 2.0)));
@@ -188,11 +192,9 @@ mod tests {
     #[test]
     fn test_unique_complex_componentwise() {
         // `0+(-0)i` vs `(-0)+0i`: both components `==` as `0+0i`, deduplicated to one.
-        let values = vec![
-            Complex::new(0.0_f64, -0.0),
-            Complex::new(-0.0_f64, 0.0),
-        ];
-        let x = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("test input shape matches data length");
+        let values = vec![Complex::new(0.0_f64, -0.0), Complex::new(-0.0_f64, 0.0)];
+        let x = Tensor1::from_shape_vec(Ix1(values.len()), values)
+            .expect("test input shape matches data length");
         let y = unique_impl(&x);
         assert_eq!(y.len(), 1);
     }
@@ -202,11 +204,9 @@ mod tests {
         // Covers §8.3 boundary test: complex `[1+NaNi, 1+NaNi]` returns length-2
         // result (because NaN components are unequal).
         // Any NaN component makes the complex values compare unequal; both retained.
-        let values = vec![
-            Complex::new(f64::NAN, 1.0),
-            Complex::new(f64::NAN, 1.0),
-        ];
-        let x = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("test input shape matches data length");
+        let values = vec![Complex::new(f64::NAN, 1.0), Complex::new(f64::NAN, 1.0)];
+        let x = Tensor1::from_shape_vec(Ix1(values.len()), values)
+            .expect("test input shape matches data length");
         let y = unique_impl(&x);
         assert_eq!(y.len(), 2);
         assert_eq!(y.iter().filter(|v| v.re.is_nan()).count(), 2);
@@ -230,8 +230,8 @@ mod tests {
 
     #[test]
     fn test_unique_2d() {
-        let x =
-            Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 1, 3, 2, 3]).expect("test input shape matches data length");
+        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 1, 3, 2, 3])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.ndim(), 1);
         assert_set_eq_i32(&y, &[1, 2, 3]);
@@ -240,22 +240,24 @@ mod tests {
     #[test]
     fn test_unique_order_unspecified() {
         // Do not rely on concrete output order — only verify multiset equality.
-        let x = Tensor1::from_shape_vec(Ix1(5), vec![2_i32, 1, 2, 3, 1]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(5), vec![2_i32, 1, 2, 3, 1])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[1, 2, 3]);
     }
 
     #[test]
     fn test_unique_set_equality() {
-        let x =
-            Tensor1::from_shape_vec(Ix1(6), vec![3_i32, 1, 2, 3, 2, 1]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(6), vec![3_i32, 1, 2, 3, 2, 1])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[1, 2, 3]);
     }
 
     #[test]
     fn test_unique_basic_i64() {
-        let x = Tensor1::from_shape_vec(Ix1(5), vec![1_i64, 2, 1, 3, 2]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(5), vec![1_i64, 2, 1, 3, 2])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.len(), 3);
         for e in [1_i64, 2, 3] {
@@ -265,7 +267,8 @@ mod tests {
 
     #[test]
     fn test_unique_basic_f32() {
-        let x = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f32, 2.0, 1.0]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f32, 2.0, 1.0])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.len(), 2);
         for e in [1.0_f32, 2.0] {
@@ -275,7 +278,8 @@ mod tests {
 
     #[test]
     fn test_unique_basic_f64() {
-        let x = Tensor1::from_shape_vec(Ix1(4), vec![1.0_f64, 2.0, 1.0, 2.0]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(4), vec![1.0_f64, 2.0, 1.0, 2.0])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.len(), 2);
         for e in [1.0_f64, 2.0] {
@@ -285,14 +289,16 @@ mod tests {
 
     #[test]
     fn test_unique_single() {
-        let x = Tensor1::from_shape_vec(Ix1(1), vec![42_i32]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(1), vec![42_i32])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[42]);
     }
 
     #[test]
     fn test_unique_all_same() {
-        let x = Tensor1::from_shape_vec(Ix1(5), vec![7_i32; 5]).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(5), vec![7_i32; 5])
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[7]);
     }
@@ -302,11 +308,9 @@ mod tests {
         // 5D IxDyn input should still be logically flattened to 1D.
         let shape = vec![2_usize, 1, 2, 1, 2];
         let data: Vec<i32> = vec![1, 2, 1, 2, 3, 1, 3, 2];
-        let x = Tensor::<i32, IxDyn>::from_shape_vec(
-            crate::dimension::IxDyn::from_slice(&shape),
-            data,
-        )
-        .expect("test input shape matches data length");
+        let x =
+            Tensor::<i32, IxDyn>::from_shape_vec(crate::dimension::IxDyn::from_slice(&shape), data)
+                .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.ndim(), 1);
         assert_set_eq_i32(&y, &[1, 2, 3]);
@@ -314,11 +318,9 @@ mod tests {
 
     #[test]
     fn test_unique_extreme_i64_values() {
-        let x = Tensor1::from_shape_vec(
-            Ix1(5),
-            vec![i64::MIN, i64::MAX, 0_i64, i64::MIN, i64::MAX],
-        )
-        .expect("test input shape matches data length");
+        let x =
+            Tensor1::from_shape_vec(Ix1(5), vec![i64::MIN, i64::MAX, 0_i64, i64::MIN, i64::MAX])
+                .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.len(), 3);
         assert!(y.iter().any(|v| *v == i64::MIN));
@@ -334,7 +336,8 @@ mod tests {
         // slowing down unit tests.
         let n = 1024_usize;
         let data: Vec<i32> = (0..n as i32).map(|i| i % 4).collect();
-        let x = Tensor1::from_shape_vec(Ix1(n), data).expect("test input shape matches data length");
+        let x =
+            Tensor1::from_shape_vec(Ix1(n), data).expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[0, 1, 2, 3]);
     }

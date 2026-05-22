@@ -27,7 +27,10 @@ where
     /// Stride-aware: iterates via `iter_mut()` so non-contiguous layouts and
     /// tensors with internal padding only have their logical elements
     /// touched (`§5.4`).
-    #[expect(clippy::clone_on_copy, reason = "generic over Clone (not Copy); .clone() is the correct generic pattern")]
+    #[expect(
+        clippy::clone_on_copy,
+        reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
+    )]
     pub fn fill(&mut self, value: A) {
         for slot in self.iter_mut() {
             *slot = value.clone();
@@ -70,7 +73,10 @@ where
     /// Fallible fill (`20-utility §5.2`, secondary entry on Owned).
     ///
     /// §5.3 dispatch arm: Owned → `iter_mut()` write path.
-    #[expect(clippy::clone_on_copy, reason = "generic over Clone (not Copy); .clone() is the correct generic pattern")]
+    #[expect(
+        clippy::clone_on_copy,
+        reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
+    )]
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError> {
         for slot in self.iter_mut() {
             *slot = value.clone();
@@ -88,7 +94,10 @@ where
     /// Fallible fill (`20-utility §5.2`, secondary entry on ViewMut).
     ///
     /// §5.3 dispatch arm: ViewMut → `iter_mut()` write path.
-    #[expect(clippy::clone_on_copy, reason = "generic over Clone (not Copy); .clone() is the correct generic pattern")]
+    #[expect(
+        clippy::clone_on_copy,
+        reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
+    )]
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError> {
         for slot in self.iter_mut() {
             *slot = value.clone();
@@ -141,13 +150,17 @@ mod tests {
     fn test_fill_basic() {
         let mut tensor = Tensor1::<f64>::zeros([3]).expect("zeros(valid shape)");
         tensor.fill(2.5);
-        assert_eq!(tensor.iter().copied().collect::<Vec<_>>(), vec![2.5, 2.5, 2.5]);
+        assert_eq!(
+            tensor.iter().copied().collect::<Vec<_>>(),
+            vec![2.5, 2.5, 2.5]
+        );
     }
 
     // §8.2 — test_try_fill_read_only_returns_error
     #[test]
     fn test_try_fill_read_only_returns_error() {
-        let tensor = Tensor1::from_shape_vec([2], vec![1_i32, 2]).expect("from_shape_vec matching shape");
+        let tensor =
+            Tensor1::from_shape_vec([2], vec![1_i32, 2]).expect("from_shape_vec matching shape");
         let mut view = tensor.view();
         let error = view.try_fill(7).expect_err("view is read-only");
         assert!(matches!(error, XenonError::InvalidStorageMode { .. }));
@@ -162,7 +175,8 @@ mod tests {
     // `cargo test` output traceable to either design citation.
     #[test]
     fn test_try_fill_read_only_returns_read_only_storage() {
-        let tensor = Tensor1::from_shape_vec([2], vec![1_i32, 2]).expect("from_shape_vec matching shape");
+        let tensor =
+            Tensor1::from_shape_vec([2], vec![1_i32, 2]).expect("from_shape_vec matching shape");
         let mut view = tensor.view();
         let error = view.try_fill(7).expect_err("view is read-only");
         assert!(matches!(error, XenonError::InvalidStorageMode { .. }));

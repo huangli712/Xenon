@@ -1,5 +1,5 @@
 use crate::dimension::{Dimension, Reverse};
-use crate::layout::{compute_layout_flags, Strides};
+use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, ViewRepr};
 use crate::tensor::{TensorBase, TensorView};
 
@@ -36,16 +36,14 @@ where
         .expect("rank-preserving stride reverse cannot change slice length");
 
     // (3) Recompute LayoutFlags.
-    let new_flags =
-        compute_layout_flags::<A, D>(&new_shape, &new_strides, tensor.as_ptr());
+    let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, tensor.as_ptr());
 
     // (4) Build ViewRepr borrowing source storage.
     // SAFETY: as_storage_ptr() is a non-null aligned base pointer of
     // already-validated live storage. storage_len() is the correct extent.
     // Result lifetime is bound to &tensor.
-    let view_storage: ViewRepr<'_, A> = unsafe {
-        ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len())
-    };
+    let view_storage: ViewRepr<'_, A> =
+        unsafe { ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len()) };
 
     // (5) Finalize via TensorBase::new_unchecked (Path Y).
     // SAFETY: new_shape + new_strides + offset form a bijective reversal
@@ -69,8 +67,8 @@ mod tests {
     use crate::element::Element;
     use crate::layout::LayoutState;
     use crate::storage::Owned;
-    use crate::tensor::TensorBase;
     use crate::tensor::StorageKind;
+    use crate::tensor::TensorBase;
 
     /// Construct a tensor using the internal fast path.
     unsafe fn make_tensor<A: Element, D: Dimension>(
@@ -82,10 +80,7 @@ mod tests {
     }
 
     /// Access element at logical index.
-    unsafe fn read_at<'a, S, D, A>(
-        tensor: &'a TensorBase<S, D>,
-        indices: &[usize],
-    ) -> &'a A
+    unsafe fn read_at<'a, S, D, A>(tensor: &'a TensorBase<S, D>, indices: &[usize]) -> &'a A
     where
         S: crate::storage::Storage<Elem = A>,
         D: Dimension,
@@ -169,8 +164,6 @@ mod tests {
         assert_eq!(v.transpose().storage_kind(), StorageKind::View);
     }
 
-
-
     #[test]
     fn test_transpose_empty_array() {
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(0, 3)) };
@@ -178,8 +171,6 @@ mod tests {
         assert_eq!(y.shape(), &[3, 0]);
         assert_eq!(y.len(), 0);
     }
-
-
 
     #[test]
     fn test_transpose_high_dim() {

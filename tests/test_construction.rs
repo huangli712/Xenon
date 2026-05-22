@@ -3,32 +3,52 @@ use xenon::tensor::Tensor;
 
 #[test]
 fn test_construction_high_rank_ixdyn() {
-    let tensor = Tensor::<i32, _>::zeros(IxDyn::from_vec(vec![1, 2, 1, 3])).expect("test input valid");
+    let tensor =
+        Tensor::<i32, _>::zeros(IxDyn::from_vec(vec![1, 2, 1, 3])).expect("test input valid");
     assert_eq!(tensor.shape(), &[1, 2, 1, 3]);
     assert!(tensor.iter().all(|value| *value == 0));
 }
 
 #[test]
 fn test_construction_round_trip_sources() {
-    assert_eq!(Tensor::<i32, Ix0>::from_scalar(7i32).expect("test input valid").len(), 1);
     assert_eq!(
-        Tensor::<i32, _>::from_array([2, 2], [1, 2, 3, 4]).expect("test input valid").len(),
+        Tensor::<i32, Ix0>::from_scalar(7i32)
+            .expect("test input valid")
+            .len(),
+        1
+    );
+    assert_eq!(
+        Tensor::<i32, _>::from_array([2, 2], [1, 2, 3, 4])
+            .expect("test input valid")
+            .len(),
         4
     );
     assert_eq!(
-        Tensor::<i32, _>::from_shape_slice([2], &[5, 6]).expect("test input valid").len(),
+        Tensor::<i32, _>::from_shape_slice([2], &[5, 6])
+            .expect("test input valid")
+            .len(),
         2
     );
     assert_eq!(
-        Tensor::<i32, _>::from_shape_vec([2], vec![5, 6]).expect("test input valid").len(),
+        Tensor::<i32, _>::from_shape_vec([2], vec![5, 6])
+            .expect("test input valid")
+            .len(),
         2
     );
     assert_eq!(
-        Tensor::<i32, Ix1>::from_vec(vec![1, 2, 3]).expect("test input valid").len(),
+        Tensor::<i32, Ix1>::from_vec(vec![1, 2, 3])
+            .expect("test input valid")
+            .len(),
         3
     );
-    assert_eq!(Tensor::<i32, _>::ones([1]).expect("test input valid").len(), 1);
-    assert_eq!(Tensor::<i32, Ix2>::eye(0).expect("test input valid").len(), 0);
+    assert_eq!(
+        Tensor::<i32, _>::ones([1]).expect("test input valid").len(),
+        1
+    );
+    assert_eq!(
+        Tensor::<i32, Ix2>::eye(0).expect("test input valid").len(),
+        0
+    );
 }
 
 #[test]
@@ -68,7 +88,10 @@ fn test_from_scalar_zero_dim() {
     let tensor = Tensor::<f64, Ix0>::from_scalar(std::f64::consts::PI).expect("test input valid");
     assert_eq!(tensor.ndim(), 0);
     assert_eq!(tensor.len(), 1);
-    assert!((*tensor.get(&[] as &[usize]).expect("test input valid") - std::f64::consts::PI).abs() < f64::EPSILON);
+    assert!(
+        (*tensor.get(&[] as &[usize]).expect("test input valid") - std::f64::consts::PI).abs()
+            < f64::EPSILON
+    );
 }
 
 #[test]

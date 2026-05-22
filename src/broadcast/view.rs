@@ -1,7 +1,7 @@
 use crate::dimension::{BroadcastDim, Dimension, IntoDimension};
 use crate::element::Element;
 use crate::error::XenonError;
-use crate::layout::{compute_layout_flags, Strides};
+use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, ViewRepr};
 use crate::tensor::{TensorBase, TensorView};
 
@@ -73,9 +73,8 @@ where
         //   - Empty-storage case: `as_storage_ptr()` returns the dangling sentinel,
         //     `storage_len == 0` makes the range empty, and the sentinel is never
         //     dereferenced.
-        let view_storage: ViewRepr<'_, A> = unsafe {
-            ViewRepr::from_raw_parts(self.as_storage_ptr(), self.storage_len())
-        };
+        let view_storage: ViewRepr<'_, A> =
+            unsafe { ViewRepr::from_raw_parts(self.as_storage_ptr(), self.storage_len()) };
 
         // (2) Finalize via `TensorBase::new_unchecked` — the canonical pub(crate)
         //     unsafe constructor (07-tensor.md §5.6 line 674-730).
@@ -197,7 +196,7 @@ where
     Out: Dimension,
 {
     use crate::broadcast::shape::broadcast_strides;
-    use crate::layout::{compute_layout_flags, Strides};
+    use crate::layout::{Strides, compute_layout_flags};
     use crate::storage::ViewRepr;
 
     let strides_vec = broadcast_strides(src.shape(), src.strides(), out_dim.slice())?;
@@ -233,9 +232,8 @@ where
     //   - `ViewRepr` lifetime bound to `&'a self`; no overlapping mutable
     //     alias is alive during `'a`.
     //   - Empty-storage case: dangling sentinel, never dereferenced.
-    let view_storage: ViewRepr<'a, A> = unsafe {
-        ViewRepr::from_raw_parts(src.as_storage_ptr(), src.storage_len())
-    };
+    let view_storage: ViewRepr<'a, A> =
+        unsafe { ViewRepr::from_raw_parts(src.as_storage_ptr(), src.storage_len()) };
 
     // Step 3: finalize via `TensorBase::new_unchecked` — the canonical
     // pub(crate) unsafe constructor (07-tensor.md §5.6 line 674-730).
@@ -339,7 +337,7 @@ mod tests {
                 assert_eq!(rhs_shape, vec![4, 3]);
                 assert_eq!(attempted_target_shape, Some(vec![4, 3]));
                 assert_eq!(axis, Some(0));
-            }
+            },
             other => panic!("expected BroadcastError, got {:?}", other),
         }
     }
@@ -401,7 +399,8 @@ mod tests {
     /// §7 Wave 3 T7: scalar/low-rank vs higher-rank inputs.
     #[test]
     fn test_broadcast_scalar_and_tensor() {
-        let scalar: Tensor2<f64> = Tensor2::from_shape_vec([1, 1], vec![5.0]).expect("valid test input");
+        let scalar: Tensor2<f64> =
+            Tensor2::from_shape_vec([1, 1], vec![5.0]).expect("valid test input");
         let tensor: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
         let (left, right) = broadcast_with(&scalar, &tensor).expect("valid test input");
         assert_eq!(left.shape(), &[2, 3]);
@@ -426,7 +425,7 @@ mod tests {
                 assert_eq!(operation.as_ref(), "broadcast_shape");
                 assert_eq!(lhs_shape, vec![2, 3]);
                 assert_eq!(rhs_shape, vec![4, 3]);
-            }
+            },
             other => panic!("expected BroadcastError, got {:?}", other),
         }
     }

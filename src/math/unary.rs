@@ -4,9 +4,9 @@
 
 use crate::complex::{Complex, ComplexFloat};
 use crate::dimension::Dimension;
-use crate::dispatch::{select_exec_path, ExecPath};
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
+use crate::dispatch::{ExecPath, select_exec_path};
 use crate::element::{ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar};
 use crate::math::helpers::{apply_complex_to_real, apply_unary, apply_unary_indexed};
 use crate::storage::Storage;
@@ -90,9 +90,7 @@ trait UnaryArith: Numeric + 'static {
 /// `SimdElement` per W14T1, so the supertrait does not narrow the
 /// sealed set.
 #[cfg(feature = "simd")]
-trait OrderedUnaryArith:
-    Numeric + OrderedCompareElement + crate::simd::SimdElement + 'static
-{
+trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::simd::SimdElement + 'static {
     /// Element-wise absolute value; integer path panics on `MIN`.
     fn abs_step(x: Self) -> Self;
     /// Element-wise signum. Integers: `-1` / `0` / `1`.
@@ -168,11 +166,7 @@ macro_rules! impl_unary_int {
                 })
             }
             #[inline]
-            fn square_step_with_ctx(
-                x: Self,
-                idx: usize,
-                shape: &[usize],
-            ) -> Self {
+            fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
                 x.checked_mul(x).unwrap_or_else(|| {
                     panic!(
                         "integer overflow: operation=square, type={}, trigger={}, \
@@ -206,11 +200,7 @@ macro_rules! impl_unary_int {
                 x.signum()
             }
             #[inline]
-            fn abs_step_with_ctx(
-                x: Self,
-                idx: usize,
-                shape: &[usize],
-            ) -> Self {
+            fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
                 if x >= 0 {
                     x
                 } else {
@@ -294,7 +284,10 @@ impl_unary_complex!(crate::complex::Complex<f64>);
 // ============================================================================
 
 // abs / signum: ordered types (i32/i64/f32/f64).
-#[expect(private_bounds, reason = "OrderedUnaryArith is a private sealed trait; public API bound is equivalent to Numeric + OrderedCompareElement")]
+#[expect(
+    private_bounds,
+    reason = "OrderedUnaryArith is a private sealed trait; public API bound is equivalent to Numeric + OrderedCompareElement"
+)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -312,8 +305,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
                     self,
@@ -334,8 +326,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
                     self,
@@ -351,7 +342,10 @@ where
 }
 
 // neg / square: all Numeric (including Complex).
-#[expect(private_bounds, reason = "UnaryArith is a private sealed trait; public API bound is equivalent to Numeric")]
+#[expect(
+    private_bounds,
+    reason = "UnaryArith is a private sealed trait; public API bound is equivalent to Numeric"
+)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -368,8 +362,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
                     self,
@@ -389,8 +382,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
                     self,
@@ -487,9 +479,7 @@ where
     /// for `conjugate` yet (requires cross-lane operations), so the
     /// SIMD path falls back to scalar.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D> {
-        apply_unary_real_dispatch(self, |c| {
-            <Complex<T> as Numeric>::conjugate(c)
-        })
+        apply_unary_real_dispatch(self, <Complex<T> as Numeric>::conjugate)
     }
 }
 
@@ -518,32 +508,31 @@ where
             // the inline scalar loop. Parallel routes through par_map (W15).
             ExecPath::Serial | ExecPath::Simd => {
                 let _ = guard;
-                let mut result = Tensor::zeros(self.raw_dim())
-                    .expect("input dimension must be valid");
+                let mut result =
+                    Tensor::zeros(self.raw_dim()).expect("input dimension must be valid");
                 for (dst, &src) in result.iter_mut().zip(self.iter()) {
                     *dst = !src;
                 }
                 result
-            }
+            },
             ExecPath::Parallel => {
                 #[cfg(feature = "parallel")]
                 {
                     let strat = ParallelExecStrategy::auto();
-                    let g = guard
-                        .expect("ExecPath::Parallel must carry a ParallelGuard");
+                    let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
                     crate::parallel::map::par_map(self, &strat, g, |x| !*x)
                 }
                 #[cfg(not(feature = "parallel"))]
                 {
                     let _ = guard;
-                    let mut result = Tensor::zeros(self.raw_dim())
-                        .expect("input dimension must be valid");
+                    let mut result =
+                        Tensor::zeros(self.raw_dim()).expect("input dimension must be valid");
                     for (dst, &src) in result.iter_mut().zip(self.iter()) {
                         *dst = !src;
                     }
                     result
                 }
-            }
+            },
         }
     }
 }
@@ -577,10 +566,7 @@ where
 /// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
 /// `dispatch_vector_unary_op` for the supported types without changing
 /// any method body (since the public bound `A: RealScalar` remains).
-fn apply_unary_real_dispatch<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    op: F,
-) -> Tensor<A, D>
+fn apply_unary_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
@@ -597,13 +583,12 @@ where
         ExecPath::Serial | ExecPath::Simd => {
             let _ = guard;
             apply_unary(input, op)
-        }
+        },
         ExecPath::Parallel => {
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard
-                    .expect("ExecPath::Parallel must carry a ParallelGuard");
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
                 crate::parallel::map::par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
@@ -611,7 +596,7 @@ where
                 let _ = guard;
                 apply_unary(input, op)
             }
-        }
+        },
     }
 }
 
@@ -641,15 +626,13 @@ where
     match path {
         ExecPath::Serial => apply_unary(input, op),
         ExecPath::Simd => {
-            try_simd_unary_via_slice(input, op_tag)
-                .unwrap_or_else(|| apply_unary(input, op))
-        }
+            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary(input, op))
+        },
         ExecPath::Parallel => {
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard
-                    .expect("ExecPath::Parallel must carry a ParallelGuard");
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
                 crate::parallel::map::par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
@@ -657,7 +640,7 @@ where
                 let _ = guard;
                 apply_unary(input, op)
             }
-        }
+        },
     }
 }
 
@@ -676,8 +659,7 @@ where
 {
     let tag = op_tag?;
     let src: &[A] = input.as_slice()?;
-    let mut result = Tensor::<A, D>::zeros(input.raw_dim())
-        .expect("input dimension must be valid");
+    let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
     if crate::simd::dispatch_vector_unary_op(tag, src, dst) {
         Some(result)
@@ -699,7 +681,8 @@ mod tests {
     #[test]
     fn test_abs() {
         // abs(-3) = 3 for i32; abs(-2.5) = 2.5 for f64.
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![-3, 0, 5]).expect("valid tensor shape");
+        let t =
+            Tensor::<i32, Ix1>::from_shape_vec([3], vec![-3, 0, 5]).expect("valid tensor shape");
         let r = t.abs();
         assert_eq!(*r.get(&[0]).expect("valid index"), 3);
         assert_eq!(*r.get(&[1]).expect("valid index"), 0);
@@ -708,7 +691,8 @@ mod tests {
 
     #[test]
     fn test_neg() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, -2.0, 0.0]).expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, -2.0, 0.0])
+            .expect("valid tensor shape");
         let r = t.neg();
         assert_eq!(*r.get(&[0]).expect("valid index"), -1.0);
         assert_eq!(*r.get(&[1]).expect("valid index"), 2.0);
@@ -719,7 +703,8 @@ mod tests {
     #[test]
     fn test_signum() {
         // i32: -1 / 0 / 1; f64: follows IEEE 754 signum (NaN→NaN, ±0.0→±1.0).
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![-7, 0, 4]).expect("valid tensor shape");
+        let t =
+            Tensor::<i32, Ix1>::from_shape_vec([3], vec![-7, 0, 4]).expect("valid tensor shape");
         let r = t.signum();
         assert_eq!(*r.get(&[0]).expect("valid index"), -1);
         assert_eq!(*r.get(&[1]).expect("valid index"), 0);
@@ -730,7 +715,8 @@ mod tests {
     fn test_square_checked_overflow() {
         // i32::MAX squared overflows i32 — square() must panic via
         // UnaryArith::square_step for i32 (Step 2 per-type impl).
-        let t = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
+        let t =
+            Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
         let result = std::panic::catch_unwind(|| t.square());
         assert!(result.is_err(), "i32::MAX squared must panic on overflow");
     }
@@ -739,7 +725,8 @@ mod tests {
 
     #[test]
     fn test_sin() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.0, std::f64::consts::FRAC_PI_2]).expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.0, std::f64::consts::FRAC_PI_2])
+            .expect("valid tensor shape");
         let r = t.sin();
         assert!((*r.get(&[0]).expect("valid index") - 0.0).abs() < 1e-10);
         assert!((*r.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
@@ -747,7 +734,8 @@ mod tests {
 
     #[test]
     fn test_sqrt() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![4.0, -1.0]).expect("valid tensor shape");
+        let t =
+            Tensor::<f64, Ix1>::from_shape_vec([2], vec![4.0, -1.0]).expect("valid tensor shape");
         let r = t.sqrt();
         assert!((*r.get(&[0]).expect("valid index") - 2.0).abs() < 1e-10);
         assert!(r.get(&[1]).expect("valid index").is_nan());
@@ -762,7 +750,8 @@ mod tests {
 
     #[test]
     fn test_floor_ceil() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.7, 1.3]).expect("valid tensor shape");
+        let t =
+            Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.7, 1.3]).expect("valid tensor shape");
         let f = t.floor();
         let c = t.ceil();
         assert_eq!(*f.get(&[0]).expect("valid index"), 1.0);
@@ -773,7 +762,8 @@ mod tests {
 
     #[test]
     fn test_modulus() {
-        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(3.0_f64, 4.0)]).expect("valid tensor shape");
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(3.0_f64, 4.0)])
+            .expect("valid tensor shape");
         let r = t.modulus();
         assert!(
             (*r.get(&[0]).expect("valid index") - 5.0).abs() < 1e-10,
@@ -784,7 +774,8 @@ mod tests {
 
     #[test]
     fn test_conjugate() {
-        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0_f64, 2.0)]).expect("valid tensor shape");
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0_f64, 2.0)])
+            .expect("valid tensor shape");
         let r = t.conjugate();
         assert_eq!(r.get(&[0]).expect("valid index").re(), 1.0);
         assert_eq!(r.get(&[0]).expect("valid index").im(), -2.0);
@@ -794,7 +785,8 @@ mod tests {
 
     #[test]
     fn test_not_bool() {
-        let t = Tensor::<bool, Ix1>::from_shape_vec([3], vec![true, false, true]).expect("valid tensor shape");
+        let t = Tensor::<bool, Ix1>::from_shape_vec([3], vec![true, false, true])
+            .expect("valid tensor shape");
         let result = t.not();
         assert!(!(*result.get(&[0]).expect("valid index")));
         assert!(*result.get(&[1]).expect("valid index"));

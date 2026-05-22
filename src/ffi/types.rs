@@ -138,10 +138,10 @@ mod tests {
                     } => {
                         assert_eq!(value, usize::MAX);
                         assert_eq!(target_width_bits, 32);
-                    }
+                    },
                     other => panic!("unexpected category: {other:?}"),
                 }
-            }
+            },
             other => panic!("unexpected variant: {other:?}"),
         }
     }
@@ -162,10 +162,7 @@ mod tests {
 
         // Alignment checks
         assert_eq!(align_of::<TensorExportRaw>(), align_of::<*const c_void>());
-        assert_eq!(
-            align_of::<TensorExportMutRaw>(),
-            align_of::<*mut c_void>()
-        );
+        assert_eq!(align_of::<TensorExportMutRaw>(), align_of::<*mut c_void>());
 
         // Field offset checks (§5.3.1 line 285-314 field order)
         assert_eq!(offset_of!(TensorExportRaw, data), 0);

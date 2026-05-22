@@ -5,12 +5,10 @@
 
 use crate::broadcast::broadcast_shape;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
-use crate::dispatch::{select_exec_path, ExecPath};
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
-use crate::element::{
-    CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric,
-};
+use crate::dispatch::{ExecPath, select_exec_path};
+use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric};
 use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
@@ -43,16 +41,12 @@ where
     F: FnMut(A, A) -> O,
 {
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim =
-        <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-            .expect("broadcast_shape validated the output shape");
+    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+        .expect("broadcast_shape validated the output shape");
     let a_view = a.broadcast_to(out_dim.clone())?;
     let b_view = b.broadcast_to(out_dim.clone())?;
-    let mut result =
-        Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
-    for (dst, (a_val, b_val)) in
-        result.iter_mut().zip(a_view.iter().zip(b_view.iter()))
-    {
+    let mut result = Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
+    for (dst, (a_val, b_val)) in result.iter_mut().zip(a_view.iter().zip(b_view.iter())) {
         *dst = f(*a_val, *b_val);
     }
     Ok(result)
@@ -86,7 +80,7 @@ where
 /// f64/Complex<f32>/Complex<f64>) already implement `SimdElement` per
 /// W14T1 — adding it as a supertrait does not narrow the sealed set.
 #[cfg(feature = "simd")]
-trait BinaryArith: Numeric + crate::simd::SimdElement + 'static {
+pub(crate) trait BinaryArith: Numeric + crate::simd::SimdElement + 'static {
     /// Context-aware add step. `idx` / `shape` consumed by integer
     /// monomorphizations for panic diagnostics per 11-math §10.
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
@@ -96,7 +90,7 @@ trait BinaryArith: Numeric + crate::simd::SimdElement + 'static {
 }
 
 #[cfg(not(feature = "simd"))]
-trait BinaryArith: Numeric + 'static {
+pub(crate) trait BinaryArith: Numeric + 'static {
     /// Context-aware add step. `idx` / `shape` consumed by integer
     /// monomorphizations for panic diagnostics per 11-math §10.
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
@@ -181,13 +175,21 @@ macro_rules! impl_binary_float {
     ($t:ty) => {
         impl BinaryArith for $t {
             #[inline]
-            fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a + b }
+            fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a + b
+            }
             #[inline]
-            fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a - b }
+            fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a - b
+            }
             #[inline]
-            fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a * b }
+            fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a * b
+            }
             #[inline]
-            fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a / b }
+            fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a / b
+            }
         }
     };
 }
@@ -201,13 +203,21 @@ macro_rules! impl_binary_complex {
     ($t:ty) => {
         impl BinaryArith for $t {
             #[inline]
-            fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a + b }
+            fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a + b
+            }
             #[inline]
-            fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a - b }
+            fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a - b
+            }
             #[inline]
-            fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a * b }
+            fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a * b
+            }
             #[inline]
-            fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self { a / b }
+            fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+                a / b
+            }
         }
     };
 }
@@ -239,14 +249,12 @@ where
     F: FnMut(A, A, usize, &[usize]) -> O,
 {
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim =
-        <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-            .expect("broadcast_shape validated the output shape");
+    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+        .expect("broadcast_shape validated the output shape");
     let a_view = a.broadcast_to(out_dim.clone())?;
     let b_view = b.broadcast_to(out_dim.clone())?;
     let shape_slice: Vec<usize> = out_dim.slice().to_vec();
-    let mut result =
-        Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
+    let mut result = Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
     for (idx, (dst, (a_val, b_val))) in result
         .iter_mut()
         .zip(a_view.iter().zip(b_view.iter()))
@@ -261,7 +269,10 @@ where
 // Public arithmetic methods: tensor-tensor add/sub/mul/div
 // ============================================================================
 
-#[expect(private_bounds, reason = "BinaryArith is a private sealed trait equivalent to Numeric")]
+#[expect(
+    private_bounds,
+    reason = "BinaryArith is pub(crate) but this impl block publishes methods with a pub(crate)-only bound; sealed-trait pattern"
+)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -285,8 +296,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
                     self,
@@ -314,8 +324,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
                     self,
@@ -343,8 +352,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
                     self,
@@ -372,8 +380,7 @@ where
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
                     self,
@@ -413,24 +420,21 @@ where
 
     /// Element-wise tensor - scalar.
     pub fn sub_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.sub(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 
     /// Element-wise tensor * scalar.
     pub fn mul_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.mul(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 
     /// Element-wise tensor / scalar.
     pub fn div_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.div(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
@@ -442,13 +446,11 @@ where
     /// W16T11 Step 7: float/complex route through `apply_arith_with_dispatch`
     /// for SIMD; integers retain `apply_binary_indexed` for §10 diagnostics.
     pub(crate) fn sub_from_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
                     &other,
@@ -456,7 +458,9 @@ where
                     |x, y| <A as BinaryArith>::sub_step(x, y, 0, &[]),
                     Some(crate::simd::BinaryOp::Sub),
                 )
-                .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility");
+                .expect(
+                    "scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility",
+                );
             }
         }
         // Swap operand order: compute `scalar - self` element-wise.
@@ -470,13 +474,11 @@ where
     /// Internal helper for `19-overload.md §5`; NOT part of the public
     /// API surface.
     pub(crate) fn div_from_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         #[cfg(feature = "simd")]
         {
             use core::any::TypeId;
-            if TypeId::of::<A>() != TypeId::of::<i32>()
-                && TypeId::of::<A>() != TypeId::of::<i64>()
+            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
                     &other,
@@ -484,7 +486,9 @@ where
                     |x, y| <A as BinaryArith>::div_step(x, y, 0, &[]),
                     Some(crate::simd::BinaryOp::Div),
                 )
-                .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility");
+                .expect(
+                    "scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility",
+                );
             }
         }
         apply_binary_indexed(&other, self, |x, y, idx, shape| {
@@ -514,8 +518,7 @@ where
     D: Dimension,
     F: FnMut(A, A) -> O,
 {
-    let mut result = Tensor::<O, D>::zeros(a.raw_dim())
-        .expect("input dimension must be valid");
+    let mut result = Tensor::<O, D>::zeros(a.raw_dim()).expect("input dimension must be valid");
     for ((dst, &a_val), &b_val) in result.iter_mut().zip(a.iter()).zip(b.iter()) {
         *dst = op(a_val, b_val);
     }
@@ -543,29 +546,24 @@ where
     F: Fn(A, A) -> bool + Copy + Send + Sync,
 {
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim =
-        <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-            .expect("broadcast_shape validated the output shape");
+    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+        .expect("broadcast_shape validated the output shape");
 
     let a_view = a.broadcast_to(out_dim.clone())?;
     let b_view = b.broadcast_to(out_dim.clone())?;
 
-    let len = out_dim.checked_size()
-        .expect("broadcast_shape validated");
+    let len = out_dim.checked_size().expect("broadcast_shape validated");
     let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
     let both_aligned = a_view.is_aligned() && b_view.is_aligned();
     let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
 
     let result = match path {
-        ExecPath::Serial | ExecPath::Simd => {
-            apply_binary_scalar(&a_view, &b_view, op)
-        }
+        ExecPath::Serial | ExecPath::Simd => apply_binary_scalar(&a_view, &b_view, op),
         ExecPath::Parallel => {
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard
-                    .expect("ExecPath::Parallel must carry a ParallelGuard");
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
                 crate::parallel::map::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
@@ -574,10 +572,10 @@ where
                 let _ = guard;
                 apply_binary_scalar(&a_view, &b_view, op)
             }
-        }
+        },
     };
     Ok(result)
-}    
+}
 /// Dispatch-aware broadcast arithmetic helper for W16T6 float/complex
 /// types (`add`/`sub`/`mul`/`div`). Homogeneous `A → A`. SIMD path is
 /// available when the `simd` feature is enabled and W14 facade covers the
@@ -612,14 +610,12 @@ where
     );
 
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim =
-        <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-            .expect("broadcast_shape validated");
+    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+        .expect("broadcast_shape validated");
     let a_view = a.broadcast_to(out_dim.clone())?;
     let b_view = b.broadcast_to(out_dim.clone())?;
 
-    let len = out_dim.checked_size()
-        .expect("broadcast_shape validated");
+    let len = out_dim.checked_size().expect("broadcast_shape validated");
     let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
     let both_aligned = a_view.is_aligned() && b_view.is_aligned();
     let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
@@ -632,15 +628,14 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard
-                    .expect("ExecPath::Parallel must carry a ParallelGuard");
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
                 crate::parallel::map::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
             {
                 apply_binary_scalar(&a_view, &b_view, op)
             }
-        }
+        },
     };
     Ok(result)
 }
@@ -662,11 +657,9 @@ where
     let tag = op_tag?;
     let lhs_slice: &[A] = a.as_slice()?;
     let rhs_slice: &[A] = b.as_slice()?;
-    let mut result = Tensor::<A, _>::zeros(a.raw_dim())
-        .expect("input dimension must be valid");
+    let mut result = Tensor::<A, _>::zeros(a.raw_dim()).expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
-    if crate::simd::dispatch_vector_binary_op(tag, lhs_slice, rhs_slice, dst)
-    {
+    if crate::simd::dispatch_vector_binary_op(tag, lhs_slice, rhs_slice, dst) {
         Some(result)
     } else {
         None
@@ -695,8 +688,10 @@ mod tests {
 
     #[test]
     fn test_add_f64() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.5, -1.5]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.5, 2.5]).expect("valid tensor shape");
+        let a =
+            Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.5, -1.5]).expect("valid tensor shape");
+        let b =
+            Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.5, 2.5]).expect("valid tensor shape");
         let c = a.add(&b).expect("broadcast succeeds in test");
         assert!((*c.get(&[0]).expect("valid index") - 2.0).abs() < 1e-10);
         assert!((*c.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
@@ -704,8 +699,10 @@ mod tests {
 
     #[test]
     fn test_add_broadcast() {
-        let a = Tensor::<f64, Ix2>::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix2>::from_shape_vec([1, 4], vec![10.0, 20.0, 30.0, 40.0]).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix2>::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix2>::from_shape_vec([1, 4], vec![10.0, 20.0, 30.0, 40.0])
+            .expect("valid tensor shape");
         let c = a.add(&b).expect("broadcast succeeds in test");
         assert_eq!(c.shape(), &[3, 4]);
         let val = c.get(&[0, 0]).expect("valid index");
@@ -714,7 +711,8 @@ mod tests {
 
     #[test]
     fn test_mul_scalar() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0]).expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0])
+            .expect("valid tensor shape");
         let r = t.mul_scalar(2.5);
         assert!((*r.get(&[0]).expect("valid index") - 2.5).abs() < 1e-10);
         assert!((*r.get(&[1]).expect("valid index") - 5.0).abs() < 1e-10);
@@ -723,7 +721,8 @@ mod tests {
 
     #[test]
     fn test_add_i32_overflow_panic() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
+        let a =
+            Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
         let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![1]).expect("valid tensor shape");
         let result = std::panic::catch_unwind(|| a.add(&b));
         assert!(result.is_err(), "i32::MAX + 1 must panic");
@@ -735,8 +734,10 @@ mod tests {
     /// correct results regardless of which ExecPath is selected internally.
     #[test]
     fn test_dispatch_path_consistency_equal() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 4.0]).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 4.0])
+            .expect("valid tensor shape");
         // Uses apply_compare_with_dispatch internally → routes through
         // select_exec_path → Serial/Simd/Parallel → scalar.
         let result = a.equal(&b).expect("broadcast succeeds in test");
@@ -749,8 +750,10 @@ mod tests {
     /// scalar fallback inside dispatch helpers. Validate it independently.
     #[test]
     fn test_apply_binary_scalar() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, 2.0]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([2], vec![3.0, 4.0]).expect("valid tensor shape");
+        let a =
+            Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, 2.0]).expect("valid tensor shape");
+        let b =
+            Tensor::<f64, Ix1>::from_shape_vec([2], vec![3.0, 4.0]).expect("valid tensor shape");
         let r = apply_binary_scalar(&a, &b, |x, y| x + y);
         assert!((*r.get(&[0]).expect("valid index") - 4.0).abs() < 1e-10);
         assert!((*r.get(&[1]).expect("valid index") - 6.0).abs() < 1e-10);
@@ -768,8 +771,11 @@ mod tests {
     #[cfg(feature = "simd")]
     #[test]
     fn test_add_simd_vs_scalar() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([256], (0..256).map(|x| x as f64).collect()).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([256], (0..256).map(|x| (x * 2) as f64).collect()).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([256], (0..256).map(|x| x as f64).collect())
+            .expect("valid tensor shape");
+        let b =
+            Tensor::<f64, Ix1>::from_shape_vec([256], (0..256).map(|x| (x * 2) as f64).collect())
+                .expect("valid tensor shape");
         let expected: Vec<f64> = (0..256).map(|x| 3.0 * x as f64).collect();
         let result = a.add(&b).expect("broadcast succeeds in test");
         for (i, (got, &exp)) in result.iter().zip(expected.iter()).enumerate() {
@@ -790,8 +796,10 @@ mod tests {
     /// carve-out (W16T11 Step 7).
     #[test]
     fn test_add_path_consistency_i32() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).collect()).expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).map(|x| x * 3).collect()).expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).collect())
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).map(|x| x * 3).collect())
+            .expect("valid tensor shape");
         let r = a.add(&b).expect("broadcast succeeds in test");
         for i in 0..64 {
             assert_eq!(*r.get(&[i]).expect("valid index"), i as i32 + i as i32 * 3);

@@ -20,9 +20,7 @@ use crate::tensor::{Tensor, TensorBase};
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "simd")]
-use crate::simd::{
-    try_sum_complex_f32, try_sum_complex_f64, try_sum_f32, try_sum_f64,
-};
+use crate::simd::{try_sum_complex_f32, try_sum_complex_f64, try_sum_f32, try_sum_f64};
 
 /// Per-step accumulation enforcing 13-reduction §6.3 type semantics:
 /// - Integer types (`i32`, `i64`): checked arithmetic via `CheckedAdd`,
@@ -106,26 +104,24 @@ where
         return sum_serial(tensor);
     }
 
-    let (path, _guard) = select_exec_path(
-        tensor.len(),
-        tensor.is_f_contiguous(),
-        tensor.is_aligned(),
-    );
+    let (path, _guard) =
+        select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
 
     match path {
         #[cfg(feature = "parallel")]
         crate::dispatch::ExecPath::Parallel => {
             // §5.5 line 388-393: when select returns Parallel, the guard is always Some.
-            let guard =
-                _guard.expect("Parallel path implies Some(guard) per §5.5");
+            let guard = _guard.expect("Parallel path implies Some(guard) per §5.5");
             // ParallelExecStrategy is held independently by the parallel/ backend
             // (30-dispatch.md §5.3 + Wave 10 audit memo); we construct the default
             // strategy locally and pass by reference.
             let strategy = ParallelExecStrategy::auto();
             crate::parallel::reduce::par_sum(tensor, &strategy, guard)
-        }
+        },
         #[cfg(feature = "simd")]
-        crate::dispatch::ExecPath::Simd => try_simd_sum(tensor).unwrap_or_else(|| sum_serial(tensor)),
+        crate::dispatch::ExecPath::Simd => {
+            try_simd_sum(tensor).unwrap_or_else(|| sum_serial(tensor))
+        },
         _ => sum_serial(tensor),
     }
 }
@@ -156,14 +152,12 @@ where
         return try_sum_f64(s).map(|r| unsafe { core::mem::transmute_copy::<f64, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<Complex<f32>>() {
-        let s: &[Complex<f32>] =
-            unsafe { &*(slice as *const [A] as *const [Complex<f32>]) };
+        let s: &[Complex<f32>] = unsafe { &*(slice as *const [A] as *const [Complex<f32>]) };
         return try_sum_complex_f32(s)
             .map(|r| unsafe { core::mem::transmute_copy::<Complex<f32>, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<Complex<f64>>() {
-        let s: &[Complex<f64>] =
-            unsafe { &*(slice as *const [A] as *const [Complex<f64>]) };
+        let s: &[Complex<f64>] = unsafe { &*(slice as *const [A] as *const [Complex<f64>]) };
         return try_sum_complex_f64(s)
             .map(|r| unsafe { core::mem::transmute_copy::<Complex<f64>, A>(&r) });
     }
@@ -348,8 +342,7 @@ where
     // SAFETY-of-flow: axis is validated above; dim_with_axis_set cannot fail
     // for axis OOB here. `try_from_slice` succeeds because the slice length
     // equals `ndim`, which `Dimension::try_from_slice` accepts.
-    let output_dim =
-        dim_with_axis_set(&tensor.raw_dim(), axis, 1, "sum_axis_keepdims")?;
+    let output_dim = dim_with_axis_set(&tensor.raw_dim(), axis, 1, "sum_axis_keepdims")?;
     let mut output = Tensor::<A, D>::zeros(output_dim)?;
     accumulate_axis_keepdims(tensor, axis, &mut output)?;
     Ok(output)
@@ -423,7 +416,8 @@ mod tests {
     /// 13-reduction §7 Wave 1 T2 / §8.2: float NaN propagates per IEEE 754.
     #[test]
     fn test_sum_nan() {
-        let x = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, f64::NAN, 2.0]).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, f64::NAN, 2.0])
+            .expect("valid test input");
         assert!(x.sum().is_nan());
     }
 
@@ -452,7 +446,8 @@ mod tests {
     fn test_sum_axis_2d() {
         // F-order layout: axis-0 varies fastest; data[i + j*nrows].
         // Shape (2, 3): [[1,3,5], [2,4,6]] -> sum_axis(1) sums columns.
-        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6])
+            .expect("valid test input");
         let y = x.sum_axis(Axis(1)).expect("valid test input");
         assert_eq!(y.shape(), &[2]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[9, 12]);
@@ -483,7 +478,8 @@ mod tests {
     fn test_sum_axis_keepdims() {
         // F-order: shape (2, 3) -> sum along axis 1 keeps dim 1 with length 1.
         // [[1,3,5], [2,4,6]] -> keepdims(1): [[9], [12]]
-        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6])
+            .expect("valid test input");
         let y = x.sum_axis_keepdims(Axis(1)).expect("valid test input");
         assert_eq!(y.shape(), &[2, 1]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[9, 12]);
@@ -521,8 +517,7 @@ mod tests_dispatch {
     /// 13-reduction §6.3 line 264-275: f32 finite-value tolerance.
     #[cfg(any(feature = "simd", feature = "parallel"))]
     fn approx_eq_f32(actual: f32, expected: f32, n: usize, max_abs_input: f32) -> bool {
-        let tol =
-            (4.0 * f32::EPSILON * (n as f32) * max_abs_input).max(4.0 * f32::MIN_POSITIVE);
+        let tol = (4.0 * f32::EPSILON * (n as f32) * max_abs_input).max(4.0 * f32::MIN_POSITIVE);
         (actual - expected).abs() <= tol
     }
 

@@ -1,11 +1,9 @@
 use core::sync::atomic::Ordering;
 use std::borrow::Cow;
 
-use crate::error::{
-    WorkspaceBorrowKind, WorkspaceErrorCategory, XenonError,
-};
 use super::borrow::current_borrow_state;
 use super::workspace::Workspace;
+use crate::error::{WorkspaceBorrowKind, WorkspaceErrorCategory, XenonError};
 
 impl Workspace {
     /// Ensure capacity is at least `min_capacity`.
@@ -64,16 +62,15 @@ impl Workspace {
 
     /// Internal reallocation. Not part of the public API.
     fn reallocate(&mut self, new_capacity: usize) -> crate::error::Result<()> {
-        let new_layout =
-            std::alloc::Layout::from_size_align(new_capacity, self.alignment)
-                .map_err(|_| XenonError::Workspace {
-                    operation: Cow::Borrowed("Workspace::reallocate"),
-                    category: WorkspaceErrorCategory::InvalidLayout {
-                        size: new_capacity,
-                        align: self.alignment,
-                    },
-                    cause: None,
-                })?;
+        let new_layout = std::alloc::Layout::from_size_align(new_capacity, self.alignment)
+            .map_err(|_| XenonError::Workspace {
+                operation: Cow::Borrowed("Workspace::reallocate"),
+                category: WorkspaceErrorCategory::InvalidLayout {
+                    size: new_capacity,
+                    align: self.alignment,
+                },
+                cause: None,
+            })?;
 
         // SAFETY: layout is valid (checked above).
         let new_ptr = unsafe { std::alloc::alloc(new_layout) };
@@ -102,10 +99,8 @@ impl Workspace {
         // Free old memory.
         // SAFETY: old layout was valid at allocation time and unchanged.
         unsafe {
-            let old_layout = std::alloc::Layout::from_size_align_unchecked(
-                self.capacity,
-                self.alignment,
-            );
+            let old_layout =
+                std::alloc::Layout::from_size_align_unchecked(self.capacity, self.alignment);
             std::alloc::dealloc(self.ptr.as_ptr(), old_layout);
         }
 
@@ -124,14 +119,18 @@ mod tests {
     #[test]
     fn test_ensure_capacity_no_grow() {
         let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
-        workspace.ensure_capacity(32).expect("ensure capacity in test");
+        workspace
+            .ensure_capacity(32)
+            .expect("ensure capacity in test");
         assert_eq!(workspace.capacity(), 64);
     }
 
     #[test]
     fn test_ensure_capacity_grow() {
         let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
-        workspace.ensure_capacity(128).expect("ensure capacity in test");
+        workspace
+            .ensure_capacity(128)
+            .expect("ensure capacity in test");
         assert!(workspace.capacity() >= 128);
         // Alignment must be preserved across growth.
         assert_eq!(workspace.alignment(), 64);

@@ -19,9 +19,9 @@
 //! - Custom formatter registration.
 
 mod config;
-mod pretty;
-mod display;
 mod debug;
+mod display;
+mod pretty;
 
 pub use config::FormatConfig;
 pub use display::TensorDisplay;
@@ -34,8 +34,7 @@ mod tests {
 
     #[test]
     fn test_display_compile() {
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![true, false], Ix1(2)) };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![true, false], Ix1(2)) };
         let display = format!("{}", tensor);
         let debug = format!("{:?}", tensor);
         // §8.2 line 684 — bool element type renders via Display.
@@ -55,9 +54,7 @@ mod tests {
     fn test_tensor_display_reexported() {
         // §8.7 line 729-731 — TensorDisplay wrapper is reachable through
         // the re-export, and `display_with` returns it.
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix1(3))
-        };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix1(3)) };
         let config = FormatConfig::default();
         let wrapper: TensorDisplay<'_, _, _, _> = tensor.display_with(config);
         let text = format!("{}", wrapper);

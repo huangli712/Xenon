@@ -4,7 +4,10 @@ use crate::iter::elements::{Iter, IterMut, StrideState};
 /// Element iterator paired with the multi-dimensional logical index.
 /// Yields `(D, &'a A)` tuples; indices increment in F-order.
 /// (10-iterator §5.4)
-#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+#[expect(
+    missing_debug_implementations,
+    reason = "iterator is not meant to be introspected"
+)]
 pub struct IndexedIter<'a, A, D: Dimension> {
     iter: Iter<'a, A, D>,
     state: StrideState,
@@ -57,7 +60,10 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
 /// `TensorViewMut` admits only no-broadcast, positive-stride layouts validated
 /// at construction time, so each logical index maps to a distinct physical
 /// address.
-#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+#[expect(
+    missing_debug_implementations,
+    reason = "iterator is not meant to be introspected"
+)]
 pub struct IndexedIterMut<'a, A, D: Dimension> {
     iter: IterMut<'a, A, D>,
     state: StrideState,
@@ -115,7 +121,10 @@ mod tests {
         assert_eq!(items[1].0, Ix2(1, 0));
         assert_eq!(items[2].0, Ix2(0, 1));
         assert_eq!(items[3].0, Ix2(1, 1));
-        assert_eq!(items.iter().map(|(_, v)| *v).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
+        assert_eq!(
+            items.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
     }
 
     #[test]
@@ -132,8 +141,7 @@ mod tests {
     fn test_indexed_iter_high_rank_ixdyn() {
         let shape = IxDyn::from_slice(&[2, 2, 2, 2, 2, 2, 2]);
         let total: usize = shape.slice().iter().product();
-        let tensor =
-            unsafe { make_tensor((0..total as i32).collect(), shape.clone()) };
+        let tensor = unsafe { make_tensor((0..total as i32).collect(), shape.clone()) };
         let iter = IndexedIter::new(Iter::new(tensor.view()), tensor.shape());
         let items: Vec<(IxDyn, i32)> = iter.map(|(idx, v)| (idx, *v)).collect();
         assert_eq!(items.len(), total);

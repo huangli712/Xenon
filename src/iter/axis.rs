@@ -12,7 +12,10 @@ use crate::tensor::{TensorView, TensorViewMut};
 /// The struct retains the minimal `D: Dimension` bound; the public iterator
 /// trait impls add `D: RemoveAxis` so the yielded item type can be
 /// `TensorView<'a, A, D::Smaller>`.
-#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+#[expect(
+    missing_debug_implementations,
+    reason = "iterator is not meant to be introspected"
+)]
 pub struct AxisIter<'a, A, D: Dimension> {
     base_ptr: *const A,
     base_offset: usize,
@@ -27,10 +30,7 @@ pub struct AxisIter<'a, A, D: Dimension> {
 }
 
 impl<'a, A, D: Dimension> AxisIter<'a, A, D> {
-    pub(crate) fn new(
-        view: TensorView<'a, A, D>,
-        axis: Axis,
-    ) -> Result<Self, XenonError> {
+    pub(crate) fn new(view: TensorView<'a, A, D>, axis: Axis) -> Result<Self, XenonError> {
         let ndim = view.ndim();
         if axis.0 >= ndim {
             return Err(XenonError::InvalidAxis {
@@ -122,7 +122,10 @@ where
 /// Each `next()` advances `pos` by 1 monotonically; consecutive yields are
 /// separated by `axis_stride` elements, so the produced `&mut`-backed views
 /// cover non-overlapping logical regions.
-#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+#[expect(
+    missing_debug_implementations,
+    reason = "iterator is not meant to be introspected"
+)]
 pub struct AxisIterMut<'a, A, D: Dimension> {
     base_ptr: *mut A,
     base_offset: usize,
@@ -137,10 +140,7 @@ pub struct AxisIterMut<'a, A, D: Dimension> {
 }
 
 impl<'a, A, D: Dimension> AxisIterMut<'a, A, D> {
-    pub(crate) fn new(
-        view: TensorViewMut<'a, A, D>,
-        axis: Axis,
-    ) -> Result<Self, XenonError> {
+    pub(crate) fn new(view: TensorViewMut<'a, A, D>, axis: Axis) -> Result<Self, XenonError> {
         let ndim = view.ndim();
         if axis.0 >= ndim {
             return Err(XenonError::InvalidAxis {
@@ -247,8 +247,7 @@ mod tests {
 
     #[test]
     fn test_axis_iter_count() {
-        let tensor =
-            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
         let iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
         assert_eq!(iter.len(), 2);
         assert_eq!(iter.count(), 2);
@@ -256,17 +255,18 @@ mod tests {
 
     #[test]
     fn test_axis_iter_shape() {
-        let tensor =
-            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
-        let mut iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
-        let sub = iter.next().expect("Iterator should yield at least one element");
+        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let mut iter =
+            AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
+        let sub = iter
+            .next()
+            .expect("Iterator should yield at least one element");
         assert_eq!(sub.shape(), &[3]);
     }
 
     #[test]
     fn test_axis_iter_empty_axis() {
-        let tensor =
-            unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(0, 3)) };
+        let tensor = unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(0, 3)) };
         let iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid even if empty");
         assert_eq!(iter.len(), 0);
         assert_eq!(iter.count(), 0);
@@ -283,14 +283,17 @@ mod tests {
         let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
         assert!(matches!(
             AxisIter::new(scalar.view(), Axis(0)),
-            Err(XenonError::InvalidAxis { axis: 0, ndim: 0, .. })
+            Err(XenonError::InvalidAxis {
+                axis: 0,
+                ndim: 0,
+                ..
+            })
         ));
     }
 
     #[test]
     fn test_axis_iter_large_axis_index_error() {
-        let tensor =
-            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
         assert!(matches!(
             AxisIter::new(tensor.view(), Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
@@ -299,11 +302,14 @@ mod tests {
 
     #[test]
     fn test_axis_iter_mut_axis_out_of_bounds() {
-        let mut tensor =
-            unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(2, 3)) };
+        let mut tensor = unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(2, 3)) };
         assert!(matches!(
             AxisIterMut::new(tensor.view_mut(), Axis(2)),
-            Err(XenonError::InvalidAxis { axis: 2, ndim: 2, .. })
+            Err(XenonError::InvalidAxis {
+                axis: 2,
+                ndim: 2,
+                ..
+            })
         ));
     }
 }

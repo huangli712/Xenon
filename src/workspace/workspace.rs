@@ -1,6 +1,4 @@
-use crate::error::{
-    Result, WorkspaceErrorCategory,
-};
+use crate::error::{Result, WorkspaceErrorCategory};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicU8;
@@ -85,15 +83,16 @@ impl Workspace {
             });
         }
         let size = capacity.max(1);
-        let layout = std::alloc::Layout::from_size_align(size, alignment)
-            .map_err(|_| crate::error::XenonError::Workspace {
+        let layout = std::alloc::Layout::from_size_align(size, alignment).map_err(|_| {
+            crate::error::XenonError::Workspace {
                 operation: Cow::Borrowed("Workspace::new"),
                 category: WorkspaceErrorCategory::InvalidLayout {
                     size: capacity,
                     align: alignment,
                 },
                 cause: None,
-            })?;
+            }
+        })?;
         let ptr = if size == 0 {
             NonNull::dangling()
         } else {
@@ -130,10 +129,8 @@ impl Drop for Workspace {
     fn drop(&mut self) {
         // SAFETY: layout was valid at allocation time and ptr is unchanged.
         unsafe {
-            let layout = std::alloc::Layout::from_size_align_unchecked(
-                self.capacity,
-                self.alignment,
-            );
+            let layout =
+                std::alloc::Layout::from_size_align_unchecked(self.capacity, self.alignment);
             std::alloc::dealloc(self.ptr.as_ptr(), layout);
         }
     }
@@ -176,7 +173,7 @@ mod tests {
                         align: 7,
                     },
                 ..
-            } => {}
+            } => {},
             other => panic!("expected InvalidLayout, got {:?}", other),
         }
 
@@ -190,7 +187,7 @@ mod tests {
                         align: 4,
                     },
                 ..
-            } => {}
+            } => {},
             other => panic!("expected InvalidLayout, got {:?}", other),
         }
     }

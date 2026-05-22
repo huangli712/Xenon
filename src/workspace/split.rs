@@ -1,9 +1,9 @@
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::error::{WorkspaceBorrowKind, XenonError};
 use super::borrow::current_borrow_state;
 use super::workspace::Workspace;
+use crate::error::{WorkspaceBorrowKind, XenonError};
 
 /// Borrow guard for a split sub-space.
 ///
@@ -81,8 +81,7 @@ impl Workspace {
         let left_ptr = self.ptr;
         // SAFETY: mid <= capacity (checked above), so ptr + mid is within
         // the allocation.
-        let right_ptr =
-            unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(mid)) };
+        let right_ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(mid)) };
 
         Ok((
             SplitBorrowMut {
@@ -159,8 +158,7 @@ impl<'a> SplitBorrowMut<'a> {
         let left_ptr = this.ptr;
         // SAFETY: mid <= this.len (checked above), so the offset stays within
         // the parent split's region.
-        let right_ptr =
-            unsafe { NonNull::new_unchecked(this.ptr.as_ptr().add(mid)) };
+        let right_ptr = unsafe { NonNull::new_unchecked(this.ptr.as_ptr().add(mid)) };
 
         Ok((
             SplitBorrowMut {
@@ -200,10 +198,9 @@ impl<'a> Drop for SplitBorrowMut<'a> {
         // to reset borrow_state.
         let prev = self.split_count.fetch_sub(1, Ordering::AcqRel);
         if prev == 1 {
-            self.workspace.borrow_state.store(
-                Workspace::BORROW_NONE,
-                Ordering::Release,
-            );
+            self.workspace
+                .borrow_state
+                .store(Workspace::BORROW_NONE, Ordering::Release);
         }
     }
 }

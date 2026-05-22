@@ -507,10 +507,7 @@ mod sum_tests {
 
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len() as f64;
-        let max_abs = data
-            .iter()
-            .map(|v| v.abs() as f64)
-            .fold(0.0f64, f64::max);
+        let max_abs = data.iter().map(|v| v.abs() as f64).fold(0.0f64, f64::max);
         // Tolerance per 13-reduction.md §6.3: max(4·ε·n·max_abs_input, 4·MIN_POSITIVE)
         ((4.0 * f32::EPSILON as f64 * n * max_abs) as f32).max(4.0 * f32::MIN_POSITIVE)
     }
@@ -569,7 +566,7 @@ mod sum_tests {
             "len=1024 must be admitted when supported"
         );
     }
-}// ---------------------------------------------------------------------------
+} // ---------------------------------------------------------------------------
 // Complex sum kernels (W14T5)
 // ---------------------------------------------------------------------------
 
@@ -597,10 +594,7 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
         // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...] f32 slice.
         // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields (complex/mod.rs:119-126).
         let f32_data: &[f32] = unsafe {
-            std::slice::from_raw_parts(
-                self.data.as_ptr() as *const f32,
-                self.data.len() * 2,
-            )
+            std::slice::from_raw_parts(self.data.as_ptr() as *const f32, self.data.len() * 2)
         };
         let (body, tail) = S::as_simd_f32s(f32_data);
 
@@ -635,13 +629,13 @@ impl ComplexSumF32Kernel<'_> {
         im_sum: &mut f32,
     ) -> Complex<f32> {
         // Use core::mem::size_of to determine lane count.
-        let lane_count =
-            core::mem::size_of::<S::f32s>() / core::mem::size_of::<f32>();
+        let lane_count = core::mem::size_of::<S::f32s>() / core::mem::size_of::<f32>();
         // For each adjacent pair of lanes, add to real/imag.
         // We use bytemuck to interpret the SIMD register as a byte array
         // and then reconstruct the f32 values.
-        let bytes: &[u8] =
-            unsafe { std::slice::from_raw_parts(acc as *const S::f32s as *const u8, lane_count * 4) };
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(acc as *const S::f32s as *const u8, lane_count * 4)
+        };
         for i in 0..lane_count / 2 {
             let re = f32::from_ne_bytes([
                 bytes[i * 8],
@@ -672,10 +666,7 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
 
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
         let f64_data: &[f64] = unsafe {
-            std::slice::from_raw_parts(
-                self.data.as_ptr() as *const f64,
-                self.data.len() * 2,
-            )
+            std::slice::from_raw_parts(self.data.as_ptr() as *const f64, self.data.len() * 2)
         };
         let (body, tail) = S::as_simd_f64s(f64_data);
 
@@ -700,13 +691,9 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
         // Since we summed [re0, im0, re1, im1, ...] all together,
         // scalar = sum of all re + sum of all im. We need to split them.
         // Use bytemuck to manually extract lanes.
-        let lane_count =
-            core::mem::size_of::<S::f64s>() / core::mem::size_of::<f64>();
+        let lane_count = core::mem::size_of::<S::f64s>() / core::mem::size_of::<f64>();
         let bytes: &[u8] = unsafe {
-            std::slice::from_raw_parts(
-                &acc as *const S::f64s as *const u8,
-                lane_count * 8,
-            )
+            std::slice::from_raw_parts(&acc as *const S::f64s as *const u8, lane_count * 8)
         };
         for i in 0..lane_count / 2 {
             let mut re_bytes = [0u8; 8];
@@ -912,7 +899,8 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
         // Reinterpret Complex<f32> as interleaved f32 pairs.
         let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
         let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
-        let dst_f32 = unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
@@ -939,7 +927,8 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
         let n = self.lhs.len();
         let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
         let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
-        let dst_f32 = unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
@@ -966,7 +955,8 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
         let n = self.lhs.len();
         let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
         let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
-        let dst_f32 = unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
@@ -1001,7 +991,8 @@ impl WithSimd for ComplexNegF32Kernel<'_> {
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.src.len();
         let src_f32 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f32, n * 2) };
-        let dst_f32 = unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (src_body, src_tail) = S::as_simd_f32s(src_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
 
@@ -1064,7 +1055,8 @@ impl WithSimd for ComplexAddF64Kernel<'_> {
         let n = self.lhs.len();
         let lhs_f64 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f64, n * 2) };
         let rhs_f64 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f64, n * 2) };
-        let dst_f64 = unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+        let dst_f64 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f64s(lhs_f64);
         let (rhs_body, rhs_tail) = S::as_simd_f64s(rhs_f64);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
@@ -1089,7 +1081,8 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.src.len();
         let src_f64 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
-        let dst_f64 = unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+        let dst_f64 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
         let (src_body, src_tail) = S::as_simd_f64s(src_f64);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
 
@@ -1134,7 +1127,7 @@ pub(crate) fn dispatch_unary_complex_f64(
         UnaryOp::Neg => arch.dispatch(ComplexNegF64Kernel { src, dst }),
     }
     true
-}// ---------------------------------------------------------------------------
+} // ---------------------------------------------------------------------------
 // W14T8 Element-wise consistency tests
 // ---------------------------------------------------------------------------
 
@@ -1194,12 +1187,30 @@ mod consistency_tests {
 
     fn fixture_f64(len: usize) -> (Vec<f64>, Vec<f64>) {
         let lhs_seed = [
-            1.5_f64, -2.3, 0.001, -1e20, std::f64::consts::PI, 0.0, -0.0,
-            f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MIN_POSITIVE / 2.0,
+            1.5_f64,
+            -2.3,
+            0.001,
+            -1e20,
+            std::f64::consts::PI,
+            0.0,
+            -0.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MIN_POSITIVE / 2.0,
         ];
         let rhs_seed = [
-            -4.25_f64, 8.0, -0.125, 1e-20, -2.0, 0.0, -0.0,
-            f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MIN_POSITIVE / 2.0,
+            -4.25_f64,
+            8.0,
+            -0.125,
+            1e-20,
+            -2.0,
+            0.0,
+            -0.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MIN_POSITIVE / 2.0,
         ];
         let lhs: Vec<f64> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
         let rhs: Vec<f64> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
@@ -1208,12 +1219,30 @@ mod consistency_tests {
 
     fn fixture_f32(len: usize) -> (Vec<f32>, Vec<f32>) {
         let lhs_seed = [
-            1.5_f32, -2.3, 0.001, -1e10, std::f32::consts::PI, 0.0, -0.0,
-            f32::NAN, f32::INFINITY, f32::NEG_INFINITY, f32::MIN_POSITIVE / 2.0,
+            1.5_f32,
+            -2.3,
+            0.001,
+            -1e10,
+            std::f32::consts::PI,
+            0.0,
+            -0.0,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::MIN_POSITIVE / 2.0,
         ];
         let rhs_seed = [
-            -4.25_f32, 8.0, -0.125, 1e-10, -2.0, 0.0, -0.0,
-            f32::NAN, f32::INFINITY, f32::NEG_INFINITY, f32::MIN_POSITIVE / 2.0,
+            -4.25_f32,
+            8.0,
+            -0.125,
+            1e-10,
+            -2.0,
+            0.0,
+            -0.0,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::MIN_POSITIVE / 2.0,
         ];
         let lhs: Vec<f32> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
         let rhs: Vec<f32> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
@@ -1224,7 +1253,8 @@ mod consistency_tests {
         let mut dst = vec![0.0_f64; lhs.len()];
         let handled = simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
         if handled {
-            let serial: Vec<f64> = lhs.iter()
+            let serial: Vec<f64> = lhs
+                .iter()
                 .zip(rhs.iter())
                 .map(|(&l, &r)| apply_binary_f64(op, l, r))
                 .collect();
@@ -1236,7 +1266,8 @@ mod consistency_tests {
         let mut dst = vec![0.0_f32; lhs.len()];
         let handled = simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
         if handled {
-            let serial: Vec<f32> = lhs.iter()
+            let serial: Vec<f32> = lhs
+                .iter()
                 .zip(rhs.iter())
                 .map(|(&l, &r)| apply_binary_f32(op, l, r))
                 .collect();
@@ -1301,7 +1332,12 @@ mod consistency_tests {
     fn test_elementwise_below_threshold() {
         let (lhs, rhs) = fixture_f64(32);
         let mut dst = vec![0.0_f64; lhs.len()];
-        assert!(!simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst));
+        assert!(!simd::dispatch_vector_binary_op(
+            BinaryOp::Add,
+            &lhs,
+            &rhs,
+            &mut dst
+        ));
     }
 
     #[test]
@@ -1330,19 +1366,13 @@ mod reduction_tests {
 
     fn tolerance_f64(data: &[f64]) -> f64 {
         let n = data.len();
-        let max_abs_input = data.iter()
-            .copied()
-            .map(f64::abs)
-            .fold(0.0_f64, f64::max);
+        let max_abs_input = data.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
         (4.0 * f64::EPSILON * (n as f64) * max_abs_input).max(4.0 * f64::MIN_POSITIVE)
     }
 
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len();
-        let max_abs_input = data.iter()
-            .copied()
-            .map(f32::abs)
-            .fold(0.0_f32, f32::max);
+        let max_abs_input = data.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
         (4.0 * f32::EPSILON * (n as f32) * max_abs_input).max(4.0 * f32::MIN_POSITIVE)
     }
 
@@ -1425,10 +1455,10 @@ mod reduction_tests {
         let data: Vec<Complex<f64>> = (0..2048)
             .map(|i| Complex::new((i as f64).sin(), (i as f64 * 0.5).cos()))
             .collect();
-        let scalar: Complex<f64> = data.iter().copied().fold(
-        Complex::new(0.0, 0.0),
-        |a, b| a + b,
-    );
+        let scalar: Complex<f64> = data
+            .iter()
+            .copied()
+            .fold(Complex::new(0.0, 0.0), |a, b| a + b);
         if let Some(simd) = simd::try_sum_complex_f64(&data) {
             let real: Vec<f64> = data.iter().map(|v| v.re).collect();
             let imag: Vec<f64> = data.iter().map(|v| v.im).collect();
@@ -1442,10 +1472,10 @@ mod reduction_tests {
         let data: Vec<Complex<f32>> = (0..2048)
             .map(|i| Complex::new((i as f32).sin(), (i as f32 * 0.5).cos()))
             .collect();
-        let scalar: Complex<f32> = data.iter().copied().fold(
-        Complex::new(0.0, 0.0),
-        |a, b| a + b,
-    );
+        let scalar: Complex<f32> = data
+            .iter()
+            .copied()
+            .fold(Complex::new(0.0, 0.0), |a, b| a + b);
         if let Some(simd) = simd::try_sum_complex_f32(&data) {
             let real: Vec<f32> = data.iter().map(|v| v.re).collect();
             let imag: Vec<f32> = data.iter().map(|v| v.im).collect();
@@ -1462,7 +1492,8 @@ mod reduction_tests {
         let rhs: Vec<Complex<f64>> = (0..1024)
             .map(|i| Complex::new((i as f64).cos(), (i as f64).sin()))
             .collect();
-        let scalar: Complex<f64> = lhs.iter()
+        let scalar: Complex<f64> = lhs
+            .iter()
             .zip(rhs.iter())
             .map(|(l, r)| l.conj() * *r)
             .fold(Complex::new(0.0, 0.0), |a, b| a + b);
@@ -1484,7 +1515,8 @@ mod reduction_tests {
         let rhs: Vec<Complex<f32>> = (0..1024)
             .map(|i| Complex::new((i as f32).cos(), (i as f32).sin()))
             .collect();
-        let scalar: Complex<f32> = lhs.iter()
+        let scalar: Complex<f32> = lhs
+            .iter()
             .zip(rhs.iter())
             .map(|(l, r)| l.conj() * *r)
             .fold(Complex::new(0.0, 0.0), |a, b| a + b);
@@ -1503,7 +1535,8 @@ mod reduction_tests {
         let data: Vec<i32> = (0..1024).collect();
         if let Some(simd) = simd::try_sum_i32(&data) {
             let scalar_i64: i64 = data.iter().map(|&v| v as i64).sum();
-            let scalar_i32 = i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
+            let scalar_i32 =
+                i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
             assert_eq!(simd, scalar_i32);
         }
     }
@@ -1513,11 +1546,13 @@ mod reduction_tests {
         let lhs: Vec<i32> = (0..512).collect();
         let rhs: Vec<i32> = (0..512).map(|v| v - 128).collect();
         if let Some(simd) = simd::try_dot_i32(&lhs, &rhs) {
-            let scalar_i64: i64 = lhs.iter()
+            let scalar_i64: i64 = lhs
+                .iter()
                 .zip(rhs.iter())
                 .map(|(&l, &r)| (l as i64) * (r as i64))
                 .sum();
-            let scalar_i32 = i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
+            let scalar_i32 =
+                i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
             assert_eq!(simd, scalar_i32);
         }
     }
@@ -1548,7 +1583,7 @@ mod reduction_tests {
         let simd = simd::try_sum_f64(&at_threshold).expect("len=1024 must enter f64 sum SIMD");
         assert_within_tolerance_f64(simd, 1024.0, tolerance_f64(&at_threshold));
     }
-}// ---------------------------------------------------------------------------
+} // ---------------------------------------------------------------------------
 // W14T10 Randomized property tests (in-crate, direct SIMD facade testing)
 // ---------------------------------------------------------------------------
 
@@ -1639,7 +1674,8 @@ mod property_tests {
                 let mut dst = vec![0.0_f64; len];
                 let handled = simd::dispatch_vector_binary_op(op, &lhs, &rhs, &mut dst);
                 if handled {
-                    let serial: Vec<f64> = lhs.iter()
+                    let serial: Vec<f64> = lhs
+                        .iter()
                         .zip(rhs.iter())
                         .map(|(&l, &r)| match op {
                             BinaryOp::Add => l + r,
@@ -1652,7 +1688,11 @@ mod property_tests {
                         if a.is_nan() || e.is_nan() {
                             assert!(a.is_nan() && e.is_nan(), "nan mismatch at len={len}, i={i}");
                         } else {
-                            assert_eq!(a.to_bits(), e.to_bits(), "bits mismatch at len={len}, i={i}");
+                            assert_eq!(
+                                a.to_bits(),
+                                e.to_bits(),
+                                "bits mismatch at len={len}, i={i}"
+                            );
                         }
                     }
                 }
@@ -1705,8 +1745,16 @@ mod property_tests {
                             "imag nan mismatch at len={len}, i={i}"
                         );
                     } else {
-                        assert_eq!(a.re.to_bits(), e.re.to_bits(), "real bits at len={len}, i={i}");
-                        assert_eq!(a.im.to_bits(), e.im.to_bits(), "imag bits at len={len}, i={i}");
+                        assert_eq!(
+                            a.re.to_bits(),
+                            e.re.to_bits(),
+                            "real bits at len={len}, i={i}"
+                        );
+                        assert_eq!(
+                            a.im.to_bits(),
+                            e.im.to_bits(),
+                            "imag bits at len={len}, i={i}"
+                        );
                     }
                 }
             }
@@ -1760,7 +1808,9 @@ mod property_tests {
                 .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
                 .collect();
             if let Some(simd) = simd::try_sum_complex_f64(&data) {
-                let scalar: Complex<f64> = data.iter().copied()
+                let scalar: Complex<f64> = data
+                    .iter()
+                    .copied()
                     .fold(Complex::new(0.0, 0.0), |a, b| a + b);
                 assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex sum f64 re");
                 assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex sum f64 im");
@@ -1779,7 +1829,8 @@ mod property_tests {
                 .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
                 .collect();
             if let Some(simd) = simd::try_dot_complex_f64(&lhs, &rhs) {
-                let scalar: Complex<f64> = lhs.iter()
+                let scalar: Complex<f64> = lhs
+                    .iter()
                     .zip(rhs.iter())
                     .map(|(l, r)| l.conj() * *r)
                     .fold(Complex::new(0.0, 0.0), |a, b| a + b);

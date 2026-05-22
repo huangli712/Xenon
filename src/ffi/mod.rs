@@ -69,10 +69,10 @@ mod types;
 // Each downstream task (W13T2 / W13T4) adds the `pub use` lines for the
 // items it introduces, following the module-declaration-evolution
 // protocol defined by W1T3.
+pub use ptr::{OwnedRawParts, TensorBase};
 pub use types::{
     BlasInfo, ElementType, FfiBackend, FfiErrorCategory, TensorExportMutRaw, TensorExportRaw,
 };
-pub use ptr::{OwnedRawParts, TensorBase};
 
 #[cfg(test)]
 mod tests {

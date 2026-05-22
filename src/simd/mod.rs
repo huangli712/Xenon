@@ -161,49 +161,35 @@ where
     let tid = std::any::TypeId::of::<A>();
     // W14T2: f32/f64 element-wise dispatch via concrete kernels.
     if tid == std::any::TypeId::of::<f32>() {
-        let lhs = unsafe {
-            std::slice::from_raw_parts(lhs.as_ptr() as *const f32, lhs.len())
-        };
-        let rhs = unsafe {
-            std::slice::from_raw_parts(rhs.as_ptr() as *const f32, rhs.len())
-        };
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len())
-        };
+        let lhs = unsafe { std::slice::from_raw_parts(lhs.as_ptr() as *const f32, lhs.len()) };
+        let rhs = unsafe { std::slice::from_raw_parts(rhs.as_ptr() as *const f32, rhs.len()) };
+        let dst =
+            unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
         return vector::dispatch_binary_f32(op, lhs, rhs, dst);
     }
     if tid == std::any::TypeId::of::<f64>() {
-        let lhs = unsafe {
-            std::slice::from_raw_parts(lhs.as_ptr() as *const f64, lhs.len())
-        };
-        let rhs = unsafe {
-            std::slice::from_raw_parts(rhs.as_ptr() as *const f64, rhs.len())
-        };
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len())
-        };
+        let lhs = unsafe { std::slice::from_raw_parts(lhs.as_ptr() as *const f64, lhs.len()) };
+        let rhs = unsafe { std::slice::from_raw_parts(rhs.as_ptr() as *const f64, rhs.len()) };
+        let dst =
+            unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
         return vector::dispatch_binary_f64(op, lhs, rhs, dst);
     }
     // Complex<f32>/Complex<f64> element-wise handled by W14T11.
     if tid == std::any::TypeId::of::<Complex<f32>>() {
-        let lhs = unsafe {
-            std::slice::from_raw_parts(lhs.as_ptr() as *const Complex<f32>, lhs.len())
-        };
-        let rhs = unsafe {
-            std::slice::from_raw_parts(rhs.as_ptr() as *const Complex<f32>, rhs.len())
-        };
+        let lhs =
+            unsafe { std::slice::from_raw_parts(lhs.as_ptr() as *const Complex<f32>, lhs.len()) };
+        let rhs =
+            unsafe { std::slice::from_raw_parts(rhs.as_ptr() as *const Complex<f32>, rhs.len()) };
         let dst = unsafe {
             std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut Complex<f32>, dst.len())
         };
         return vector::dispatch_binary_complex_f32(op, lhs, rhs, dst);
     }
     if tid == std::any::TypeId::of::<Complex<f64>>() {
-        let lhs = unsafe {
-            std::slice::from_raw_parts(lhs.as_ptr() as *const Complex<f64>, lhs.len())
-        };
-        let rhs = unsafe {
-            std::slice::from_raw_parts(rhs.as_ptr() as *const Complex<f64>, rhs.len())
-        };
+        let lhs =
+            unsafe { std::slice::from_raw_parts(lhs.as_ptr() as *const Complex<f64>, lhs.len()) };
+        let rhs =
+            unsafe { std::slice::from_raw_parts(rhs.as_ptr() as *const Complex<f64>, rhs.len()) };
         let dst = unsafe {
             std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut Complex<f64>, dst.len())
         };
@@ -230,37 +216,29 @@ where
     let tid = std::any::TypeId::of::<A>();
     // W14T2: f32/f64 element-wise Neg dispatch.
     if tid == std::any::TypeId::of::<f32>() {
-        let src = unsafe {
-            std::slice::from_raw_parts(src.as_ptr() as *const f32, src.len())
-        };
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len())
-        };
+        let src = unsafe { std::slice::from_raw_parts(src.as_ptr() as *const f32, src.len()) };
+        let dst =
+            unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
         return vector::dispatch_unary_f32(op, src, dst);
     }
     if tid == std::any::TypeId::of::<f64>() {
-        let src = unsafe {
-            std::slice::from_raw_parts(src.as_ptr() as *const f64, src.len())
-        };
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len())
-        };
+        let src = unsafe { std::slice::from_raw_parts(src.as_ptr() as *const f64, src.len()) };
+        let dst =
+            unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
         return vector::dispatch_unary_f64(op, src, dst);
     }
     // Complex element-wise Neg handled by W14T11.
     if tid == std::any::TypeId::of::<Complex<f32>>() {
-        let src = unsafe {
-            std::slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len())
-        };
+        let src =
+            unsafe { std::slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len()) };
         let dst = unsafe {
             std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut Complex<f32>, dst.len())
         };
         return vector::dispatch_unary_complex_f32(op, src, dst);
     }
     if tid == std::any::TypeId::of::<Complex<f64>>() {
-        let src = unsafe {
-            std::slice::from_raw_parts(src.as_ptr() as *const Complex<f64>, src.len())
-        };
+        let src =
+            unsafe { std::slice::from_raw_parts(src.as_ptr() as *const Complex<f64>, src.len()) };
         let dst = unsafe {
             std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut Complex<f64>, dst.len())
         };

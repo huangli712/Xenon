@@ -29,7 +29,7 @@ fn test_broadcast_shape_error_structured() {
             assert_eq!(rhs_shape, vec![4, 3]);
             assert_eq!(attempted_target_shape, None);
             assert_eq!(axis, Some(0));
-        }
+        },
         other => panic!("expected BroadcastError, got {:?}", other),
     }
 }
@@ -82,7 +82,8 @@ fn test_broadcast_rebroadcast_zero_stride() {
     assert_eq!(view1.strides(), &[0, 1]);
     // Re-broadcast the result through `broadcast_strides` directly (the public
     // path goes through `TensorBase::broadcast_to` which calls `broadcast_strides`).
-    let strides2 = broadcast_strides(view1.shape(), view1.strides(), &[2, 3]).expect("valid test input");
+    let strides2 =
+        broadcast_strides(view1.shape(), view1.strides(), &[2, 3]).expect("valid test input");
     assert_eq!(strides2, vec![0, 1]);
 }
 

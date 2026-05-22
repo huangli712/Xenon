@@ -84,16 +84,14 @@ where
     /// **Type bound**: `A: Element + PartialEq`. Every element type
     /// implements equality; `bool` and `Complex` are also supported.
     pub fn equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.equal(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 
     /// Element-wise not-equal comparison with a scalar right-hand side.
     pub fn not_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.not_equal(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
@@ -151,16 +149,14 @@ where
 {
     /// Element-wise less-than comparison with a scalar right-hand side.
     pub fn less_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.less(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 
     /// Element-wise less-or-equal comparison with a scalar right-hand side.
     pub fn less_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.less_equal(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
@@ -214,16 +210,14 @@ where
 {
     /// Element-wise greater-than comparison with a scalar right-hand side.
     pub fn greater_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.greater(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 
     /// Element-wise greater-or-equal comparison with a scalar right-hand side.
     pub fn greater_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar)
-            .expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.greater_equal(&other)
             .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
@@ -242,11 +236,19 @@ mod tests {
 
     #[test]
     fn test_equal_f64() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN]).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN])
+            .expect("valid tensor shape");
         let result = a.equal(&b).expect("broadcast succeeds in test");
-        assert!(*result.get(&[0]).expect("valid index"), "1.0 == 1.0 should be true");
-        assert!(*result.get(&[1]).expect("valid index"), "2.0 == 2.0 should be true");
+        assert!(
+            *result.get(&[0]).expect("valid index"),
+            "1.0 == 1.0 should be true"
+        );
+        assert!(
+            *result.get(&[1]).expect("valid index"),
+            "2.0 == 2.0 should be true"
+        );
         assert!(
             !*result.get(&[2]).expect("valid index"),
             "NaN == NaN should be false per IEEE 754"
@@ -255,8 +257,10 @@ mod tests {
 
     #[test]
     fn test_not_equal_nan() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([1], vec![f64::NAN]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([1], vec![f64::NAN]).expect("valid tensor shape");
+        let a =
+            Tensor::<f64, Ix1>::from_shape_vec([1], vec![f64::NAN]).expect("valid tensor shape");
+        let b =
+            Tensor::<f64, Ix1>::from_shape_vec([1], vec![f64::NAN]).expect("valid tensor shape");
         let result = a.not_equal(&b).expect("broadcast succeeds in test");
         assert!(
             *result.get(&[0]).expect("valid index"),
@@ -277,17 +281,28 @@ mod tests {
 
     #[test]
     fn test_less_i32() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let a =
+            Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
         let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 5, 8]).expect("valid tensor shape");
         let result = a.less(&b).expect("broadcast succeeds in test");
-        assert!(*result.get(&[0]).expect("valid index"), "1 < 2 should be true");
-        assert!(!*result.get(&[1]).expect("valid index"), "5 < 5 should be false");
-        assert!(!*result.get(&[2]).expect("valid index"), "10 < 8 should be false");
+        assert!(
+            *result.get(&[0]).expect("valid index"),
+            "1 < 2 should be true"
+        );
+        assert!(
+            !*result.get(&[1]).expect("valid index"),
+            "5 < 5 should be false"
+        );
+        assert!(
+            !*result.get(&[2]).expect("valid index"),
+            "10 < 8 should be false"
+        );
     }
 
     #[test]
     fn test_less_equal_i32() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let a =
+            Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
         let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 5, 8]).expect("valid tensor shape");
         let r = a.less_equal(&b).expect("broadcast succeeds in test");
         assert!(r.get(&[0]).expect("valid index"));
@@ -299,17 +314,27 @@ mod tests {
 
     #[test]
     fn test_nan_comparison() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![f64::NAN, 1.0]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, f64::NAN]).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![f64::NAN, 1.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, f64::NAN])
+            .expect("valid tensor shape");
         let result = a.greater(&b).expect("broadcast succeeds in test");
-        assert!(!*result.get(&[0]).expect("valid index"), "NaN > 1.0 should be false");
-        assert!(!*result.get(&[1]).expect("valid index"), "1.0 > NaN should be false");
+        assert!(
+            !*result.get(&[0]).expect("valid index"),
+            "NaN > 1.0 should be false"
+        );
+        assert!(
+            !*result.get(&[1]).expect("valid index"),
+            "1.0 > NaN should be false"
+        );
     }
 
     #[test]
     fn test_greater_equal_f64() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![2.0, 5.0, 1.0]).expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 5.0, 9.0]).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![2.0, 5.0, 1.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 5.0, 9.0])
+            .expect("valid tensor shape");
         let r = a.greater_equal(&b).expect("broadcast succeeds in test");
         assert!(r.get(&[0]).expect("valid index"));
         assert!(r.get(&[1]).expect("valid index"));

@@ -2,11 +2,11 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use std::borrow::Cow;
 
-use crate::error::{
-    TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState,
-    WorkspaceErrorCategory, XenonError,
-};
 use super::workspace::Workspace;
+use crate::error::{
+    TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory,
+    XenonError,
+};
 
 /// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
@@ -82,9 +82,7 @@ impl<'a> WorkspaceBorrow<'a> {
         }
         // SAFETY: bounded by the check above; caller's `# Safety` precondition
         // covers initialization. `!Send + !Sync` precludes aliasing.
-        Ok(unsafe {
-            core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len)
-        })
+        Ok(unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len) })
     }
 }
 
@@ -137,9 +135,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
             ));
         }
         // SAFETY: bounded by the check above; caller asserts initialization.
-        Ok(unsafe {
-            core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len)
-        })
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len) })
     }
 
     /// Typed access to possibly-uninitialized scratch memory.
@@ -172,18 +168,19 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 cause: None,
             });
         }
-        let byte_len = count
-            .checked_mul(core::mem::size_of::<T>())
-            .ok_or(XenonError::Workspace {
-                operation: Cow::Borrowed(OP),
-                category: WorkspaceErrorCategory::TypedViewRejected {
-                    detail: TypedViewRejection::TypedByteLengthOverflow {
-                        count,
-                        elem_size: core::mem::size_of::<T>(),
+        let byte_len =
+            count
+                .checked_mul(core::mem::size_of::<T>())
+                .ok_or(XenonError::Workspace {
+                    operation: Cow::Borrowed(OP),
+                    category: WorkspaceErrorCategory::TypedViewRejected {
+                        detail: TypedViewRejection::TypedByteLengthOverflow {
+                            count,
+                            elem_size: core::mem::size_of::<T>(),
+                        },
                     },
-                },
-                cause: None,
-            })?;
+                    cause: None,
+                })?;
         if byte_len > self.len {
             return Err(XenonError::workspace_split_oob(OP, byte_len, self.len));
         }
@@ -233,18 +230,19 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 cause: None,
             });
         }
-        let byte_len = count
-            .checked_mul(core::mem::size_of::<T>())
-            .ok_or(XenonError::Workspace {
-                operation: Cow::Borrowed(OP),
-                category: WorkspaceErrorCategory::TypedViewRejected {
-                    detail: TypedViewRejection::TypedByteLengthOverflow {
-                        count,
-                        elem_size: core::mem::size_of::<T>(),
+        let byte_len =
+            count
+                .checked_mul(core::mem::size_of::<T>())
+                .ok_or(XenonError::Workspace {
+                    operation: Cow::Borrowed(OP),
+                    category: WorkspaceErrorCategory::TypedViewRejected {
+                        detail: TypedViewRejection::TypedByteLengthOverflow {
+                            count,
+                            elem_size: core::mem::size_of::<T>(),
+                        },
                     },
-                },
-                cause: None,
-            })?;
+                    cause: None,
+                })?;
         if byte_len > self.len {
             return Err(XenonError::workspace_split_oob(OP, byte_len, self.len));
         }
@@ -263,12 +261,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
         }
         // SAFETY: bounds and alignment checked; caller's `# Safety` covers
         // initialization. Exclusive borrow + `!Send + !Sync` forbid aliasing.
-        Ok(unsafe {
-            core::slice::from_raw_parts_mut(
-                self.ptr.as_ptr() as *mut T,
-                count,
-            )
-        })
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count) })
     }
 }
 
@@ -287,9 +280,7 @@ pub(crate) fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
         (Workspace::BORROW_NONE, _) => WorkspaceBorrowState::None,
         (Workspace::BORROW_READ, _) => WorkspaceBorrowState::Shared,
         (Workspace::BORROW_EXCLUSIVE, 0) => WorkspaceBorrowState::Exclusive,
-        (Workspace::BORROW_EXCLUSIVE, count) => {
-            WorkspaceBorrowState::SplitActive { count }
-        }
+        (Workspace::BORROW_EXCLUSIVE, count) => WorkspaceBorrowState::SplitActive { count },
         _ => WorkspaceBorrowState::None,
     }
 }
@@ -362,19 +353,17 @@ impl Workspace {
 
 impl<'a> Drop for WorkspaceBorrow<'a> {
     fn drop(&mut self) {
-        self.workspace.borrow_state.store(
-            Workspace::BORROW_NONE,
-            Ordering::Release,
-        );
+        self.workspace
+            .borrow_state
+            .store(Workspace::BORROW_NONE, Ordering::Release);
     }
 }
 
 impl<'a> Drop for WorkspaceBorrowMut<'a> {
     fn drop(&mut self) {
-        self.workspace.borrow_state.store(
-            Workspace::BORROW_NONE,
-            Ordering::Release,
-        );
+        self.workspace
+            .borrow_state
+            .store(Workspace::BORROW_NONE, Ordering::Release);
     }
 }
 

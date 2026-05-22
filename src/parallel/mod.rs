@@ -43,13 +43,13 @@
 //! because the trait bound itself is independent of the feature gate.
 
 #[cfg(feature = "parallel")]
+pub(crate) mod checked;
+#[cfg(feature = "parallel")]
 pub(crate) mod iter;
 #[cfg(feature = "parallel")]
 pub(crate) mod map;
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;
-#[cfg(feature = "parallel")]
-pub(crate) mod checked;
 
 /// Compute a per-chunk element count for parallel splitting.
 ///
@@ -136,9 +136,7 @@ impl ParallelPool {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .build()
-            .unwrap_or_else(|e| {
-                panic!("rayon ThreadPool build failed (internal bug): {}", e)
-            });
+            .unwrap_or_else(|e| panic!("rayon ThreadPool build failed (internal bug): {}", e));
 
         POOL_ACTIVE.with(|f| f.set(true));
 
@@ -202,15 +200,15 @@ mod chunk_tests {
 #[cfg(all(test, feature = "parallel"))]
 mod pool_tests {
     use super::*;
-    use crate::dispatch::{
-        select_exec_path, ExecPath, ParallelExecStrategy,
-        set_parallel_threshold, reset_parallel_threshold, ParallelGuard,
-    };
-    use crate::parallel::map::par_map;
     use crate::dimension::{Dimension, Ix1};
-    use crate::storage::Storage;
+    use crate::dispatch::{
+        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
+        set_parallel_threshold,
+    };
     use crate::element::Element;
     use crate::layout::Strides;
+    use crate::parallel::map::par_map;
+    use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
 
     fn acquire_parallel_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
@@ -219,9 +217,7 @@ mod pool_tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(
-            t.len(), t.is_f_contiguous(), t.is_aligned(),
-        );
+        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
         if !matches!(path, ExecPath::Parallel) {
             panic!("select_exec_path returned {:?}, not Parallel", path);
         }
@@ -235,8 +231,11 @@ mod pool_tests {
         let data = [1.0f64, 2.0, 3.0, 4.0];
         let tensor = unsafe {
             TensorView::<f64, Ix1>::from_raw_parts(
-                data.as_ptr(), data.len(), Ix1(4),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"), 0,
+                data.as_ptr(),
+                data.len(),
+                Ix1(4),
+                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                0,
             )
         }
         .expect("valid F-order [4] view");
@@ -245,7 +244,10 @@ mod pool_tests {
             let guard = acquire_parallel_guard(&tensor);
             par_map(&tensor, &strategy, guard, |v| v * 2.0)
         });
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[2.0, 4.0, 6.0, 8.0]);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[2.0, 4.0, 6.0, 8.0]
+        );
         reset_parallel_threshold();
     }
 
@@ -258,7 +260,8 @@ mod pool_tests {
     #[test]
     fn test_parallel_pool_rejects_exceeding_hw_parallelism() {
         let hw = std::thread::available_parallelism()
-            .map(|n| n.get()).unwrap_or(1);
+            .map(|n| n.get())
+            .unwrap_or(1);
         let result = ParallelPool::build(hw + 1024);
         assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
     }
@@ -275,12 +278,16 @@ mod pool_tests {
     struct Invalid;
 
     #[allow(unused)]
-    trait AmbiguousIfSend<A> { fn some_check() {} }
+    trait AmbiguousIfSend<A> {
+        fn some_check() {}
+    }
     impl<T: ?Sized> AmbiguousIfSend<()> for T {}
     impl<T: ?Sized + Send> AmbiguousIfSend<Invalid> for T {}
 
     #[allow(unused)]
-    trait AmbiguousIfSync<A> { fn some_check() {} }
+    trait AmbiguousIfSync<A> {
+        fn some_check() {}
+    }
     impl<T: ?Sized> AmbiguousIfSync<()> for T {}
     impl<T: ?Sized + Sync> AmbiguousIfSync<Invalid> for T {}
 
@@ -294,16 +301,16 @@ mod pool_tests {
 
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
-    use crate::dispatch::{
-        select_exec_path, ExecPath, ParallelExecStrategy,
-        set_parallel_threshold, reset_parallel_threshold, ParallelGuard,
-    };
-    use crate::parallel::map::par_map;
-    use crate::parallel::reduce::par_sum;
     use crate::dimension::{Dimension, Ix1};
-    use crate::storage::Storage;
+    use crate::dispatch::{
+        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
+        set_parallel_threshold,
+    };
     use crate::element::Element;
     use crate::layout::Strides;
+    use crate::parallel::map::par_map;
+    use crate::parallel::reduce::par_sum;
+    use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
 
     fn acquire_parallel_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
@@ -312,9 +319,7 @@ mod feature_matrix_tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(
-            t.len(), t.is_f_contiguous(), t.is_aligned(),
-        );
+        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
         if !matches!(path, ExecPath::Parallel) {
             panic!("select_exec_path returned {:?}, not Parallel", path);
         }
@@ -340,11 +345,14 @@ mod feature_matrix_tests {
         set_parallel_threshold(1);
         let data = [1.0f64, 2.0, 3.0, 4.0];
         let tensor = unsafe { view_1d_f64(&data) };
-        let strategy = ParallelExecStrategy::new(None, Some(1))
-            .expect("valid strategy with max_workers=1");
+        let strategy =
+            ParallelExecStrategy::new(None, Some(1)).expect("valid strategy with max_workers=1");
         let guard = acquire_parallel_guard(&tensor);
         let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[2.0, 4.0, 6.0, 8.0]);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[2.0, 4.0, 6.0, 8.0]
+        );
         reset_parallel_threshold();
     }
 
@@ -356,7 +364,10 @@ mod feature_matrix_tests {
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&tensor);
         let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[2.0, 4.0, 6.0, 8.0]);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[2.0, 4.0, 6.0, 8.0]
+        );
         reset_parallel_threshold();
     }
 
@@ -366,8 +377,8 @@ mod feature_matrix_tests {
         let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
         let tensor = unsafe { view_1d_f64(&data) };
 
-        let strategy_single = ParallelExecStrategy::new(None, Some(1))
-            .expect("valid strategy with max_workers=1");
+        let strategy_single =
+            ParallelExecStrategy::new(None, Some(1)).expect("valid strategy with max_workers=1");
         let guard_single = acquire_parallel_guard(&tensor);
         let sum_single = par_sum(&tensor, &strategy_single, guard_single);
 

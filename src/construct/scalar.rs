@@ -43,7 +43,12 @@ mod tests {
         let tensor = Tensor::<i32, Ix0>::from_scalar(42i32).expect("test input must be valid");
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
-        assert_eq!(*tensor.get(&[] as &[usize]).expect("test input must be valid"), 42);
+        assert_eq!(
+            *tensor
+                .get(&[] as &[usize])
+                .expect("test input must be valid"),
+            42
+        );
     }
 
     #[test]
@@ -52,6 +57,10 @@ mod tests {
         // permissive than `eye`'s `EyeElement` constraint).
         let tensor = Tensor::<bool, Ix0>::from_scalar(true).expect("test input must be valid");
         assert_eq!(tensor.len(), 1);
-        assert!(*tensor.get(&[] as &[usize]).expect("test input must be valid"));
+        assert!(
+            *tensor
+                .get(&[] as &[usize])
+                .expect("test input must be valid")
+        );
     }
 }

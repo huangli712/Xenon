@@ -11,16 +11,16 @@ mod axis;
 mod elements;
 mod indexed;
 
+pub use axis::{AxisIter, AxisIterMut};
 pub use elements::Iter;
 pub use elements::IterMut;
-pub use axis::{AxisIter, AxisIterMut};
 pub use indexed::{IndexedIter, IndexedIterMut};
 
 // ── TensorBase entry methods (W12T7) ──
 
 use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::error::XenonError;
-use crate::storage::{Storage, StorageMut, ViewRepr, ViewMutRepr};
+use crate::storage::{Storage, StorageMut, ViewMutRepr, ViewRepr};
 use crate::tensor::TensorBase;
 
 impl<S, D, A> TensorBase<S, D>
@@ -31,9 +31,8 @@ where
     /// Construct a read-only view from any Storage-backed tensor.
     fn as_view(&self) -> crate::tensor::TensorView<'_, A, D> {
         // SAFETY: Storage guarantees valid base pointer + len.
-        let storage = unsafe {
-            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
-        };
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
         unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -100,10 +99,7 @@ where
     }
 
     /// Mutable axis iterator. Same error semantics as `axis_iter`.
-    pub fn axis_iter_mut(
-        &mut self,
-        axis: Axis,
-    ) -> Result<AxisIterMut<'_, A, D>, XenonError>
+    pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>
     where
         D: RemoveAxis,
     {
@@ -126,14 +122,16 @@ mod tests {
 
     #[test]
     fn test_tensor_iter_integration() {
-        let mut tensor =
-            unsafe { make_tensor(vec![1i32, 2, 3, 4], crate::dimension::Ix2(2, 2)) };
+        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], crate::dimension::Ix2(2, 2)) };
         assert_eq!(tensor.iter().len(), 4);
 
         let (idx0, _) = tensor.indexed_iter().next().expect("tensor has 4 elements");
         assert_eq!(idx0, crate::dimension::Ix2(0, 0));
 
-        assert_eq!(tensor.axis_iter(Axis(1)).expect("Axis(1) is valid").len(), 2);
+        assert_eq!(
+            tensor.axis_iter(Axis(1)).expect("Axis(1) is valid").len(),
+            2
+        );
 
         tensor.iter_mut().for_each(|v| *v += 1);
         let after: Vec<_> = tensor.iter().copied().collect();
@@ -142,8 +140,7 @@ mod tests {
 
     #[test]
     fn test_axis_iter_mut_integration() {
-        let mut tensor =
-            unsafe { make_tensor(vec![1i32, 2, 3, 4], crate::dimension::Ix2(2, 2)) };
+        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], crate::dimension::Ix2(2, 2)) };
         for mut row in tensor.axis_iter_mut(Axis(0)).expect("Axis(0) is valid") {
             for value in row.iter_mut() {
                 *value += 10;
@@ -159,7 +156,11 @@ mod tests {
         let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
         assert!(matches!(
             scalar.axis_iter(Axis(0)),
-            Err(XenonError::InvalidAxis { axis: 0, ndim: 0, .. })
+            Err(XenonError::InvalidAxis {
+                axis: 0,
+                ndim: 0,
+                ..
+            })
         ));
     }
 
@@ -170,8 +171,7 @@ mod tests {
             tensor.axis_iter(Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
         ));
-        let mut tensor_mut =
-            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let mut tensor_mut = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
         assert!(matches!(
             tensor_mut.axis_iter_mut(Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
@@ -183,18 +183,29 @@ mod tests {
         let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
         assert!(matches!(
             tensor.axis_iter(Axis(2)),
-            Err(XenonError::InvalidAxis { axis: 2, ndim: 2, .. })
+            Err(XenonError::InvalidAxis {
+                axis: 2,
+                ndim: 2,
+                ..
+            })
         ));
         assert!(matches!(
             tensor.axis_iter(Axis(5)),
-            Err(XenonError::InvalidAxis { axis: 5, ndim: 2, .. })
+            Err(XenonError::InvalidAxis {
+                axis: 5,
+                ndim: 2,
+                ..
+            })
         ));
 
-        let mut tensor_mut =
-            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let mut tensor_mut = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
         assert!(matches!(
             tensor_mut.axis_iter_mut(Axis(2)),
-            Err(XenonError::InvalidAxis { axis: 2, ndim: 2, .. })
+            Err(XenonError::InvalidAxis {
+                axis: 2,
+                ndim: 2,
+                ..
+            })
         ));
     }
 
@@ -202,16 +213,14 @@ mod tests {
     fn test_elements_large_tensor_count() {
         let n0: usize = 100;
         let n1: usize = 1_000;
-        let tensor =
-            unsafe { make_tensor(vec![0_i32; 100_000], crate::dimension::Ix2(n0, n1)) };
+        let tensor = unsafe { make_tensor(vec![0_i32; 100_000], crate::dimension::Ix2(n0, n1)) };
         assert_eq!(tensor.iter().len(), n0 * n1);
         assert_eq!(tensor.iter().count(), n0 * n1);
     }
 
     #[test]
     fn test_iter_mut_accepts_non_broadcast_owned_tensor() {
-        let mut tensor =
-            unsafe { make_tensor((0..9).collect(), crate::dimension::Ix2(3, 3)) };
+        let mut tensor = unsafe { make_tensor((0..9).collect(), crate::dimension::Ix2(3, 3)) };
         tensor.iter_mut().for_each(|v| *v *= 2);
         assert_eq!(
             tensor.iter().copied().collect::<Vec<_>>(),

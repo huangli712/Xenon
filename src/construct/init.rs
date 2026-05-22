@@ -84,7 +84,12 @@ mod tests {
         assert_eq!(tensor.shape(), &[]);
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
-        assert_eq!(*tensor.get(&[] as &[usize]).expect("test input must be valid"), 1);
+        assert_eq!(
+            *tensor
+                .get(&[] as &[usize])
+                .expect("test input must be valid"),
+            1
+        );
     }
 
     #[test]
