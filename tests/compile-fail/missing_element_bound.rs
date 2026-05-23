@@ -1,11 +1,14 @@
-use xenon::dimension::Ix1;
-use xenon::tensor::Tensor;
+use xenon::tensor::Tensor1;
 
 #[derive(Clone, Debug)]
 struct NotElement;
 
-type BadTensor = Tensor<NotElement, Ix1>; //~ ERROR: Element
-
 fn main() {
-    let _x: BadTensor;
+    // `zeros` is declared on `impl TensorBase<Owned<A: Element>, D>`,
+    // so monomorphising it with `A = NotElement` must be rejected with
+    // an unsatisfied `Element` bound. A bare type alias would NOT trip
+    // this bound because `TensorBase<S, D>` itself only requires
+    // `S: RawStorage`, and `Owned<A>` implements `RawStorage` for any
+    // `A` regardless of `Element`.
+    let _x = Tensor1::<NotElement>::zeros([3]); //~ ERROR: Element
 }

@@ -115,7 +115,6 @@ fn collect_compile_fail_cases(root: &Path) -> Vec<CompileFailCase> {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "compile-fail fixtures require full prelude exports (W29T21); re-enable after prelude completeness"]
 fn compile_fail_harness() {
     let fixtures_dir = Path::new("tests/compile-fail");
     assert!(
