@@ -2,13 +2,14 @@
 //!
 //! Per `02-dimension.md` §8.5 line 1123, this file covers the `D: Dimension`
 //! bound at indexing/slicing entry points. Tensor indexing/slicing is
-//! introduced in W11+ (post-Tensor); this file is split into:
+//! introduced in W21 (NdIndex / try_at / SliceInfo); this file is split into:
 //!
 //! - **W3-runnable**: dimension-layer indexing contracts:
 //!     * `Index<usize>` for Ix1 and Ix2 only (per §5.4)
 //!     * `Dimension::axis(Axis)` access for all dimensions
 //!     * `Axis` navigation helpers in indexing context
-//! - **W11+ placeholders** marked `#[ignore]`: stubs for Tensor indexing paths.
+//! - **Tensor integration**: end-to-end indexing/slicing via `try_at` and
+//!   `SliceInfo` on real Tensor instances.
 
 use xenon::dimension::{Axis, Dimension, Ix0, Ix1, Ix2, Ix3, IxDyn};
 use xenon::error::XenonError;
@@ -95,31 +96,6 @@ fn test_axis_navigation_traverses_dimensions() {
         }
     }
     assert_eq!(visited, vec![2, 3, 4]);
-}
-
-// ── W11+ activation placeholders ──
-
-/// Placeholder for W11+: Tensor element indexing via dimension-typed index.
-#[test]
-#[ignore = "W11+ activation required: Tensor type and indexing API not yet defined"]
-fn test_tensor_element_indexing_via_dimension() {
-    // W11+ will implement, e.g.:
-    //   let t = Tensor::<f64, _>::zeros((3, 4));
-    //   let idx: Ix2 = (1, 2).into_dimension();
-    //   let elem = t[idx];
-    //   assert_eq!(elem, 0.0);
-    panic!("W11+ placeholder — must be replaced before that wave completion");
-}
-
-/// Placeholder for W11+: Tensor axis slicing via Axis.
-#[test]
-#[ignore = "W11+ activation required: slicing API not yet defined"]
-fn test_tensor_axis_slicing_via_axis() {
-    // W11+ will implement, e.g.:
-    //   let t = Tensor::<f64, _>::zeros((3, 4));
-    //   let row = t.index_axis(Axis::new(0), 1);
-    //   assert_eq!(row.shape(), &[4]);
-    panic!("W11+ placeholder — must be replaced before that wave completion");
 }
 
 // ── Tensor indexing and slicing integration tests ──
