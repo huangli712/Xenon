@@ -9,9 +9,8 @@
 //!   checked_size, Axis access, checked() validation, equality).
 //! - **W3T22 active**: `test_broadcast_dim_compatibility` exercises the
 //!   `BroadcastDim` trait (activated by W3T22).
-//! - **W11/W16 placeholders** marked `#[ignore]`: stubs for broadcast,
-//!   reshape, transpose paths. Activate by removing `#[ignore]` in the
-//!   corresponding Wave.
+//! - **W11 active**: `test_broadcast_runtime_with_dim` exercises `broadcast_to`
+//!   plus transpose of the broadcast view.
 //! - **W20 integration**: transpose shape/data/view-kind/involution tests
 //!   using `from_raw_vec_unchecked` (made `pub` in W20T4).
 
@@ -137,27 +136,6 @@ fn test_broadcast_runtime_with_dim() {
     let vt = v.transpose();
     assert_eq!(vt.shape(), &[4, 3]);
     assert_eq!(vt.strides()[1], 0); // broadcast axis 0 → trailing after transpose.
-}
-
-// ── W16 activation placeholders ──
-
-/// Placeholder for W16: reshape path using `IntoDimension`.
-#[test]
-#[ignore = "W16 activation required: reshape not yet implemented"]
-fn test_reshape_via_dimension() {
-    // W16 will implement reshape on Tensor, e.g.:
-    //   let t = Tensor::<f32, _>::zeros((6,));
-    //   let reshaped = t.reshape((2, 3)).unwrap();
-    //   assert_eq!(reshaped.dim().slice(), &[2, 3]);
-    panic!("W16 placeholder — must be replaced before W16 completion");
-}
-
-/// Placeholder for W16: transpose via Axis.
-#[test]
-#[ignore = "W16 activation required: transpose not yet implemented"]
-fn test_transpose_via_axes() {
-    // W16 will implement transpose using Axis pairs.
-    panic!("W16 placeholder — must be replaced before W16 completion");
 }
 
 // ── W20 transpose integration tests ──
