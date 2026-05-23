@@ -224,14 +224,24 @@ mod tests {
 
     // §8.2 — test_into_contiguous_repacks_arc_input
     //
-    // **DEPENDENCY GAP**: W7T19 (`StorageIntoOwned<ArcRepr>`) and W25T7
-    // (`to_owned`/`into_owned`) are both in this task's dependency list,
-    // BUT constructing an `ArcTensor` in the first place requires a
-    // constructor API that is NOT scheduled in any current SUMMARY entry.
+    // ArcTensor input is `storage_kind() == Shared`, so it fails the
+    // `is_canonical_f_contiguous_owned` predicate (which requires Owned).
+    // `into_contiguous()` must therefore take the repack path and produce
+    // a canonical F-order Owned tensor with element data preserved.
     #[test]
-    #[ignore = "ArcTensor construction API not scheduled in current SUMMARY.md W22/W8 entries"]
     fn test_into_contiguous_repacks_arc_input() {
-        todo!("activate after ArcTensor construction API lands");
+        let tensor = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+            .expect("from_shape_vec matching shape");
+        let arc = tensor.into_shared();
+        let contiguous = arc.into_contiguous();
+        // Result is canonical F-order Owned (repack path).
+        assert!(contiguous.is_f_contiguous());
+        assert_eq!(contiguous.storage_kind(), StorageKind::Owned);
+        // Per-element data preserved.
+        assert_eq!(*contiguous.get(&[0, 0]).expect("valid index"), 1);
+        assert_eq!(*contiguous.get(&[1, 0]).expect("valid index"), 2);
+        assert_eq!(*contiguous.get(&[0, 1]).expect("valid index"), 3);
+        assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
     }
 
     // §8.2 — test_to_contiguous_non_contiguous

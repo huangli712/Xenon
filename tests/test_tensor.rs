@@ -208,13 +208,17 @@ fn test_storage_kind_view_mut() {
 
 #[test]
 fn test_storage_kind_shared_via_arc() {
-    // Arc-backed construction goes through the storage layer's `ArcRepr::from_vec`
-    // and Wave 22's public `ArcTensor` constructor (deferred). Until W22 lands,
-    // this test asserts the type alias and trait bounds compile, with a runtime
-    // construction guarded and re-enabled after W22.
-    //
-    // Compile-time check (always runs):
+    // Compile-time check: ArcTensor2 alias resolves correctly.
     fn _accepts_arc(_t: &ArcTensor2<i32>) {}
+
+    // Runtime check: Tensor::into_shared (`05-storage.md §5.11.3`) produces
+    // an ArcTensor with the expected storage/access classification.
+    let owned = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+        .expect("from_shape_vec matching shape");
+    let arc: ArcTensor2<i32> = owned.into_shared();
+    assert_eq!(arc.storage_kind(), StorageKind::Shared);
+    assert_eq!(arc.access_semantics(), AccessSemantics::SharedReadOnly);
+    assert_eq!(arc.alias_class(), AliasClass::ArcShared);
 }
 
 // === view / view_mut cross-module behaviour ===
