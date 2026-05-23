@@ -2,8 +2,8 @@
 //!
 //! Per `02-dimension.md` §8.5 line 1122, this file covers `Axis` /
 //! `BroadcastDim` in reshape / transpose / broadcast paths. The high-level
-//! shape operations are introduced in W11 (broadcast) and W16 (reshape /
-//! transpose); tests here are split into:
+//! shape operations are introduced in W11 (broadcast) and W20 (transpose);
+//! tests here are split into:
 //!
 //! - **W3-runnable**: pure dimension-layer shape contracts (rank, slice,
 //!   checked_size, Axis access, checked() validation, equality).
@@ -182,8 +182,11 @@ fn test_shape_integration_transpose_view_kind() {
 }
 
 #[test]
-#[ignore = "depends on ArcRepr constructor visibility (W18)"]
-fn test_shape_integration_transpose_arc_tensor_view_kind() {}
+fn test_shape_integration_transpose_arc_tensor_view_kind() {
+    let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
+    let arc = x.into_shared();
+    assert_eq!(arc.transpose().storage_kind(), StorageKind::View);
+}
 
 #[test]
 fn test_shape_integration_transpose_with_index() {
