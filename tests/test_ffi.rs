@@ -5,25 +5,11 @@ use xenon::dimension::{Ix1, Ix2};
 use xenon::error::{FfiErrorCategory, XenonError};
 use xenon::ffi::ElementType;
 use xenon::layout::Strides;
-use xenon::tensor::{Tensor, TensorView, TensorViewMut};
+use xenon::tensor::{Tensor, TensorViewMut};
 
 /// Helper: build a simple 1-D owned f64 tensor.
 fn owned_f64_1d(data: Vec<f64>) -> Tensor<f64, Ix1> {
     Tensor::from_vec(data).expect("valid 1-D owned f64 tensor")
-}
-
-/// Helper: build a 1-D view from a slice.
-unsafe fn view_f64_1d<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
-    unsafe {
-        TensorView::<f64, Ix1>::from_raw_parts(
-            data.as_ptr(),
-            data.len(),
-            Ix1(data.len()),
-            Strides::from_slice(&[1_usize]).expect("valid strides"),
-            0,
-        )
-    }
-    .expect("valid F-order [n] view")
 }
 
 #[test]
