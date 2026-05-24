@@ -76,6 +76,14 @@ where
 /// Parallel dot product of two 1-D tensors.
 ///
 /// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
+///
+/// # Errors
+///
+/// Returns:
+/// - [`XenonError::InvalidArgument`] when either operand is not 1-D, or when
+///   either operand is not F-contiguous or carries a zero stride
+///   (broadcast view).
+/// - [`XenonError::ShapeMismatch`] when `lhs` and `rhs` have different shapes.
 #[cfg(feature = "parallel")]
 pub fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,

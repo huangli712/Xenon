@@ -8,11 +8,13 @@ pub fn sequential_1d(size: usize) -> Tensor1<f64> {
         .expect("shape and data length must match")
 }
 
+#[allow(dead_code)]
 pub fn sequential_1d_f32(size: usize) -> Tensor1<f32> {
     Tensor1::from_shape_vec([size], (0..size).map(|idx| idx as f32).collect())
         .expect("shape and data length must match")
 }
 
+#[allow(dead_code)]
 pub fn sequential_1d_i32(size: usize) -> Tensor1<i32> {
     // Used by simd_sum_compare's i32 admission / scalar-fallback path
     // (27-benchmark §5.5 simd_sum_compare; §5.4.2 integer extension).
@@ -20,6 +22,7 @@ pub fn sequential_1d_i32(size: usize) -> Tensor1<i32> {
         .expect("shape and data length must match")
 }
 
+#[allow(dead_code)]
 pub fn sequential_1d_i64(size: usize) -> Tensor1<i64> {
     // Used by par_sum_compare which is fixed to i64 (27-benchmark §5.5).
     Tensor1::from_shape_vec([size], (0..size).map(|idx| idx as i64).collect())

@@ -5,7 +5,7 @@ use xenon::dimension::{Ix1, Ix2};
 use xenon::error::{FfiErrorCategory, XenonError};
 use xenon::ffi::ElementType;
 use xenon::layout::Strides;
-use xenon::tensor::{Tensor, TensorViewMut};
+use xenon::tensor::{Tensor, TensorView, TensorViewMut};
 
 /// Helper: build a simple 1-D owned f64 tensor.
 fn owned_f64_1d(data: Vec<f64>) -> Tensor<f64, Ix1> {

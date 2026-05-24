@@ -1186,6 +1186,7 @@ impl XenonError {
     ///
     /// Used by dispatch-side configuration validation where the offending
     /// argument name, constraint, and actual value are known.
+    #[cfg(feature = "parallel")]
     pub(crate) fn dispatch_invalid_argument(
         argument: impl Into<Cow<'static, str>>,
         constraint: impl Into<Cow<'static, str>>,

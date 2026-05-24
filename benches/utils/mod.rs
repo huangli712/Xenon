@@ -6,7 +6,9 @@ pub mod generators;
 pub type BenchFn = fn(bool);
 
 // 27-benchmark §5.4.1: Small / Medium / Large
+#[allow(dead_code)]
 pub const SIZES_1D: &[usize] = &[64, 65_536, 16_777_216];
+#[allow(dead_code)]
 pub const SIZES_2D: &[(usize, usize)] = &[(8, 8), (256, 256), (4096, 4096)];
 
 // 27-benchmark §6.1 measurement methodology: warmup + N rounds × M iterations.

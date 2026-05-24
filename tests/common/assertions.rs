@@ -369,7 +369,7 @@ pub fn assert_tensor_close_real_math<A, D>(
 /// `03-element.md` provides no standalone `IntegerScalar` trait.
 /// The bound covers i32/i64 (the two integer element types) while naturally
 /// accepting `f32`/`f64` when callers choose to use this path.
-#[expect(dead_code)]
+#[allow(dead_code)]
 pub fn assert_tensor_exact_int<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
     expected: &TensorBase<impl Storage<Elem = A>, D>,
