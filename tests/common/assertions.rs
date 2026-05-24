@@ -2,10 +2,11 @@
 //!
 //! Three-tier comparison model per `28-tests §6.2`:
 //! - Tier 1: same execution path → bitwise equality or ULP == 0 (exact).
-//!   Tensor-level: integer path only (`assert_tensor_exact_int`); floats
-//!   use primitives (`real_bits_eq` / `real_ulp_eq`) directly.
 //! - Tier 2: cross-path (serial/SIMD/parallel) → documented ULP tolerance.
 //! - Tier 3: math functions (sin/sqrt/exp/ln) → per-function tolerance.
+//!
+//! Tensor-level helpers: only integer (`assert_tensor_exact_int`) is provided.
+//! Floating-point comparisons use the ULP primitives above directly.
 //!
 //! ULP distance computation follows Bruce Dawson (2012) sign-magnitude →
 //! biased-integer monotonic mapping. ±0.0 have an ULP distance of exactly 1;
@@ -113,35 +114,6 @@ pub fn real_bits_eq<A: RealScalarBits>(a: A, b: A) -> bool {
     a.bits() == b.bits()
 }
 
-/// Tier 1 ULP == 0 equality (NaN → false). Calls the ULP-distance function
-/// associated with the native type via `RealScalarBits::ulp`.
-pub fn real_ulp_eq<A: RealScalarBits>(a: A, b: A) -> bool {
-    A::ulp(a, b) == 0
-}
-
-/// Tier 1 same-path ULP equality on `f64` (ULP == 0, NaN → false).
-///
-/// Design `28-tests §6.2.1` Tier 1 requires that two values produced by the
-/// same code path compare bit-identical modulo ±0.0 treatment. This helper
-/// is the canonical entry point used by downstream tasks (W29T19/T20/T22)
-/// when they only need "is the result exactly the same?" without a
-/// tolerance budget. `NaN` vs `NaN` returns `false` to stay consistent
-/// with IEEE 754 ordering semantics.
-pub fn ulp_eq_f64_exact(a: f64, b: f64) -> bool {
-    if a.is_nan() || b.is_nan() {
-        return false;
-    }
-    ulp_distance_f64(a, b) == 0
-}
-
-/// Tier 1 same-path ULP equality on `f32` (ULP == 0, NaN → false).
-pub fn ulp_eq_f32_exact(a: f32, b: f32) -> bool {
-    if a.is_nan() || b.is_nan() {
-        return false;
-    }
-    ulp_distance_f32(a, b) == 0
-}
-
 // ---------------------------------------------------------------------------
 // MathTolerance — Tier 2 / Tier 3 tolerance budget
 // ---------------------------------------------------------------------------
@@ -198,13 +170,6 @@ pub fn ulp_eq_f64_with_tolerance(a: f64, b: f64, t: MathTolerance) -> bool {
     ulp_distance_f64(a, b) <= t.ulp
 }
 
-/// Tier 3 math-function equality on `f64`; same semantics as the cross-path
-/// helper but the tolerance is sourced from per-function documentation
-/// (`28-tests §5.2 / §6.2.1` Tier 3).
-pub fn math_eq_f64(a: f64, b: f64, t: MathTolerance) -> bool {
-    ulp_eq_f64_with_tolerance(a, b, t)
-}
-
 /// Tier 2 cross-path equality on `f32` (`28-tests §5.2`; native-type
 /// comparison per §6.2.1 mandates parallel f32/f64 helpers).
 pub fn ulp_eq_f32_with_tolerance(a: f32, b: f32, t: MathTolerance) -> bool {
@@ -217,84 +182,13 @@ pub fn ulp_eq_f32_with_tolerance(a: f32, b: f32, t: MathTolerance) -> bool {
     ulp_distance_f32(a, b) <= t.ulp
 }
 
-/// Tier 3 math-function equality on `f32` (`28-tests §5.2 / §6.2.1` Tier 3).
-pub fn math_eq_f32(a: f32, b: f32, t: MathTolerance) -> bool {
-    ulp_eq_f32_with_tolerance(a, b, t)
-}
-
 // ---------------------------------------------------------------------------
 // Tensor-level assertion helpers
 // ---------------------------------------------------------------------------
 
 use xenon::dimension::Dimension;
-use xenon::element::{CastTo, ComplexScalar};
 use xenon::storage::Storage;
 use xenon::tensor::TensorBase;
-
-/// Tier 2 cross-path real equality (`28-tests §5.2 L262-293`).
-///
-/// Use only for scalar-vs-SIMD or serial-vs-parallel comparisons where
-/// rounding is allowed. The tolerance must come from documented sources.
-pub fn assert_tensor_close_real_cross_path<A, D>(
-    actual: &TensorBase<impl Storage<Elem = A>, D>,
-    expected: &TensorBase<impl Storage<Elem = A>, D>,
-    tolerance: MathTolerance,
-    msg: &str,
-) where
-    A: RealScalar + CastTo<f64>,
-    D: Dimension,
-{
-    assert_eq!(
-        actual.shape(),
-        expected.shape(),
-        "{msg}: shape mismatch: {:?} vs {:?}",
-        actual.shape(),
-        expected.shape()
-    );
-    for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = CastTo::<f64>::cast_to(*a)
-            .expect("cross-path helper requires CastTo::<f64>::cast_to support");
-        let e_f: f64 = CastTo::<f64>::cast_to(*e)
-            .expect("cross-path helper requires CastTo::<f64>::cast_to support");
-        assert!(
-            ulp_eq_f64_with_tolerance(a_f, e_f, tolerance),
-            "{msg}: element {idx} differs: actual={a_f}, expected={e_f}, \
-             comparison=cross-path tolerance"
-        );
-    }
-}
-
-/// Tier 3 math-function real equality (`28-tests §5.2 L295-326`).
-///
-/// Use only for `sin/sqrt/exp/ln/floor/ceil` etc. with per-function tolerance.
-pub fn assert_tensor_close_real_math<A, D>(
-    actual: &TensorBase<impl Storage<Elem = A>, D>,
-    expected: &TensorBase<impl Storage<Elem = A>, D>,
-    tolerance: MathTolerance,
-    msg: &str,
-) where
-    A: RealScalar + CastTo<f64>,
-    D: Dimension,
-{
-    assert_eq!(
-        actual.shape(),
-        expected.shape(),
-        "{msg}: shape mismatch: {:?} vs {:?}",
-        actual.shape(),
-        expected.shape()
-    );
-    for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = CastTo::<f64>::cast_to(*a)
-            .expect("math helper requires CastTo::<f64>::cast_to support");
-        let e_f: f64 = CastTo::<f64>::cast_to(*e)
-            .expect("math helper requires CastTo::<f64>::cast_to support");
-        assert!(
-            math_eq_f64(a_f, e_f, tolerance),
-            "{msg}: element {idx} differs: actual={a_f}, expected={e_f}, \
-             comparison=math-function tolerance"
-        );
-    }
-}
 
 /// Integer-element same-path equality; thin wrapper over `assert_eq!`.
 ///
