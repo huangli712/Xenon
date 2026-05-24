@@ -81,6 +81,7 @@ impl StridedFixture1D {
 /// Construct a StridedFixture1D backed by an F-order 2×n owner.
 /// Caller MUST keep the returned fixture alive for as long as the view is used.
 /// (27-benchmark §5.2 fixture constructor)
+#[allow(dead_code)]
 pub fn strided_view_1d(n: usize) -> StridedFixture1D {
     StridedFixture1D {
         owner: sequential_2d(2, n),
