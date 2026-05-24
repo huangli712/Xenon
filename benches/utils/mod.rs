@@ -3,6 +3,7 @@ use std::time::Instant;
 pub mod generators;
 
 /// Shared benchmark function signature: `fn(quick: bool)`.
+#[allow(dead_code)]
 pub type BenchFn = fn(bool);
 
 // 27-benchmark §5.4.1: Small / Medium / Large

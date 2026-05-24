@@ -1,12 +1,12 @@
 //! Precision-aware floating-point comparison helpers for integration tests.
 //!
-//! Three-tier comparison model per `28-tests §6.2`:
-//! - Tier 1: same execution path → bitwise equality or ULP == 0 (exact).
-//! - Tier 2: cross-path (serial/SIMD/parallel) → documented ULP tolerance.
-//! - Tier 3: math functions (sin/sqrt/exp/ln) → per-function tolerance.
+//! Comparison helpers (subset of `28-tests §6.2`):
+//! - Tier 1: same-path bitwise equality (`real_bits_eq` on `f32`/`f64`).
+//! - Tier 2: cross-path tolerance (`MathTolerance` + `ulp_eq_f64_with_tolerance`).
+//! - Integer tensor-level equality (`assert_tensor_exact_int`).
 //!
-//! Tensor-level helpers: only integer (`assert_tensor_exact_int`) is provided.
-//! Floating-point comparisons use the ULP primitives above directly.
+//! Tier 3 (math-function tolerance) and most f32 tolerance helpers have been
+//! removed as unused; reintroduce as needed.
 //!
 //! ULP distance computation follows Bruce Dawson (2012) sign-magnitude →
 //! biased-integer monotonic mapping. ±0.0 have an ULP distance of exactly 1;
@@ -87,11 +87,11 @@ pub fn real_bits_eq<A: RealScalarBits>(a: A, b: A) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// MathTolerance — Tier 2 / Tier 3 tolerance budget
+// MathTolerance — Tier 2 cross-path tolerance budget
 // ---------------------------------------------------------------------------
 
-/// Tolerance budget used by Tier 2 cross-path and Tier 3 math-function
-/// helpers (`28-tests §5.2 / §6.2`).
+/// Tolerance budget used by Tier 2 cross-path helpers
+/// (`28-tests §5.2 / §6.2`).
 #[derive(Debug, Clone, Copy)]
 pub struct MathTolerance {
     /// Maximum allowed ULP distance.
@@ -105,6 +105,7 @@ impl MathTolerance {
     /// elements in different summation orders (Tier 2 — `28-tests §6.2.1`).
     /// Size `n` widens the budget linearly so that serial/parallel/SIMD
     /// sums of `n` summands remain within 2·n ULP of each other.
+    #[allow(dead_code)]
     pub const fn cross_path_sum(n: usize) -> Self {
         Self {
             ulp: 2 * n as u64,
@@ -114,6 +115,7 @@ impl MathTolerance {
 
     /// Documented cross-path budget for dot products (Tier 2).
     /// Dot mixes multiply + reduce, giving it 4·n ULP of headroom.
+    #[allow(dead_code)]
     pub const fn cross_path_dot(n: usize) -> Self {
         Self {
             ulp: 4 * n as u64,
