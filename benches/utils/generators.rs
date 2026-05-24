@@ -34,6 +34,7 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
         .expect("shape and data length must match")
 }
 
+#[allow(dead_code)]
 pub fn complex_1d(size: usize) -> Tensor1<Complex<f64>> {
     Tensor1::from_shape_vec(
         [size],
