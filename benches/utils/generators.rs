@@ -3,6 +3,7 @@ use xenon::dimension::{Ix1, Ix2};
 use xenon::index::{SliceInfo, SliceInfoElem, SliceInfoIndices};
 use xenon::tensor::{Tensor1, Tensor2, TensorView1};
 
+#[allow(dead_code)]
 pub fn sequential_1d(size: usize) -> Tensor1<f64> {
     Tensor1::from_shape_vec([size], (0..size).map(|idx| idx as f64).collect())
         .expect("shape and data length must match")
@@ -29,6 +30,7 @@ pub fn sequential_1d_i64(size: usize) -> Tensor1<i64> {
         .expect("shape and data length must match")
 }
 
+#[allow(dead_code)]
 pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
     Tensor2::from_shape_vec([rows, cols], (0..rows * cols).map(|idx| idx as f64).collect())
         .expect("shape and data length must match")

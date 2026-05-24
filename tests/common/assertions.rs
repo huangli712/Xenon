@@ -2,6 +2,8 @@
 //!
 //! Three-tier comparison model per `28-tests §6.2`:
 //! - Tier 1: same execution path → bitwise equality or ULP == 0 (exact).
+//!   Tensor-level: integer path only (`assert_tensor_exact_int`); floats
+//!   use primitives (`real_bits_eq` / `real_ulp_eq`) directly.
 //! - Tier 2: cross-path (serial/SIMD/parallel) → documented ULP tolerance.
 //! - Tier 3: math functions (sin/sqrt/exp/ln) → per-function tolerance.
 //!
