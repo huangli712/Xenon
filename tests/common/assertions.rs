@@ -51,27 +51,6 @@ pub fn ulp_distance_f64(a: f64, b: f64) -> u64 {
     a_bias.abs_diff(b_bias)
 }
 
-/// Maps an `f32` bit pattern into a monotonic biased `u32`.
-#[inline]
-fn bias_f32(bits: u32) -> u32 {
-    if bits & 0x8000_0000 == 0 {
-        bits ^ 0x8000_0000
-    } else {
-        !bits
-    }
-}
-
-/// Returns the ULP distance between two `f32` values. NaN → `u64::MAX`.
-pub fn ulp_distance_f32(a: f32, b: f32) -> u64 {
-    if a.is_nan() || b.is_nan() {
-        return u64::MAX;
-    }
-    let a_bias = bias_f32(a.to_bits());
-    let b_bias = bias_f32(b.to_bits());
-    let d = a_bias.abs_diff(b_bias);
-    d as u64
-}
-
 // ---------------------------------------------------------------------------
 // Tier 1 native-type primitives (28-tests §5.2 L354-359)
 // ---------------------------------------------------------------------------
@@ -85,7 +64,6 @@ pub fn ulp_distance_f32(a: f32, b: f32) -> u64 {
 pub(crate) trait RealScalarBits: RealScalar {
     type Bits: Eq;
     fn bits(self) -> Self::Bits;
-    fn ulp(a: Self, b: Self) -> u64;
 }
 
 impl RealScalarBits for f32 {
@@ -93,18 +71,12 @@ impl RealScalarBits for f32 {
     fn bits(self) -> u32 {
         self.to_bits()
     }
-    fn ulp(a: f32, b: f32) -> u64 {
-        ulp_distance_f32(a, b)
-    }
 }
 
 impl RealScalarBits for f64 {
     type Bits = u64;
     fn bits(self) -> u64 {
         self.to_bits()
-    }
-    fn ulp(a: f64, b: f64) -> u64 {
-        ulp_distance_f64(a, b)
     }
 }
 
@@ -150,15 +122,6 @@ impl MathTolerance {
     }
 }
 
-/// Documented cross-path tolerance for the default reduction input size.
-/// Used by tests that do not know the reduction length at compile time
-/// (`28-tests §5.2 / §6.2.1` Tier 2). Returns a conservative generic budget.
-pub fn documented_cross_path_tolerance() -> MathTolerance {
-    // 128 ULP covers sums up to a few thousand elements; tests that need
-    // tighter or looser bounds should call `MathTolerance::cross_path_*`.
-    MathTolerance { ulp: 128, abs: 0.0 }
-}
-
 /// Tier 2 cross-path equality on `f64` (`28-tests §5.2`).
 pub fn ulp_eq_f64_with_tolerance(a: f64, b: f64, t: MathTolerance) -> bool {
     if a.is_nan() || b.is_nan() {
@@ -168,18 +131,6 @@ pub fn ulp_eq_f64_with_tolerance(a: f64, b: f64, t: MathTolerance) -> bool {
         return true;
     }
     ulp_distance_f64(a, b) <= t.ulp
-}
-
-/// Tier 2 cross-path equality on `f32` (`28-tests §5.2`; native-type
-/// comparison per §6.2.1 mandates parallel f32/f64 helpers).
-pub fn ulp_eq_f32_with_tolerance(a: f32, b: f32, t: MathTolerance) -> bool {
-    if a.is_nan() || b.is_nan() {
-        return false;
-    }
-    if (a - b).abs() as f64 <= t.abs {
-        return true;
-    }
-    ulp_distance_f32(a, b) <= t.ulp
 }
 
 // ---------------------------------------------------------------------------
