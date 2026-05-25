@@ -14,9 +14,11 @@ on:
       - 'src/**/*.rs'
       - 'Cargo.toml'
 
+# Cancel previous runs on the same PR branch when a new commit lands.
+# Pushes to main are NOT cancelled to preserve historical integrity.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -51,6 +53,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Cache both the main crate and the bench-report tool crate.
+          workspaces: |
+            .
+            tools/report
       # Baseline consumption: elem_add_f64 + sum_1d_f64 (Medium = 65536)
       - name: Run regression benches and capture output
         run: |
@@ -70,51 +77,54 @@ jobs:
       matrix:
         # Full benchmark = all files × 4 feature combinations
         # (default / simd / parallel / simd+parallel)
+        # `name` doubles as the rust-cache key and the displayed job name.
         include:
           # math × 4
-          - { bench: math,                features: "" }
-          - { bench: math,                features: "--features simd" }
-          - { bench: math,                features: "--features parallel" }
-          - { bench: math,                features: "--features simd,parallel" }
+          - { bench: math,         features: "",                         name: math-default }
+          - { bench: math,         features: "--features simd",          name: math-simd }
+          - { bench: math,         features: "--features parallel",      name: math-parallel }
+          - { bench: math,         features: "--features simd,parallel", name: math-all }
           # reduction × 4
-          - { bench: reduction,           features: "" }
-          - { bench: reduction,           features: "--features simd" }
-          - { bench: reduction,           features: "--features parallel" }
-          - { bench: reduction,           features: "--features simd,parallel" }
+          - { bench: reduction,    features: "",                         name: reduction-default }
+          - { bench: reduction,    features: "--features simd",          name: reduction-simd }
+          - { bench: reduction,    features: "--features parallel",      name: reduction-parallel }
+          - { bench: reduction,    features: "--features simd,parallel", name: reduction-all }
           # dot × 4
-          - { bench: dot,                 features: "" }
-          - { bench: dot,                 features: "--features simd" }
-          - { bench: dot,                 features: "--features parallel" }
-          - { bench: dot,                 features: "--features simd,parallel" }
+          - { bench: dot,          features: "",                         name: dot-default }
+          - { bench: dot,          features: "--features simd",          name: dot-simd }
+          - { bench: dot,          features: "--features parallel",      name: dot-parallel }
+          - { bench: dot,          features: "--features simd,parallel", name: dot-all }
           # set × 4
-          - { bench: set,                 features: "" }
-          - { bench: set,                 features: "--features simd" }
-          - { bench: set,                 features: "--features parallel" }
-          - { bench: set,                 features: "--features simd,parallel" }
+          - { bench: set,          features: "",                         name: set-default }
+          - { bench: set,          features: "--features simd",          name: set-simd }
+          - { bench: set,          features: "--features parallel",      name: set-parallel }
+          - { bench: set,          features: "--features simd,parallel", name: set-all }
           # broadcast × 4
-          - { bench: broadcast,           features: "" }
-          - { bench: broadcast,           features: "--features simd" }
-          - { bench: broadcast,           features: "--features parallel" }
-          - { bench: broadcast,           features: "--features simd,parallel" }
+          - { bench: broadcast,    features: "",                         name: broadcast-default }
+          - { bench: broadcast,    features: "--features simd",          name: broadcast-simd }
+          - { bench: broadcast,    features: "--features parallel",      name: broadcast-parallel }
+          - { bench: broadcast,    features: "--features simd,parallel", name: broadcast-all }
           # shape × 4
-          - { bench: shape,               features: "" }
-          - { bench: shape,               features: "--features simd" }
-          - { bench: shape,               features: "--features parallel" }
-          - { bench: shape,               features: "--features simd,parallel" }
+          - { bench: shape,        features: "",                         name: shape-default }
+          - { bench: shape,        features: "--features simd",          name: shape-simd }
+          - { bench: shape,        features: "--features parallel",      name: shape-parallel }
+          - { bench: shape,        features: "--features simd,parallel", name: shape-all }
           # construction × 4
-          - { bench: construction,        features: "" }
-          - { bench: construction,        features: "--features simd" }
-          - { bench: construction,        features: "--features parallel" }
-          - { bench: construction,        features: "--features simd,parallel" }
+          - { bench: construction, features: "",                         name: construction-default }
+          - { bench: construction, features: "--features simd",          name: construction-simd }
+          - { bench: construction, features: "--features parallel",      name: construction-parallel }
+          - { bench: construction, features: "--features simd,parallel", name: construction-all }
           # simd × 2 (only `simd` feature toggle matters for this comparison bench)
-          - { bench: simd,                features: "" }
-          - { bench: simd,                features: "--features simd" }
+          - { bench: simd,         features: "",                         name: simd-off }
+          - { bench: simd,         features: "--features simd",          name: simd-on }
           # parallel × 2 (only `parallel` feature toggle matters for this comparison bench)
-          - { bench: parallel,            features: "" }
-          - { bench: parallel,            features: "--features parallel" }
+          - { bench: parallel,     features: "",                         name: parallel-off }
+          - { bench: parallel,     features: "--features parallel",      name: parallel-on }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
       - uses: Swatinem/rust-cache@v2
-      - name: Run ${{ matrix.bench }} ${{ matrix.features || '(default)' }}
+        with:
+          key: ${{ matrix.name }}
+      - name: Run ${{ matrix.name }}
         run: cargo bench --bench ${{ matrix.bench }} ${{ matrix.features }}
