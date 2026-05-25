@@ -2,26 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
+## [v0.0.6] — 2026-05-25
 
 ### Added
 
-- Initial public documentation set.
-- Crate-level documentation with Quick Start, feature matrix, element type
-  table, and memory layout design rationale.
-- Module-level documentation for all public modules.
-- Type and function-level documentation with doctests for core APIs.
-- Usage examples for basic operations, broadcasting, complex numbers, FFI
-  integration, and workspace management.
-- CI documentation workflow with rustdoc, doctest, and example validation gates.
+- `Tensor::into_shared()` for zero-copy `ArcTensor` conversion.
+- `Workspace::borrow()` and `Workspace::borrow_mut()`: public error-documented borrow APIs.
+- Error and panic documentation sections across all public APIs.
 
 ### Changed
 
-- Placeholder for changed entries.
+- `ParallelGuard` now derives `Debug`; `TensorBase` derives `Debug`.
+- Gated parallel threshold functions behind feature flags.
+- Simplified `SimdElement` trait interface.
 
 ### Fixed
 
-- Placeholder for fixed entries.
+- Synchronized test version assertion and cleaned up inactive work-in-progress test placeholders.
+
+### Removed
+
+- `ParallelPool`, `par_iter`, `apply_binary`, `apply_compare`, and `parallel/iter.rs`.
+- `StorageSharedExt`, `ref_count`, `is_unique` methods.
+- `broadcast_with` / `BroadcastPair` types.
+- `SimdKernel` type.
+- f32 ULP helpers and `RealScalarBits::ulp` method.
+- Tier 1 assertion helpers.
+- `with_strategy` and dead imports.
