@@ -13,7 +13,7 @@ use crate::storage::StorageIntoOwned;
 use crate::storage::alloc::AlignedAlloc;
 use crate::storage::owned::AlignedBuf;
 use crate::storage::traits::IsShared;
-use crate::storage::{RawStorage, Storage, StorageShared, StorageSharedExt};
+use crate::storage::{RawStorage, Storage, StorageShared};
 
 /// Internal shared buffer wrapping an `AlignedBuf`.
 ///
@@ -110,15 +110,6 @@ impl<A> ArcRepr<A> {
         Ok(Self::from_aligned_buf(buf))
     }
 
-    /// Returns the current reference count. Crate-internal helper.
-    pub(crate) fn ref_count(&self) -> usize {
-        Arc::strong_count(&self.inner)
-    }
-
-    /// Checks if this is the sole owner. Crate-internal helper.
-    pub(crate) fn is_unique(&self) -> bool {
-        Arc::strong_count(&self.inner) == 1
-    }
 }
 
 impl<A> Clone for ArcRepr<A> {
@@ -150,16 +141,6 @@ unsafe impl<A: Element> Storage for ArcRepr<A> {}
 // SAFETY: ArcRepr is the crate-controlled shared read-only storage mode.
 // Cloning only bumps the Arc refcount and never exposes mutable access.
 unsafe impl<A: Element> StorageShared for ArcRepr<A> {}
-
-impl<A: Element> StorageSharedExt for ArcRepr<A> {
-    fn is_unique(&self) -> bool {
-        self.is_unique()
-    }
-
-    fn ref_count(&self) -> usize {
-        self.ref_count()
-    }
-}
 
 impl<A> crate::private::Sealed for ArcRepr<A> {}
 // SAFETY: ArcRepr satisfies RawStorage and Sealed, and represents Xenon's
@@ -223,16 +204,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_arc_ref_count() {
-        let arc = ArcRepr::from_vec(vec![1_i32, 2])
-            .expect("ArcRepr::from_vec should succeed for small i32 input");
-        let cloned = arc.clone();
-        assert_eq!(arc.as_slice(), cloned.as_slice());
-        assert_eq!(arc.ref_count(), 2);
-        assert!(!arc.is_unique());
-    }
-
-    #[test]
     fn test_arc_clone_o1() {
         let arc = ArcRepr::from_vec(vec![1_i32, 2, 3])
             .expect("ArcRepr::from_vec should succeed for small i32 input");
@@ -241,7 +212,6 @@ mod tests {
 
         assert_eq!(arc.as_ptr(), ptr);
         assert_eq!(cloned.as_ptr(), ptr);
-        assert_eq!(arc.ref_count(), 2);
     }
 
     #[test]
@@ -265,7 +235,6 @@ mod tests {
         let arc = ArcRepr::<i32>::from_vec(Vec::new())
             .expect("ArcRepr::from_vec should succeed for empty input");
         assert!(arc.is_empty());
-        assert!(arc.is_unique());
     }
 
     // W7T17 tests

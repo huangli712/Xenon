@@ -345,34 +345,6 @@ where
 }
 
 #[cfg(feature = "parallel")]
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    A: Element + Send + Sync,
-    D: Dimension + Clone,
-{
-    pub(crate) fn par_iter(&self) -> ParIter<'_, A, D> {
-        debug_assert!(
-            self.is_f_contiguous(),
-            "par_iter() in W15 supports F-contiguous inputs only; \
-             callers must gate non-F-contiguous inputs to serial."
-        );
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
-        let view = unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
-                self.offset,
-                self.flags,
-                true,
-            )
-        };
-        ParIter::new(view)
-    }
-}
-
-#[cfg(feature = "parallel")]
 impl<A, D> TensorBase<ArcRepr<A>, D>
 where
     A: Element + Send + Sync,

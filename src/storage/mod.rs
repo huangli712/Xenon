@@ -238,7 +238,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// W7T5: StorageOwned + StorageShared + StorageSharedExt + StorageIntoOwned
+// W7T5: StorageOwned + StorageShared + StorageIntoOwned
 // ---------------------------------------------------------------------------
 
 /// Storage that owns data.
@@ -318,18 +318,6 @@ pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
 /// shared read-only storage mode whose aliasing and thread-safety
 /// invariants are controlled by this crate.
 pub unsafe trait StorageShared: Storage + Clone + crate::private::Sealed {}
-
-/// Crate-internal extension trait for shared storage types.
-///
-/// Provides reference counting and uniqueness checks for internal optimization
-/// (e.g., CoW uniqueness checks inside `arc.rs`) and debugging.
-pub(crate) trait StorageSharedExt: StorageShared {
-    /// Checks if this is the sole owner. Crate-internal helper.
-    fn is_unique(&self) -> bool;
-
-    /// Returns the current reference count. Crate-internal helper.
-    fn ref_count(&self) -> usize;
-}
 
 /// Storage types that can be converted into an owned tensor by consuming self.
 ///
