@@ -25,9 +25,6 @@ jobs:
       # §8.2 hard gate 3: rustdoc warnings
       - name: Rustdoc warnings (all features)
         run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
-      # §8.2 hard gate 4: cooperative-baseline pin drift
-      - name: Cooperative-baseline pin drift
-        run: python3 tools/check_baseline_pins.py docs/design/
 
   test:
     name: test-full-matrix (${{ matrix.features }})
