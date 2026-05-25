@@ -71,7 +71,11 @@ impl Ix0 {
     }
 
     /// Attempts to convert from a dynamic dimension.
-    /// Returns `XenonError::DimensionMismatch` if `dyn_dim.ndim() != 0`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 0, actual }` when
+    /// `dyn_dim.ndim() != 0`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 0 {
@@ -160,6 +164,11 @@ impl Ix1 {
     }
 
     /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 1, actual }` when
+    /// `dyn_dim.ndim() != 1`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 1 {
@@ -271,6 +280,11 @@ impl Ix2 {
     }
 
     /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 2, actual }` when
+    /// `dyn_dim.ndim() != 2`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 2 {
@@ -366,6 +380,11 @@ impl Ix3 {
     }
 
     /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 3, actual }` when
+    /// `dyn_dim.ndim() != 3`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 3 {
@@ -459,6 +478,11 @@ impl Ix4 {
     }
 
     /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 4, actual }` when
+    /// `dyn_dim.ndim() != 4`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 4 {
@@ -559,6 +583,11 @@ impl Ix5 {
     }
 
     /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 5, actual }` when
+    /// `dyn_dim.ndim() != 5`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 5 {
@@ -726,6 +755,11 @@ impl Ix6 {
     }
 
     /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 6, actual }` when
+    /// `dyn_dim.ndim() != 6`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 6 {

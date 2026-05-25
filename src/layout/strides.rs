@@ -34,8 +34,12 @@ impl<D: Dimension> Strides<D> {
 
     /// Construct strides from a slice of `usize` stride values.
     ///
+    /// See `06-layout §5.5`.
+    ///
+    /// # Errors
+    ///
     /// Returns `XenonError::DimensionMismatch` if `slice.len()` does not
-    /// match the rank of `D`. See `06-layout §5.5`.
+    /// match the rank of `D`.
     pub fn from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         let dim = D::try_from_slice(slice)?;
         Ok(Self { strides: dim })
@@ -44,6 +48,12 @@ impl<D: Dimension> Strides<D> {
     /// Compute default F-contiguous strides for the given shape.
     /// Convenience alias for the free function `compute_f_strides`
     /// (`06-layout §5.5`).
+    ///
+    /// # Errors
+    ///
+    /// Forwards `compute_f_strides` errors: returns
+    /// `XenonError::InvalidShape { kind: ProductOverflow, .. }` if the cumulative
+    /// stride product overflows `usize`.
     pub fn f_contiguous(shape: &D) -> Result<Self, XenonError> {
         compute_f_strides(shape)
     }

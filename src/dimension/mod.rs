@@ -64,22 +64,41 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     fn slice(&self) -> &[usize];
 
     /// Total number of elements, checking for overflow.
-    /// Returns `XenonError::InvalidShape { kind: ProductOverflow }` on overflow.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow }`
+    /// when the cumulative product of the per-axis lengths overflows `usize`.
     fn checked_size(&self) -> Result<usize, XenonError>;
 
     /// Validates dimension metadata without consuming the element count.
     /// The default contract is equivalent to `self.checked_size().map(|_| ())`.
+    ///
+    /// # Errors
+    ///
+    /// Forwards every error from [`Self::checked_size`] — currently only
+    /// `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow }`
+    /// when the cumulative axis-length product overflows `usize`.
     fn checked(&self) -> Result<(), XenonError> {
         self.checked_size().map(|_| ())
     }
 
     /// Create a dimension from a slice.
-    /// Returns `XenonError::DimensionMismatch` on rank mismatch.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch` when `slice.len()` does not
+    /// match the static rank of `Self` (e.g. `Ix3::try_from_slice(&[1, 2])`).
+    /// For `IxDyn`, any slice length is accepted.
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError>
     where
         Self: Sized;
 
     /// Returns the axis length at the given index.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidAxis` when `axis.0 >= self.ndim()`.
     fn axis(&self, axis: Axis) -> Result<usize, XenonError> {
         self.slice()
             .get(axis.0)

@@ -104,18 +104,10 @@ impl ParallelExecStrategy {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "dispatch is staged before downstream integration")
-    )]
     pub(crate) fn chunk_size(&self) -> Option<usize> {
         self.chunk_size
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "dispatch is staged before downstream integration")
-    )]
     pub(crate) fn max_workers(&self) -> Option<usize> {
         self.max_workers
     }

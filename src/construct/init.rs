@@ -11,6 +11,12 @@ where
     D: Dimension,
 {
     /// Create a zero-initialized tensor (F-order).
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidShape { kind: ProductOverflow, .. }` if
+    /// `shape`'s element count or stride product overflows `usize` (forwarded
+    /// from `dim.checked_size()` / `compute_f_strides`).
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         Sh: IntoDimension<Dim = D>,
@@ -27,6 +33,12 @@ where
     }
 
     /// Create a one-initialized tensor (F-order).
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidShape { kind: ProductOverflow, .. }` if
+    /// `shape`'s element count or stride product overflows `usize` (forwarded
+    /// from `dim.checked_size()` / `compute_f_strides`).
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         Sh: IntoDimension<Dim = D>,
