@@ -219,6 +219,19 @@ where
     D: Dimension,
 {
     /// Creates a read-only sliced view of the tensor (17-indexing §6.3).
+    ///
+    /// # Errors
+    ///
+    /// - `XenonError::IndexOutOfBounds` — a `SliceInfoElem::Index(idx)` has
+    ///   `idx >= self.shape()[axis]`.
+    /// - `XenonError::InvalidArgument` with
+    ///   `InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end }`
+    ///   — a `SliceInfoElem::Range { start, end }` has `end > self.shape()[axis]`.
+    /// - `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }` —
+    ///   `index * stride`, the offset accumulator, or `self.offset() +
+    ///   slice_delta` overflows `usize`.
+    /// - `XenonError::DimensionMismatch` (from `I::try_from_slice`) — the output
+    ///   shape's rank does not match the static rank of `I` (fixed-rank `I` only).
     pub fn slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>>
     where
         I: Dimension,

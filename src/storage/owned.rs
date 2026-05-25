@@ -242,6 +242,14 @@ impl<A> Owned<A> {
     }
 
     /// Constructs owned storage from a `Vec`, copying into an aligned buffer.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from [`Self::from_vec_aligned`]:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `data.len() *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested 64-byte aligned buffer.
     pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
@@ -250,6 +258,14 @@ impl<A> Owned<A> {
     }
 
     /// Core implementation of `from_vec`: copies into a 64-byte aligned buffer.
+    ///
+    /// # Errors
+    ///
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `data.len() *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` (via `AlignedAlloc::alloc`) — the
+    ///   underlying allocator could not provide the requested 64-byte aligned
+    ///   buffer.
     pub fn from_vec_aligned(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
@@ -282,6 +298,14 @@ impl<A> Owned<A> {
     }
 
     /// Creates owned storage filled with zeros.
+    ///
+    /// # Errors
+    ///
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `len *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` (via `AlignedAlloc::alloc_zeroed`) —
+    ///   the underlying allocator could not provide the requested zero-filled
+    ///   aligned buffer.
     pub fn zeros(len: usize) -> Result<Self, XenonError>
     where
         A: Element + Default,

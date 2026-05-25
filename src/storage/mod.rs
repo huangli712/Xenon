@@ -293,6 +293,16 @@ pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
     /// Attempts to ensure total capacity is at least `new_capacity`.
     ///
     /// `new_capacity` is the target total capacity, not an additional amount.
+    ///
+    /// # Errors
+    ///
+    /// Returns `crate::error::XenonError` when the implementor cannot grow
+    /// the backing buffer to `new_capacity` — typically:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` if
+    ///   `new_capacity * size_of::<Self::Elem>()` (with alignment slack)
+    ///   exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` if the underlying allocator
+    ///   cannot satisfy the request.
     fn try_reserve(&mut self, new_capacity: usize) -> Result<(), crate::error::XenonError>;
 }
 

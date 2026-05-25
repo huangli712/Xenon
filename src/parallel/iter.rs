@@ -1,5 +1,4 @@
 use crate::dimension::Dimension;
-use crate::dispatch::ParallelExecStrategy;
 use crate::element::Element;
 use crate::storage::{ArcRepr, Owned, ViewMutRepr, ViewRepr};
 use crate::tensor::{TensorBase, TensorView};
@@ -36,26 +35,14 @@ where
             max_workers: None,
         }
     }
-
-    /// Override strategy fields after construction (used by par_map_checked etc.).
-    /// See 09-parallel §5.6 line 272.
-    pub(crate) fn with_strategy(mut self, strategy: &ParallelExecStrategy) -> Self {
-        self.chunk_size = strategy.chunk_size();
-        self.max_workers = strategy.max_workers();
-        self
-    }
 }
 
-// `Clone` is required by `par_map_checked` (W15T7) to run the two-pass
-// pattern without cloning the user closure: phase 1 consumes a cloned
-// ParIter via `try_for_each`, phase 2 consumes the original. The clone
-// is metadata-only (TensorView + 4 small scalar fields) — no element
-// data is duplicated.
-//
-// Manual impl reconstructs TensorView from `pub(crate)` fields.
-// `TensorView: Clone` was spec'd in 07-tensor §5 but not yet implemented;
-// a manual clone here is functionally equivalent and avoids adding a
-// derive across the crate boundary in this task.
+// Manual `Clone` impl reconstructs the underlying `TensorView` from the
+// `pub(crate)` fields. `TensorView: Clone` was spec'd in 07-tensor §5 but
+// not yet implemented; a manual clone here is functionally equivalent
+// and avoids adding a derive across the crate boundary in this task.
+// The clone is metadata-only (TensorView + 4 small scalar fields) — no
+// element data is duplicated.
 #[cfg(feature = "parallel")]
 impl<'a, A, D> Clone for ParIter<'a, A, D>
 where
