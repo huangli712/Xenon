@@ -84,6 +84,16 @@ pub fn broadcast_shape(shape_a: &[usize], shape_b: &[usize]) -> Result<IxDyn, Xe
 ///      - orig_dim == 1 → write stride 0 (covers empty-axis `1 -> 0`);
 ///      - otherwise → BroadcastError.
 ///   4. Return the stride vector.
+///
+/// # Errors
+///
+/// - `XenonError::InvalidArgument` — `orig_shape.len() != orig_strides.len()`
+///   (caller precondition failure per `15-broadcast.md §5.2` line 168).
+/// - `XenonError::BroadcastError` — either `orig_shape.len() > target_shape.len()`
+///   (rank-excess, cannot right-align a higher-rank source into a lower-rank
+///   target), or some right-aligned axis has `orig_dim != target_dim` and
+///   `orig_dim != 1`. `attempted_target_shape` is always populated because this
+///   path is single-directional (see `26-error.md §5.1`).
 pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[usize],

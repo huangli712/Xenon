@@ -45,6 +45,11 @@ where
     ///
     /// NaN comparison follows IEEE 754: `equal(NaN, NaN)` is element-wise
     /// `false` (consistent with `f64::partial_cmp(NaN, NaN) == None`).
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -112,6 +117,11 @@ where
     /// **Type bound**: `A: OrderedCompareElement`, which is sealed to
     /// `i32` / `i64` / `f32` / `f64`. Complex and bool tensors are
     /// excluded at compile time (see `03-element.md §5.5`).
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn less<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -127,6 +137,11 @@ where
     /// Element-wise less-or-equal comparison.
     /// Single broadcast traversal: combines `<` and `==` at each lane
     /// per 11-math §5.8 line 425, avoiding intermediate bool tensors.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn less_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -148,6 +163,13 @@ where
     A: OrderedCompareElement,
 {
     /// Element-wise less-than comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
     pub fn less_scalar(&self, scalar: A) -> Tensor<bool, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.less(&other)

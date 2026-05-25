@@ -284,6 +284,11 @@ where
     /// W16T11 Step 7: integer types (i32/i64) retain `apply_binary_indexed`
     /// for §10 `element_index` panic diagnostics. Float/complex types route
     /// through `apply_arith_with_dispatch` to access SIMD + parallel paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn add<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -378,6 +383,11 @@ where
     }
 
     /// Element-wise division with broadcast.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn div<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -437,6 +447,14 @@ where
     }
 
     /// Element-wise tensor - scalar.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Tensor::<A, Ix0>::from_scalar(scalar)` fails, or if the
+    /// subsequent `self.sub(&other)` broadcast fails. Neither is reachable in
+    /// practice: `from_scalar` cannot fail for valid `Element` types, and the
+    /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
+    /// compatibility.
     pub fn sub_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.sub(&other)
@@ -444,6 +462,14 @@ where
     }
 
     /// Element-wise tensor * scalar.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Tensor::<A, Ix0>::from_scalar(scalar)` fails, or if the
+    /// subsequent `self.mul(&other)` broadcast fails. Neither is reachable in
+    /// practice: `from_scalar` cannot fail for valid `Element` types, and the
+    /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
+    /// compatibility.
     pub fn mul_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.mul(&other)

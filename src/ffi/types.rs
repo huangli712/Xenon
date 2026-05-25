@@ -88,6 +88,13 @@ impl<A> BlasInfo<A> {
     /// `target_width_bits` is filled with the bit width of `I` so that the
     /// structured `FfiErrorCategory::IntegerOverflow` payload accurately
     /// identifies which backend integer type was unable to represent `value`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::Ffi` with
+    /// `FfiErrorCategory::IntegerOverflow { value, target_width_bits }` when
+    /// `value` does not fit in the backend integer type `I` (i.e.
+    /// `I::try_from(value)` fails).
     pub fn as_blas_int<I>(value: usize) -> Result<I, XenonError>
     where
         I: TryFrom<usize>,
