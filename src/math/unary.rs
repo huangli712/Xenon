@@ -498,6 +498,12 @@ where
     /// between Serial and SIMD (both fall to scalar — W14 has no bool
     /// SIMD kernel), with Parallel path deferred to a future wave when
     /// the `par_map` API is finalized.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Tensor::zeros(self.raw_dim())` fails. This cannot happen
+    /// because `self.raw_dim()` originates from a valid `TensorBase` whose
+    /// shape was already validated at construction.
     pub fn not(&self) -> Tensor<bool, D> {
         let len = self.len();
         let is_contiguous = self.is_f_contiguous();

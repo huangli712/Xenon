@@ -53,6 +53,14 @@ impl ParallelExecStrategy {
     /// Construct a validated strategy. Performs ALL field-level
     /// validation per 30-dispatch.md §5.3 so that the parallel/
     /// backend can consume the value without re-validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `XenonError` from `dispatch_invalid_argument` when:
+    /// - `chunk_size == Some(0)` — chunk size must be non-zero
+    /// - `max_workers == Some(0)` — worker count must be non-zero
+    /// - `max_workers == Some(n)` with `n > rayon::current_num_threads()` —
+    ///   worker count must not exceed the rayon pool size
     pub fn new(
         chunk_size: Option<usize>,
         max_workers: Option<usize>,

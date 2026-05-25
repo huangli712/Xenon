@@ -312,6 +312,11 @@ where
     }
 
     /// Element-wise subtraction with broadcast.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn sub<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -340,6 +345,11 @@ where
     }
 
     /// Element-wise multiplication with broadcast.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn mul<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -409,6 +419,14 @@ where
     A: BinaryArith,
 {
     /// Element-wise tensor + scalar.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Tensor::<A, Ix0>::from_scalar(scalar)` fails, or if the
+    /// subsequent `self.add(&other)` broadcast fails. Neither is reachable in
+    /// practice: `from_scalar` cannot fail for valid `Element` types, and the
+    /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
+    /// compatibility.
     pub fn add_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar)
             .expect("from_scalar never fails for valid element types");
@@ -433,6 +451,14 @@ where
     }
 
     /// Element-wise tensor / scalar.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Tensor::<A, Ix0>::from_scalar(scalar)` fails, or if the
+    /// subsequent `self.div(&other)` broadcast fails. Neither is reachable in
+    /// practice: `from_scalar` cannot fail for valid `Element` types, and the
+    /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
+    /// compatibility.
     pub fn div_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.div(&other)

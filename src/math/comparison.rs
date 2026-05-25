@@ -155,6 +155,13 @@ where
     }
 
     /// Element-wise less-or-equal comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
     pub fn less_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.less_equal(&other)
@@ -173,6 +180,11 @@ where
     A: OrderedCompareElement,
 {
     /// Element-wise greater-than comparison.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn greater<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -214,6 +226,13 @@ where
     A: OrderedCompareElement,
 {
     /// Element-wise greater-than comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
     pub fn greater_scalar(&self, scalar: A) -> Tensor<bool, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.greater(&other)
@@ -221,6 +240,13 @@ where
     }
 
     /// Element-wise greater-or-equal comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
     pub fn greater_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.greater_equal(&other)

@@ -65,6 +65,12 @@ impl<'a> WorkspaceBorrow<'a> {
     /// Takes `&mut self` for the same mutual-exclusion reason as
     /// `as_maybe_uninit_slice`.
     ///
+    /// # Errors
+    ///
+    /// Returns [`XenonError::Workspace`] with
+    /// [`WorkspaceErrorCategory::SplitOutOfBounds`] if `initialized_len`
+    /// exceeds the borrow length.
+    ///
     /// # Safety
     ///
     /// The caller must guarantee that the first `initialized_len` bytes have
