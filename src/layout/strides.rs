@@ -50,8 +50,11 @@ impl<D: Dimension> Strides<D> {
 
     /// Returns the stride for dimension `axis`.
     ///
-    /// Returns `XenonError::IndexOutOfBounds` if `axis >= self.as_slice().len()`.
     /// See `06-layout §5.5`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::IndexOutOfBounds` if `axis >= self.as_slice().len()`.
     pub fn try_stride(&self, axis: usize) -> Result<usize, XenonError> {
         let strides = self.as_slice();
         strides
@@ -81,6 +84,8 @@ impl<D: Dimension> Strides<D> {
 /// strides[0] = 1;
 /// for i in 1..N: strides[i] = strides[i-1].checked_mul(shape[i-1])?
 /// ```
+///
+/// # Errors
 ///
 /// Returns `XenonError::InvalidShape { kind: ProductOverflow, .. }` if the
 /// cumulative product overflows `usize`. The error is recoverable; this

@@ -27,6 +27,14 @@ where
     /// Create an n×n identity matrix.
     ///
     /// Diagonal elements are 1, all others are 0. F-order layout.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `Self::zeros([n, n])`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `n * n`
+    ///   (or its byte size) overflows `usize` / `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested zero-filled aligned buffer.
     pub fn eye(n: usize) -> Result<Self, XenonError> {
         let mut result = Self::zeros([n, n])?;
         for i in 0..n {

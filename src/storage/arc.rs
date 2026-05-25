@@ -43,6 +43,14 @@ impl<A> ArcRepr<A> {
     }
 
     /// Constructs shared storage from a `Vec`, copying into an aligned buffer.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `AlignedBuf::from_vec`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `data.len() *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested aligned buffer.
     pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
@@ -52,6 +60,14 @@ impl<A> ArcRepr<A> {
     }
 
     /// Core implementation of `from_vec` with explicit alignment copy.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `AlignedBuf::from_vec_aligned`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `data.len() *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested aligned buffer.
     pub fn from_vec_aligned(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
