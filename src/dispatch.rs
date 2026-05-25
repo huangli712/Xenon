@@ -344,10 +344,6 @@ fn is_in_parallel() -> bool {
 /// Does NOT construct or consume `ParallelGuard`. Saves/restores the
 /// previous TLS value (panic-safe via inner `Reset` RAII).
 #[cfg(feature = "parallel")]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
 pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
     IN_PARALLEL.with(|flag| {
         let previous = flag.replace(true);

@@ -78,6 +78,13 @@ impl IxDyn {
     }
 
     /// Identity conversion. Always succeeds (no rank check needed).
+    ///
+    /// # Errors
+    ///
+    /// Infallible: always returns `Ok(dyn_dim)`. The `Result` return type
+    /// matches the signature of `IxN::try_from_dyn` (Ix0..Ix6) so generic
+    /// callers can use a single uniform conversion API across all dimension
+    /// types.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         Ok(dyn_dim)
