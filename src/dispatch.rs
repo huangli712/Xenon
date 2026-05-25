@@ -151,11 +151,13 @@ fn get_simd_threshold() -> usize {
 ///
 /// Setting `threshold = 0` disables the parallel path entirely
 /// (sentinel per 30-dispatch.md §5.6 line 494-499).
+#[cfg(any(test, feature = "parallel"))]
 pub fn set_parallel_threshold(threshold: usize) {
     PARALLEL_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Reset the parallel threshold to its compile-time default.
+#[cfg(any(test, feature = "parallel"))]
 pub fn reset_parallel_threshold() {
     set_parallel_threshold(DEFAULT_PARALLEL_THRESHOLD);
 }
@@ -255,15 +257,6 @@ pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
     len >= effective
 }
 
-#[cfg(not(feature = "parallel"))]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
-    false
-}
-
 // ---------------------------------------------------------------------------
 // ParallelGuard — nested-parallel guard (feature-gated)
 // ---------------------------------------------------------------------------
@@ -359,16 +352,6 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
         let _reset = Reset(flag, previous);
         f()
     })
-}
-
-/// No-op passthrough when parallel feature is disabled.
-#[cfg(not(feature = "parallel"))]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
-    f()
 }
 
 #[cfg(test)]

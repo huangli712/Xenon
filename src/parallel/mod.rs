@@ -57,6 +57,7 @@ pub(crate) mod reduce;
 /// - `total == 0`        → returns 1 (dummy; no work will be scheduled).
 /// - `total <= workers`  → returns 1 (one element per worker; rest idle).
 /// - otherwise           → max(ceil_div(total, workers*4), MIN_CHUNK).
+#[cfg_attr(not(feature = "parallel"), allow(dead_code))]
 pub(crate) fn compute_safe_chunks(total: usize, num_workers: usize) -> usize {
     const MIN_CHUNK: usize = 1024;
     const TARGET_CHUNKS_PER_WORKER: usize = 4;

@@ -580,7 +580,6 @@ where
                 crate::parallel::map::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
-            #[expect(unused_variables, reason = "guard is used only with parallel feature")]
             {
                 let _ = guard;
                 apply_binary_scalar(&a_view, &b_view, op)
