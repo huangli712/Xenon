@@ -91,12 +91,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.name }}
+      # `--tests` covers all integration test targets in tests/,
+      # including property_tests.rs and tests/property/.
       - name: Run lib + integration tests
         run: cargo test --lib --tests ${{ matrix.args }} -- --nocapture
       - name: Run doc tests
         run: cargo test --doc ${{ matrix.args }}
-      - name: Run property tests
-        run: cargo test --test property_tests ${{ matrix.args }}
 
   # ── Compile-fail harness ──────────────────────────────────────
   compile-fail:

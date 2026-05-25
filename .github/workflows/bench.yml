@@ -47,7 +47,7 @@ jobs:
           cargo bench --bench parallel --features parallel -- "par_add_compare" --quick
 
   bench-regression:
-    if: inputs.level == 'regression'
+    if: github.event_name == 'workflow_dispatch' && inputs.level == 'regression'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
         run: tools/report/target/release/bench-report --input target/bench-smoke.txt --baseline tools/bench/baseline.json
 
   bench-full:
-    if: inputs.level == 'full'
+    if: github.event_name == 'workflow_dispatch' && inputs.level == 'full'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
