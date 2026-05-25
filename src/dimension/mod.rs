@@ -128,8 +128,12 @@ pub trait RemoveAxis: Dimension + Sealed {
 
     /// Remove the axis at the given index.
     ///
-    /// Returns `(Smaller_dim, removed_axis_len)` on success,
-    /// or `XenonError::InvalidAxis` when `axis >= ndim`.
+    /// Returns `(Smaller_dim, removed_axis_len)` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidAxis` when `axis.0 >= self.ndim()`.
+    /// For `Ix0` (rank 0), every `axis` is invalid so this always errors.
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError>;
 }
 // Public re-exports — the canonical access path for dimension types.

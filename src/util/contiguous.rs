@@ -20,6 +20,14 @@ where
     /// Ensure the tensor's data is stored contiguously in canonical F-order
     /// (`20-utility §5.5`). Always returns a fresh owned tensor; the input
     /// borrow is never aliased into the result.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: on the repack path, `Iter` is an
+    /// `ExactSizeIterator` whose `len()` equals `product(shape)`, which is
+    /// exactly what `from_shape_vec` requires (see `10-iterator §5.5`,
+    /// `18-construction §5.6`). A mismatch would indicate an iterator-contract
+    /// bug elsewhere in the crate.
     pub fn to_contiguous(&self) -> Tensor<A, D> {
         if self.is_f_contiguous() {
             // Fast path: `to_owned()` is contracted to return a canonical
