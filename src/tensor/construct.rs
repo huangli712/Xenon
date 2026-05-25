@@ -351,6 +351,14 @@ where
     /// - `data.as_ptr()` remains valid for construction.
     /// - `shape.checked_size()` was previously validated (no overflow).
     /// - `data.len() == shape.checked_size()` — mismatch is undefined behaviour.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `compute_f_strides(&shape)` returns an error (shape product
+    /// overflow), or if `Owned::from_vec(data)` returns an error (allocation
+    /// failure or byte-size overflow). Both are unreachable when the caller
+    /// upholds the `# Safety` precondition that `shape.checked_size()` was
+    /// previously validated.
     pub unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
         let strides = crate::layout::compute_f_strides(&shape).expect("caller-proved valid shape");
         let storage = Owned::from_vec(data).expect("caller-proved valid vec");
