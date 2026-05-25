@@ -73,6 +73,12 @@ where
     /// Fallible fill (`20-utility §5.2`, secondary entry on Owned).
     ///
     /// §5.3 dispatch arm: Owned → `iter_mut()` write path.
+    ///
+    /// # Errors
+    ///
+    /// Infallible: always returns `Ok(())`. The `Result` return type exists for
+    /// API uniformity with the read-only `ViewRepr` / `ArcRepr` variants of
+    /// `try_fill`, which return `XenonError::InvalidStorageMode`.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
@@ -94,6 +100,12 @@ where
     /// Fallible fill (`20-utility §5.2`, secondary entry on ViewMut).
     ///
     /// §5.3 dispatch arm: ViewMut → `iter_mut()` write path.
+    ///
+    /// # Errors
+    ///
+    /// Infallible: always returns `Ok(())`. The `Result` return type exists for
+    /// API uniformity with the read-only `ViewRepr` / `ArcRepr` variants of
+    /// `try_fill`, which return `XenonError::InvalidStorageMode`.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
@@ -119,6 +131,12 @@ where
     /// `SharedReadOnly` ViewRepr cases (derived_from_view_mut and zero-stride
     /// broadcast — see W8T4 `access_semantics()`): both collapse to the
     /// same `InvalidStorageMode` outcome here.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `XenonError::InvalidStorageMode` with
+    /// `storage_kind: StorageKindTag::View` — a `View` (read-only) tensor
+    /// cannot be mutated through `try_fill`.
     pub fn try_fill(&mut self, _value: A) -> Result<(), XenonError> {
         Err(fill_try_read_only_err(StorageKindTag::View))
     }
@@ -133,6 +151,12 @@ where
     /// Fallible fill (`20-utility §5.2`, secondary entry on Arc).
     ///
     /// §5.3 dispatch arm: Shared (read-only) → `InvalidStorageMode`.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `XenonError::InvalidStorageMode` with
+    /// `storage_kind: StorageKindTag::Shared` — an `ArcRepr` (shared,
+    /// read-only) tensor cannot be mutated through `try_fill`.
     pub fn try_fill(&mut self, _value: A) -> Result<(), XenonError> {
         Err(fill_try_read_only_err(StorageKindTag::Shared))
     }

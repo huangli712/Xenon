@@ -56,7 +56,12 @@ where
         IndexedIter::new(Iter::new(self.as_view()), &shape)
     }
 
-    /// Axis iterator. Returns `XenonError::InvalidAxis` for out-of-range axes.
+    /// Axis iterator.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidAxis` if `axis` is out of range for the
+    /// tensor's dimensionality.
     pub fn axis_iter(&self, axis: Axis) -> Result<AxisIter<'_, A, D>, XenonError>
     where
         D: RemoveAxis,
@@ -99,6 +104,11 @@ where
     }
 
     /// Mutable axis iterator. Same error semantics as `axis_iter`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidAxis` if `axis` is out of range for the
+    /// tensor's dimensionality.
     pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>
     where
         D: RemoveAxis,

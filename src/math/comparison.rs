@@ -64,6 +64,11 @@ where
 
     /// Element-wise inequality comparison.
     /// `not_equal(NaN, NaN)` is element-wise `true` per IEEE 754.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn not_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,

@@ -16,7 +16,9 @@ where
     /// Canonical safe read entry point — accepts any `NdIndex<D>` (tuples,
     /// `&[usize]` for `D == IxDyn`).
     ///
-    /// Errors as per `17-indexing §5.2`:
+    /// # Errors
+    ///
+    /// Per `17-indexing §5.2`:
     /// - rank mismatch → `XenonError::DimensionMismatch`
     /// - per-axis out of bounds → `XenonError::IndexOutOfBounds`
     /// - offset arithmetic overflow → `XenonError::InvalidLayout`
@@ -31,6 +33,14 @@ where
 
     /// Convenience wrapper accepting `&[usize]`. Independent of `try_at`'s
     /// trait dispatch path — see `17-indexing §5.2` line 280 for rationale.
+    ///
+    /// # Errors
+    ///
+    /// Per `17-indexing §5.2`:
+    /// - rank mismatch (`index.len() != self.ndim()`) → `XenonError::DimensionMismatch`
+    /// - per-axis out of bounds (`index[i] >= shape[i]`) → `XenonError::IndexOutOfBounds`
+    /// - `strides[i] * index[i]` or the accumulator overflows `usize`
+    ///   → `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }`
     pub fn get(&self, index: &[usize]) -> Result<&A> {
         let shape = self.shape();
         let strides = self.strides();
