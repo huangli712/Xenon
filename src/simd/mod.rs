@@ -45,42 +45,17 @@ pub(crate) fn get_arch() -> &'static Arch {
 /// `f32`, `f64`, `i32`, `i64`, `Complex<f32>`, `Complex<f64>`.
 ///
 /// `Sealed` prevents downstream crates from adding new implementations.
-pub(crate) trait SimdElement: Sealed + Copy + Clone + Send + Sync + 'static {
-    /// Size of a single scalar element in bytes.
-    const SIZE: usize;
-    /// Required alignment of a single scalar element in bytes.
-    const ALIGN: usize;
-}
+/// Use `core::mem::size_of::<A>()` / `core::mem::align_of::<A>()` for
+/// per-type size/alignment metadata — the compiler exposes the same values
+/// without requiring trait-level redeclaration.
+pub(crate) trait SimdElement: Sealed + Copy + Clone + Send + Sync + 'static {}
 
-impl SimdElement for f32 {
-    const SIZE: usize = 4;
-    const ALIGN: usize = 4;
-}
-
-impl SimdElement for f64 {
-    const SIZE: usize = 8;
-    const ALIGN: usize = 8;
-}
-
-impl SimdElement for i32 {
-    const SIZE: usize = 4;
-    const ALIGN: usize = 4;
-}
-
-impl SimdElement for i64 {
-    const SIZE: usize = 8;
-    const ALIGN: usize = 8;
-}
-
-impl SimdElement for Complex<f32> {
-    const SIZE: usize = 8; // two f32 fields
-    const ALIGN: usize = 4; // aligns to f32
-}
-
-impl SimdElement for Complex<f64> {
-    const SIZE: usize = 16; // two f64 fields
-    const ALIGN: usize = 8; // aligns to f64
-}
+impl SimdElement for f32 {}
+impl SimdElement for f64 {}
+impl SimdElement for i32 {}
+impl SimdElement for i64 {}
+impl SimdElement for Complex<f32> {}
+impl SimdElement for Complex<f64> {}
 
 // ---------------------------------------------------------------------------
 // SimdKernel trait

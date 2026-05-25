@@ -45,9 +45,8 @@ fn bench_broadcast_col(quick: bool) {
     }
 }
 
-fn bench_broadcast_with(quick: bool) {
-    // 27-benchmark §5.5: broadcast_with — dual-tensor broadcast cooperation.
-    // broadcast_with() is pub(crate); bench triggers it indirectly via
+fn bench_dual_broadcast_add(quick: bool) {
+    // 27-benchmark §5.5: dual-tensor broadcast cooperation via
     // `row.add(&col)` on mutually-broadcastable shapes.
     for &(rows, cols) in SIZES_2D {
         // Row vector [1, cols] + column vector [rows, 1] → mutually broadcastable.
@@ -66,7 +65,7 @@ fn bench_broadcast_with(quick: bool) {
                 row.add(&col).expect("mutually-broadcastable add must succeed"),
             );
         });
-        println!("broadcast_with/{rows}x{cols}: {median} ns");
+        println!("dual_broadcast_add/{rows}x{cols}: {median} ns");
     }
 }
 
@@ -83,7 +82,7 @@ fn main() {
         ("broadcast_scalar", bench_broadcast_scalar),
         ("broadcast_row", bench_broadcast_row),
         ("broadcast_col", bench_broadcast_col),
-        ("broadcast_with", bench_broadcast_with),
+        ("dual_broadcast_add", bench_dual_broadcast_add),
     ];
 
     for &(name, func) in benches {

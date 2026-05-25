@@ -6,7 +6,6 @@
 //! - `broadcast_strides(orig_shape, orig_strides, target_shape) -> Result<Vec<usize>, XenonError>`
 //! - `TensorBase::broadcast_to<E: IntoDimension>(&self, shape: E)`
 //!   — inherent method on `TensorBase`, defined in `view.rs`; visible via `TensorBase`.
-//! - `broadcast_with(a, b)` — `pub(crate)` dual-input entry consumed by `math` / `overload`.
 
 mod shape;
 mod view;

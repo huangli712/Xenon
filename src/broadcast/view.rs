@@ -1,4 +1,4 @@
-use crate::dimension::{BroadcastDim, Dimension, IntoDimension};
+use crate::dimension::{Dimension, IntoDimension};
 use crate::element::Element;
 use crate::error::XenonError;
 use crate::layout::{Strides, compute_layout_flags};
@@ -145,139 +145,6 @@ where
     }
 }
 
-/// Alias for the pair of broadcast views returned by `broadcast_with`.
-type BroadcastPair<'a, A, D, E> = (
-    TensorView<'a, A, <D as BroadcastDim<E>>::Output>,
-    TensorView<'a, A, <D as BroadcastDim<E>>::Output>,
-);
-
-/// Dual-input broadcast. Internal entry consumed by `math` / `overload`. See
-/// `15-broadcast.md §5.1` line 134-148 and §5.2 line 170.
-///
-/// The bidirectional `BroadcastDim` bound (D: BroadcastDim<E> and E: BroadcastDim<D,
-/// Output = ...>) is satisfiable for every `(D, E) ∈ {Ix0..Ix6, IxDyn}` per
-/// 02-dimension §5.10 line 703 symmetry guarantee.
-pub(crate) fn broadcast_with<'a, A, S1, D, S2, E>(
-    a: &'a TensorBase<S1, D>,
-    b: &'a TensorBase<S2, E>,
-) -> Result<BroadcastPair<'a, A, D, E>, XenonError>
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    A: Element,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    use crate::broadcast::shape::broadcast_shape;
-
-    // §5.2 line 170: compute the common shape; on incompatibility, propagate the
-    // structured `BroadcastError` from `broadcast_shape` (which fills lhs_shape,
-    // rhs_shape; attempted_target_shape = None for the pure shape-derivation path).
-    let out_dyn = broadcast_shape(a.shape(), b.shape())?;
-
-    // Convert IxDyn → <D as BroadcastDim<E>>::Output. By 02-dimension §5.10's
-    // 57-impl matrix and the bidirectional bound, the result rank equals
-    // `max(D::NDIM, E::NDIM)` (or IxDyn when either side is IxDyn), and
-    // `try_from_slice` succeeds unconditionally on the broadcast-derived shape.
-    type Out<D, E> = <D as BroadcastDim<E>>::Output;
-    let out_dim: Out<D, E> = Out::<D, E>::try_from_slice(out_dyn.slice())?;
-
-    // Build the two broadcast views directly via the shape-level primitives,
-    // bypassing `broadcast_to<E: IntoDimension>` to avoid the IxDyn round-trip
-    // that would erase the static output dimension type.
-    let left = broadcast_to_output_dim::<A, S1, D, Out<D, E>>(a, &out_dim)?;
-    let right = broadcast_to_output_dim::<A, S2, E, Out<D, E>>(b, &out_dim)?;
-    Ok((left, right))
-}
-
-/// Helper: broadcast a single tensor to a pre-computed output dimension that is
-/// already known to be compatible. Mirrors `TensorBase::broadcast_to` but takes
-/// the target dimension by reference (no `IntoDimension` re-conversion) and
-/// returns the view with the caller-chosen target dimension type.
-///
-/// This is a `fn`-level helper (not an inherent method) so it can be shared by
-/// both inputs in `broadcast_with` without re-deriving the target dim.
-fn broadcast_to_output_dim<'a, A, S, D, Out>(
-    src: &'a TensorBase<S, D>,
-    out_dim: &Out,
-) -> Result<TensorView<'a, A, Out>, XenonError>
-where
-    S: Storage<Elem = A>,
-    A: Element,
-    D: Dimension,
-    Out: Dimension,
-{
-    use crate::broadcast::shape::broadcast_strides;
-    use crate::layout::{Strides, compute_layout_flags};
-    use crate::storage::ViewRepr;
-
-    let strides_vec = broadcast_strides(src.shape(), src.strides(), out_dim.slice())?;
-    // Strides::from_slice is the rank-checked entry (06-layout §5.5 line 333-335).
-    // NOTE: `Strides<D>` exposes `from_slice`, NOT `try_from_slice`; the latter
-    // is a `Dimension` trait method (02-dimension §5.1 line 148), used above to
-    // convert `IxDyn` → `Out`, but not available on `Strides<D>`.
-    let strides = Strides::<Out>::from_slice(&strides_vec)?;
-
-    // Path Y view assembly (per W11T8 design decision; do NOT use
-    // `TensorView::from_raw_parts` — its `ptr` arg is documented as the storage
-    // base pointer (07-tensor.md §5.1 line 202, §5.7 line 752), while
-    // `src.as_ptr()` returns the logical-first pointer (line 1198), so the
-    // constructor's internal `ptr.add(offset)` would double-apply the offset
-    // → UB. `from_raw_parts` also unconditionally sets
-    // `derived_from_view_mut := false` (line 183-186), losing the ViewMut
-    // demotion propagation. The canonical pub(crate) entry
-    // `TensorBase::new_unchecked` avoids both issues.
-    //
-    // Step 1: compute result-view layout flags. `ptr` here is the logical-first
-    // pointer the RESULT view will expose. `broadcast_to_output_dim` preserves
-    // `src.offset()`, so result and source share the same logical-first pointer
-    // (07-tensor.md line 1198). `compute_layout_flags` is the single source of
-    // truth per 06-layout §5.5 line 233.
-    let flags = compute_layout_flags::<A, Out>(out_dim, &strides, src.as_ptr());
-
-    // Step 2: build `ViewRepr<'a, A>` from storage base + storage_len.
-    // SAFETY (`ViewRepr::from_raw_parts`, W7T14):
-    //   - `src.as_storage_ptr()` is non-null & aligned (07-tensor.md §5 line
-    //     465-476: returns `storage.as_ptr()` WITHOUT adding offset).
-    //   - `[base, base + storage_len)` lies inside a single allocation; every
-    //     element in that range is an initialized `A` value.
-    //   - `ViewRepr` lifetime bound to `&'a self`; no overlapping mutable
-    //     alias is alive during `'a`.
-    //   - Empty-storage case: dangling sentinel, never dereferenced.
-    let view_storage: ViewRepr<'a, A> =
-        unsafe { ViewRepr::from_raw_parts(src.as_storage_ptr(), src.storage_len()) };
-
-    // Step 3: finalize via `TensorBase::new_unchecked` — the canonical
-    // pub(crate) unsafe constructor (07-tensor.md §5.6 line 674-730).
-    //
-    // SAFETY (`TensorBase::new_unchecked`, 07-tensor.md §5.6 line 692-715):
-    //   - `out_dim` + `strides` + `src.offset()`: shape & strides validated
-    //     by `broadcast_strides`; the broadcast layout's logical access range
-    //     fits inside `src.storage_len()` (zero-stride/repeat axes do not
-    //     widen the access range).
-    //   - `flags` was produced by `compute_layout_flags` (Step 1) on the
-    //     same `(out_dim, strides, src.as_ptr())` triple the result view
-    //     will expose.
-    //   - `derived_from_view_mut` is forwarded from source per 07-tensor.md
-    //     §5.6 line 707-713 propagation rule.
-    //   - Layout family valid for an immutable view: zero-stride broadcast
-    //     layouts are explicitly accepted on read-only paths (07-tensor.md
-    //     §5.7 line 775-777). We use the immutable canonical entry, so
-    //     aliasing rules are not violated.
-    let view: TensorView<'a, A, Out> = unsafe {
-        TensorBase::<ViewRepr<'a, A>, Out>::new_unchecked(
-            view_storage,
-            out_dim.clone(),
-            strides,
-            src.offset(),
-            flags,
-            src.derived_from_view_mut,
-        )
-    };
-
-    Ok(view)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,16 +157,6 @@ mod tests {
     #[allow(dead_code)]
     fn _check_broadcast_to_sig(t: &Tensor2<f64>) -> Result<TensorView<'_, f64, Ix2>, XenonError> {
         t.broadcast_to([2usize, 3])
-    }
-
-    /// Compile-time check: bidirectional `BroadcastDim` bound is satisfiable for
-    /// same-rank `(Ix2, Ix2)`.
-    #[allow(dead_code)]
-    fn _check_broadcast_with_sig<'a>(
-        a: &'a Tensor2<f64>,
-        b: &'a Tensor2<f64>,
-    ) -> Result<BroadcastPair<'a, f64, Ix2, Ix2>, XenonError> {
-        broadcast_with(a, b)
     }
 
     // --- W11T7 tests ---
@@ -387,68 +244,8 @@ mod tests {
         assert_eq!(n, 6);
     }
 
-    // --- W11T9 tests ---
-
-    /// §8.2 `test_broadcast_with_same_shape`: when input shapes already match,
-    /// both result views share the same target shape; if the second input has
-    /// a `1` axis, the corresponding stride is 0.
-    #[test]
-    fn test_broadcast_with_same_shape() {
-        let a: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
-        let b: Tensor2<f64> = Tensor2::ones([1, 3]).expect("valid test input");
-        let (left, right) = broadcast_with(&a, &b).expect("valid test input");
-        assert_eq!(left.shape(), &[2, 3]);
-        assert_eq!(right.shape(), &[2, 3]);
-        // `a` already matches the output shape → no zero stride introduced.
-        assert!(left.strides().iter().all(|&s| s != 0));
-        // `b` had axis 0 = 1 → broadcast axis with stride 0.
-        assert_eq!(right.strides()[0], 0);
-        // Zero-copy: pointers unchanged.
-        assert_eq!(left.as_ptr(), a.as_ptr());
-        assert_eq!(right.as_ptr(), b.as_ptr());
-    }
-
-    /// §7 Wave 3 T7: scalar/low-rank vs higher-rank inputs.
-    #[test]
-    fn test_broadcast_scalar_and_tensor() {
-        let scalar: Tensor2<f64> =
-            Tensor2::from_shape_vec([1, 1], vec![5.0]).expect("valid test input");
-        let tensor: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
-        let (left, right) = broadcast_with(&scalar, &tensor).expect("valid test input");
-        assert_eq!(left.shape(), &[2, 3]);
-        assert_eq!(right.shape(), &[2, 3]);
-        // Scalar's both axes are broadcast.
-        assert_eq!(left.strides(), &[0, 0]);
-    }
-
-    /// §7 Wave 3 T7 / §8.2: incompatible shapes propagate `BroadcastError`.
-    #[test]
-    fn test_broadcast_with_incompatible_shapes() {
-        let a: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
-        let b: Tensor2<f64> = Tensor2::zeros([4, 3]).expect("valid test input");
-        let err = broadcast_with(&a, &b).expect_err("expected error");
-        match err {
-            XenonError::BroadcastError {
-                operation,
-                lhs_shape,
-                rhs_shape,
-                ..
-            } => {
-                assert_eq!(operation.as_ref(), "broadcast_shape");
-                assert_eq!(lhs_shape, vec![2, 3]);
-                assert_eq!(rhs_shape, vec![4, 3]);
-            },
-            other => panic!("expected BroadcastError, got {:?}", other),
-        }
-    }
-
     #[test]
     fn test_broadcast_to_signature_compiles() {
         // Signature is verified at compile time by _check_broadcast_to_sig above.
-    }
-
-    #[test]
-    fn test_broadcast_with_bidirectional_bound_satisfiable() {
-        // Signature is verified at compile time by _check_broadcast_with_sig above.
     }
 }
