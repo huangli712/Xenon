@@ -317,6 +317,14 @@ impl Workspace {
     /// Takes `&mut self`: compile-time exclusivity makes "exclusive borrow
     /// while another guard exists" a static type error. The internal
     /// `AtomicU8` CAS still runs as defense-in-depth.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`XenonError::Workspace`] with
+    /// [`WorkspaceErrorCategory::BorrowConflict`] (`requested: Exclusive`) if
+    /// the internal `AtomicU8` CAS observes a non-`None` borrow state. In
+    /// practice this branch is unreachable while `&mut self` is held, but the
+    /// check remains as defense-in-depth.
     pub fn borrow_mut(&mut self) -> crate::error::Result<WorkspaceBorrowMut<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
