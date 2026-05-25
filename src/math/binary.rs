@@ -14,45 +14,6 @@ use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
 // ============================================================================
-// W16T2: Shared broadcast-aware binary traversal skeleton
-// ============================================================================
-
-/// Shared broadcast-aware binary traversal skeleton — per 11-math §6.2.
-///
-/// `O` may differ from `A`: arithmetic ops set `O = A`, comparison ops set
-/// `O = bool`. Broadcast is resolved before result allocation so shape
-/// incompatibility is reported via `XenonError::BroadcastError` without
-/// leaking a partially built tensor.
-///
-/// Visibility: `pub(in crate::math)` — consumed by `binary.rs` (W16T6),
-/// `comparison.rs` (W16T8 / W16T9 / W16T10).
-pub(in crate::math) fn apply_binary<A, O, S1, S2, D1, D2, F>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-    mut f: F,
-) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
-where
-    A: Element,
-    O: Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-    F: FnMut(A, A) -> O,
-{
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated the output shape");
-    let a_view = a.broadcast_to(out_dim.clone())?;
-    let b_view = b.broadcast_to(out_dim.clone())?;
-    let mut result = Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
-    for (dst, (a_val, b_val)) in result.iter_mut().zip(a_view.iter().zip(b_view.iter())) {
-        *dst = f(*a_val, *b_val);
-    }
-    Ok(result)
-}
-
-// ============================================================================
 // Private per-type dispatch trait for binary arithmetic
 // ============================================================================
 
@@ -233,7 +194,7 @@ impl_binary_complex!(crate::complex::Complex<f64>);
 /// propagated into the kernel closure — needed by integer panic diagnostics
 /// per 11-math §10.
 ///
-/// `O = A` for arithmetic; kept generic to mirror `apply_binary`'s shape.
+/// `O = A` for arithmetic; kept generic to support heterogeneous output type.
 fn apply_binary_indexed<A, O, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,

@@ -11,6 +11,17 @@ use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
 #[cfg(feature = "parallel")]
+#[allow(
+    dead_code,
+    reason = "W15T7 reserved API per 09-parallel.md §10 line 700 — checked \
+              parallel map with error/panic propagation. Implementation and \
+              tests are complete; no production caller yet (no operation \
+              currently needs a fallible element mapper). Kept under the \
+              W15 deliverable contract; remove this attribute when a caller \
+              is wired in. (`allow` rather than `expect` because dead_code \
+              only fires without `--tests`; test-mode use suppresses the \
+              lint, so `expect` would be unfulfilled.)"
+)]
 pub(crate) fn par_map_checked<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,

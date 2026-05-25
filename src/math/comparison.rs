@@ -8,28 +8,7 @@ use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-use super::binary::{apply_binary, apply_compare_with_dispatch};
-
-/// Shared broadcast comparison helper — per 11-math §5.8.
-///
-/// Uses `apply_binary` with `O = bool` (W16T2 supports heterogeneous
-/// output type), so the traversal produces `Tensor<bool, ...>`.
-/// Module-private — only `comparison.rs` consumers see this helper.
-fn apply_compare<S1, S2, D1, D2, A, F>(
-    left: &TensorBase<S1, D1>,
-    right: &TensorBase<S2, D2>,
-    compare: F,
-) -> Result<Tensor<bool, <D1 as BroadcastDim<D2>>::Output>, XenonError>
-where
-    A: Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-    F: FnMut(A, A) -> bool,
-{
-    apply_binary(left, right, compare)
-}
+use super::binary::apply_compare_with_dispatch;
 
 // ============================================================================
 // W16T8: equal / not_equal for Element + PartialEq types

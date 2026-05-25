@@ -45,8 +45,6 @@
 #[cfg(feature = "parallel")]
 pub(crate) mod checked;
 #[cfg(feature = "parallel")]
-pub(crate) mod iter;
-#[cfg(feature = "parallel")]
 pub(crate) mod map;
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;
