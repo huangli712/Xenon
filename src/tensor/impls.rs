@@ -74,6 +74,13 @@ where
     }
 
     /// Total logical element count = product of all axis lengths.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `shape.checked_size()` succeeds for every
+    /// tensor that has been constructed through the safe constructors, which
+    /// validate the axis-product fits in `usize` at construction time. A panic
+    /// here would indicate a violated construction-time invariant.
     pub fn len(&self) -> usize {
         self.shape.checked_size().expect("validated shape")
     }

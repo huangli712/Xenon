@@ -10,6 +10,16 @@ use crate::private::Sealed;
 /// Sealed trait for types that can be used as multi-dimensional indices.
 pub trait NdIndex<D: Dimension>: Sealed {
     /// Validates the index against `dim` and computes the linear offset via `strides`.
+    ///
+    /// # Errors
+    ///
+    /// Per `17-indexing §5.1`:
+    /// - rank mismatch (`self.to_index_vec().len() != dim.ndim()`)
+    ///   → `XenonError::DimensionMismatch`
+    /// - per-axis out of bounds (`index[i] >= dim[i]`)
+    ///   → `XenonError::IndexOutOfBounds`
+    /// - `strides[i] * index[i]` or the offset accumulator overflows `usize`
+    ///   → `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }`
     fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Result<usize>;
 
     /// Computes the linear offset without any validation.

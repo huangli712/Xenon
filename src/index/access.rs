@@ -130,6 +130,13 @@ where
     D: Dimension,
 {
     /// Mutable dual of `try_at`. Gated on `StorageMut`.
+    ///
+    /// # Errors
+    ///
+    /// Per `17-indexing §5.2`:
+    /// - rank mismatch → `XenonError::DimensionMismatch`
+    /// - per-axis out of bounds → `XenonError::IndexOutOfBounds`
+    /// - offset arithmetic overflow → `XenonError::InvalidLayout`
     pub fn try_at_mut<I>(&mut self, index: I) -> Result<&mut A>
     where
         I: NdIndex<D>,
@@ -140,6 +147,14 @@ where
     }
 
     /// Mutable dual of `get`. Independent of `try_at_mut` trait dispatch.
+    ///
+    /// # Errors
+    ///
+    /// Per `17-indexing §5.2`:
+    /// - rank mismatch (`index.len() != self.ndim()`) → `XenonError::DimensionMismatch`
+    /// - per-axis out of bounds (`index[i] >= shape[i]`) → `XenonError::IndexOutOfBounds`
+    /// - `strides[i] * index[i]` or the accumulator overflows `usize`
+    ///   → `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }`
     pub fn get_mut(&mut self, index: &[usize]) -> Result<&mut A> {
         let (shape, strides_vec, off) = {
             let shape = self.shape().to_vec();

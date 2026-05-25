@@ -306,6 +306,14 @@ impl<A> Owned<A> {
     }
 
     /// Creates owned storage filled with clones of `value`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `Self::with_capacity`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `len *
+    ///   size_of::<A>()` (with alignment slack) overflows `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying `AlignedAlloc` call
+    ///   could not provide the requested aligned buffer.
     pub fn from_elem(len: usize, value: A) -> Result<Self, XenonError>
     where
         A: Element + Clone,

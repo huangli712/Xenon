@@ -59,6 +59,13 @@ where
     /// Consume `self` and produce an owned, canonical F-order tensor
     /// (`20-utility §5.5`, §6.3). Reuses backing storage only when the input
     /// is already a canonical F-contiguous `Owned` tensor (predicate below).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `compute_f_strides(&dim)` fails. This cannot happen on the
+    /// reuse path because `is_canonical_f_contiguous_owned` already
+    /// established `is_f_contiguous()`, which implies the shape's element
+    /// count fits `usize` (a construction-time invariant of `TensorBase`).
     pub fn into_contiguous(self) -> Tensor<A, D> {
         if is_canonical_f_contiguous_owned(&self) {
             // O(1) reuse path: storage is moved out and layout metadata

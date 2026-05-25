@@ -55,6 +55,14 @@ where
 {
     /// Construct a 1-D tensor from `data`. Convenience wrapper around
     /// `from_shape_vec` with shape inferred as `[data.len()]`.
+    ///
+    /// # Errors
+    ///
+    /// Forwards `from_shape_vec` errors. Because the shape `[data.len()]` is
+    /// derived from `data` itself, `ElementCountMismatch` is unreachable; in
+    /// practice the only observable error is
+    /// `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }`
+    /// when `data.len()` overflows `usize` (impossible on 64-bit targets).
     pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError> {
         Self::from_shape_vec([data.len()], data)
     }

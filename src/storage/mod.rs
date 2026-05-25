@@ -264,6 +264,16 @@ pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
         Self::Elem: Clone;
 
     /// Constructs storage from a Vec.
+    ///
+    /// # Errors
+    ///
+    /// Returns `crate::error::XenonError` when the implementor cannot
+    /// allocate the backing buffer — typically:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` if
+    ///   `vec.len() * size_of::<Self::Elem>()` (with alignment slack)
+    ///   exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` if the underlying allocator
+    ///   cannot satisfy the request.
     fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, crate::error::XenonError>
     where
         Self::Elem: Copy;

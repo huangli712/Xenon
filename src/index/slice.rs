@@ -136,6 +136,19 @@ pub struct SliceInfo<I: Dimension, D: Dimension> {
 
 impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
     /// Constructs a `SliceInfo` with three structural checks.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidArgument` for any of:
+    /// - `InvalidArgumentKind::OperationSpecific` with constraint
+    ///   `"slice rank does not match input dimension"` — `indices.len()
+    ///   != in_dim.ndim()`.
+    /// - `InvalidArgumentKind::OperationSpecific` with constraint
+    ///   `"slice output rank does not match Range count"` — the number of
+    ///   `SliceInfoElem::Range` entries in `indices` does not equal
+    ///   `out_dim.ndim()`.
+    /// - `InvalidArgumentKind::RangeStartAfterEnd { axis, start, end }` —
+    ///   some `Range { start, end }` has `start > end`.
     pub fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self> {
         // Check 1: rank match.
         if indices.len() != in_dim.ndim() {

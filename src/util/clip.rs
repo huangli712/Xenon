@@ -54,6 +54,16 @@ where
     /// `uninit_like` / `iter_uninit_mut` / `assume_init` primitives land in
     /// a future wave, migrate to a single-pass MaybeUninit write per §5.1
     /// §5.1 / §6.1 algorithm sketch.
+    ///
+    /// # Errors
+    ///
+    /// - `XenonError::InvalidArgument` when bounds are invalid: either bound
+    ///   is `NaN`, or `min > max` (`20-utility §5.1` / §6.4). Validated before
+    ///   allocation.
+    /// - `XenonError::InvalidShape` propagated from `Tensor::from_shape_vec`
+    ///   when the shape's element count overflows `usize` (`ProductOverflow`).
+    ///   Unreachable in practice — `self` already holds a valid shape — but
+    ///   the failure mode is preserved by `?` for completeness.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is correct generic pattern"
