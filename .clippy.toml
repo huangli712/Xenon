@@ -1,12 +1,35 @@
 # .clippy.toml — Xenon Clippy lint configuration
 
-# Restrict `unwrap()` usage across the crate — require explicit error handling.
-# This is enforced via #![warn(clippy::unwrap_used)] in lib.rs.
-# Exceptions documented in safety sections of each module.
-# Numeric `as` cast lints are enabled by the local/CI clippy command; this file
-# must not define any global cast allow-list.
+# Restrict `unwrap()` and `transmute()` usage across the crate.
+# Enforced via #![warn(clippy::disallowed_methods)] in lib.rs.
+# Use `?` or explicit error handling instead of unwrap.
 
 disallowed-methods = [
     { path = "std::option::Option::unwrap", reason = "Use ? or explicit match" },
     { path = "std::result::Result::unwrap", reason = "Use ? or explicit match" },
+    { path = "std::mem::transmute", reason = "Use safe alternatives; if unavoidable, document unsafety" },
 ]
+
+# Numeric `as` cast lints are enabled by the local/CI clippy command; this file
+# must not define any global cast allow-list.
+
+# ── Thresholds ───────────────────────────────────────────────────────
+# Tensor types (e.g. `Tensor<T, D, S>`) are naturally complex.
+type-complexity-threshold = 400
+
+# Dimensional metadata (shapes, strides, axes) adds legitimate parameter count.
+too-many-arguments-threshold = 8
+
+# ── Test allowances ──────────────────────────────────────────────────
+# Tests use expect()/unwrap() for setup brevity — linted elsewhere.
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-dbg-in-tests = true
+
+# ── Documentation ────────────────────────────────────────────────────
+# Project-specific identifiers clippy should not flag as needing backticks.
+doc-valid-idents = ["BLAS", "SIMD", "NDArray", "LAPACK", ".."]
+
+# ── API safety ───────────────────────────────────────────────────────
+# Allow clippy to suggest public API changes (e.g. Vec<Box<T>> → Vec<T>).
+avoid-breaking-exported-api = false

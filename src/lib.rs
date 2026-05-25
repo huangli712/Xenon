@@ -63,7 +63,7 @@
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
 #![warn(unsafe_op_in_unsafe_fn)]
-#![warn(clippy::unwrap_used)]
+#![warn(clippy::disallowed_methods)]
 #![warn(rustdoc::missing_crate_level_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
