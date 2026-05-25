@@ -49,10 +49,6 @@
 /// [`offset`]: #structfield.offset
 /// [`flags`]: #structfield.flags
 /// [`derived_from_view_mut`]: #structfield.derived_from_view_mut
-#[expect(
-    missing_debug_implementations,
-    reason = "intentionally no Debug; see struct doc"
-)]
 pub struct TensorBase<S, D>
 where
     S: crate::storage::RawStorage,

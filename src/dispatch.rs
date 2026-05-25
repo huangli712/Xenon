@@ -283,6 +283,7 @@ pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 /// Under `feature = "parallel"`, the guard is `!Send + !Sync` because
 /// its `Drop` clears the **current** thread's TLS flag.
 #[cfg(feature = "parallel")]
+#[derive(Debug)]
 pub struct ParallelGuard {
     _private: core::marker::PhantomData<*const ()>,
 }
@@ -300,6 +301,7 @@ impl Drop for ParallelGuard {
 /// This keeps `(ExecPath, Option<ParallelGuard>)` `Send + Sync` in
 /// default builds where the option is always `None`.
 #[cfg(not(feature = "parallel"))]
+#[derive(Debug)]
 pub struct ParallelGuard {
     _private: core::marker::PhantomData<()>,
 }
