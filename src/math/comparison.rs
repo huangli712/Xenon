@@ -88,6 +88,13 @@ where
     ///
     /// **Type bound**: `A: Element + PartialEq`. Every element type
     /// implements equality; `bool` and `Complex` are also supported.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
     pub fn equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.equal(&other)
@@ -95,6 +102,13 @@ where
     }
 
     /// Element-wise not-equal comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
     pub fn not_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         self.not_equal(&other)

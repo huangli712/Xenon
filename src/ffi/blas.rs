@@ -59,6 +59,15 @@ where
     /// Backend integer width conversion is NOT performed here; use
     /// `BlasInfo::as_blas_int::<I>(value)` to convert any of the returned
     /// `usize` sizes to `i32` / `i64` etc.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::Ffi` (`backend: FfiBackend::Blas`) with:
+    /// - `FfiErrorCategory::InvalidRank { expected: 2, actual }` if the
+    ///   tensor is not 2-D.
+    /// - `FfiErrorCategory::BlasIncompatibleLayout { shape, strides }` if
+    ///   the tensor is not F-contiguous, has a zero stride, or has zero
+    ///   rows (`shape[0] == 0`, which would violate BLAS `lda >= max(1, rows)`).
     pub fn blas_info(&self) -> Result<BlasInfo<A>, XenonError> {
         // Gate 1: rank must be 2.
         if self.ndim() != 2 {
@@ -133,6 +142,15 @@ where
     /// - `Ok(usize)` — LDA of a BLAS-compatible 2D array.
     /// - `Err(XenonError::Ffi { .. })` — returned for non-BLAS-compatible
     ///   input, non-2D input, or zero-row matrices.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::Ffi` (`backend: FfiBackend::Blas`) with:
+    /// - `FfiErrorCategory::InvalidRank { expected: 2, actual }` if the
+    ///   tensor is not 2-D.
+    /// - `FfiErrorCategory::BlasIncompatibleLayout { shape, strides }` if
+    ///   the tensor is not F-contiguous, has a zero stride, or has zero
+    ///   rows (`shape[0] == 0`).
     pub fn lda(&self) -> Result<usize, XenonError> {
         if self.ndim() != 2 {
             return Err(XenonError::Ffi {

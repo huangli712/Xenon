@@ -96,6 +96,16 @@ where
     /// Converts a multi-dimensional index to a raw pointer to the
     /// corresponding element.
     ///
+    /// # Errors
+    ///
+    /// Propagates every error returned by [`try_offset_of`]:
+    /// - `XenonError::DimensionMismatch` if `index.len() != self.ndim()`.
+    /// - `XenonError::IndexOutOfBounds` if `index[i] >= shape[i]` for any axis.
+    /// - `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }` if
+    ///   `strides[i] * index[i]` or the accumulator overflows `usize`.
+    ///
+    /// [`try_offset_of`]: Self::try_offset_of
+    ///
     /// # Safety
     ///
     /// Returns a raw pointer; the caller is responsible for ensuring the
