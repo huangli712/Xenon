@@ -89,17 +89,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test ${{ matrix.args }} -- --nocapture
+      - name: Run lib + integration tests
+        run: cargo test --lib --tests ${{ matrix.args }} -- --nocapture
+      - name: Run doc tests
+        run: cargo test --doc ${{ matrix.args }}
+      - name: Run property tests
+        run: cargo test --test property_tests ${{ matrix.args }}
 
-  # ── Documentation build smoke check (W1T6 scope) ──────────────
-  # Boundary with W30T52:
-  #   * W1T6 docs job  = smoke check that `cargo doc` builds with -D warnings
-  #     across all features. Prevents broken rustdoc from landing on main
-  #     during Wave 2-29 development.
-  #   * W30T52 docs.yml = full docs.rs integration: missing-docs lint,
-  #     doctest execution, example compilation, and docs.rs preview build.
-  # These two jobs intentionally overlap on `cargo doc --no-deps` to
-  # provide an early gate (here) and a comprehensive gate (W30T52).
+  # ── Compile-fail harness ──────────────────────────────────────
+  compile-fail:
+    name: Compile-fail harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --test compile_fail_tests
+
+  # ── Source audit: std-only environment declarations ──────────
+  # Grep-level check that src/lib.rs, README.md, and examples/ contain
+  # no out-of-scope platform declarations (no_std, wasm, embedded, etc.)
+  # and that the std-only declaration is present in src/lib.rs.
+  audit:
+    name: Source audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: std env audit
+        run: |
+          set -euo pipefail
+          [ -f src/lib.rs ] || { echo 'Missing src/lib.rs'; exit 1; }
+          [ -f README.md ] || { echo 'Missing README.md'; exit 1; }
+          [ -d examples/ ] || { echo 'Missing examples/'; exit 1; }
+          if grep -rnPE 'no_std|nostd|\balloc(-only)?\b|wasm|webassembly|embedded|bare[-_. ]metal|freestanding' \
+                  src/lib.rs README.md examples/ ; then
+              echo '✗ Out-of-scope platform declarations remain'
+              exit 1
+          fi
+          grep -q 'Xenon supports only the .std. environment' src/lib.rs \
+              || { echo 'Missing std-only declaration in src/lib.rs'; exit 1; }
+          echo 'OK: std env audit gate passed'
+
+  # ── Documentation build smoke check ──────────────────────────
   docs:
     name: Docs (smoke)
     runs-on: ubuntu-latest

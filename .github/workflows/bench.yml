@@ -97,16 +97,12 @@ jobs:
           - { bench: construction,        features: "--features simd" }
           - { bench: construction,        features: "--features parallel" }
           - { bench: construction,        features: "--features simd,parallel" }
-          # simd × 4
+          # simd × 2 (only `simd` feature toggle matters for this comparison bench)
           - { bench: simd,                features: "" }
           - { bench: simd,                features: "--features simd" }
-          - { bench: simd,                features: "--features parallel" }
-          - { bench: simd,                features: "--features simd,parallel" }
-          # parallel × 4
+          # parallel × 2 (only `parallel` feature toggle matters for this comparison bench)
           - { bench: parallel,            features: "" }
-          - { bench: parallel,            features: "--features simd" }
           - { bench: parallel,            features: "--features parallel" }
-          - { bench: parallel,            features: "--features simd,parallel" }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
