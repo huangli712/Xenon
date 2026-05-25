@@ -30,6 +30,17 @@ use strides::should_set_zero_stride_flag;
 ///   zero strides. Empty-array degenerate zero strides (`product(shape) == 0`)
 ///   MUST be passed as `false` (their `F_CONTIGUOUS` bit is retained).
 #[inline]
+#[allow(
+    dead_code,
+    reason = "06-layout §5.2 fast-path API — canonical LayoutFlags constructor \
+              for already-validated F-order layouts. Pairs with the general \
+              `compute_layout_flags` (§5.12); no production caller currently \
+              chooses the fast path (all sites go through the general one). \
+              Implementation + tests are complete. (`allow` rather than \
+              `expect` because dead_code only fires without `--tests`; \
+              test-mode use suppresses the lint, so `expect` would be \
+              unfulfilled.)"
+)]
 pub(crate) const fn flags_for_f_layout(
     aligned: bool,
     is_broadcast_zero_stride: bool,
