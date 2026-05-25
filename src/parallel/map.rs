@@ -16,6 +16,12 @@ use crate::tensor::{Tensor, TensorBase};
 /// Parallel element-wise map.
 ///
 /// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
+///
+/// # Panics
+///
+/// Panics if `tensor` is not F-contiguous (i.e. `tensor.as_slice()` returns
+/// `None`). Callers must route non-contiguous / broadcast inputs to the
+/// Serial path via `dispatch::select_exec_path` before invoking `par_map`.
 #[cfg(feature = "parallel")]
 pub fn par_map<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,

@@ -84,6 +84,13 @@ where
 ///   either operand is not F-contiguous or carries a zero stride
 ///   (broadcast view).
 /// - [`XenonError::ShapeMismatch`] when `lhs` and `rhs` have different shapes.
+///
+/// # Panics
+///
+/// Does not panic in practice: the `as_slice().expect(...)` calls are
+/// guarded by the F-contiguous + non-broadcast checks above, which return
+/// `Err(InvalidArgument)` instead. The `expect` messages document the
+/// invariant for future refactors.
 #[cfg(feature = "parallel")]
 pub fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,
