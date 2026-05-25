@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      # 27-benchmark §5.6 Smoke Test: math.rs / reduction.rs / construction.rs
+      - uses: dtolnay/rust-toolchain@1.95
+      # Smoke test: math.rs / reduction.rs / construction.rs
       - name: Quick smoke — core benches
         run: |
           cargo bench --bench math -- "elem_add_f64" --quick
@@ -42,10 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      # 27-benchmark §6.4 baseline consumption: elem_add_f64 + sum_1d_f64 (Medium = 65536)
+      - uses: dtolnay/rust-toolchain@1.95
+      # Baseline consumption: elem_add_f64 + sum_1d_f64 (Medium = 65536)
       - name: Run regression benches and capture output
         run: |
+          mkdir -p target
           cargo bench --bench math -- "elem_add_f64" > target/bench-smoke.txt
           cargo bench --bench reduction -- "sum_1d_f64" >> target/bench-smoke.txt
       - name: Build bench-report
@@ -59,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 27-benchmark §5.6: Full Benchmark = all files × 4 feature combinations
+        # Full benchmark = all files × 4 feature combinations
         # (default / simd / parallel / simd+parallel)
         include:
           # math × 4
@@ -105,6 +106,6 @@ jobs:
           - { bench: parallel,            features: "--features parallel" }
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95
       - name: Run ${{ matrix.bench }} ${{ matrix.features || '(default)' }}
         run: cargo bench --bench ${{ matrix.bench }} ${{ matrix.features }}
