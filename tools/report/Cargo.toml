@@ -1,0 +1,17 @@
+[package]
+name = "bench-report"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+description = "Benchmark regression reporter — parses criterion stdout and flags performance regressions against a baseline."
+
+[[bin]]
+name = "bench-report"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

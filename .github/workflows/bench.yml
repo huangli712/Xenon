@@ -30,11 +30,11 @@ jobs:
       - name: Quick smoke — comparison benches (feature matrix)
         run: |
           # SIMD comparison: run twice for A-B compare (feature-off vs feature-on)
-          cargo bench --bench simd_comparison -- "simd_add_compare" --quick
-          cargo bench --bench simd_comparison --features simd -- "simd_add_compare" --quick
+          cargo bench --bench simd -- "simd_add_compare" --quick
+          cargo bench --bench simd --features simd -- "simd_add_compare" --quick
           # Parallel comparison: same A-B pattern
-          cargo bench --bench parallel_comparison -- "par_add_compare" --quick
-          cargo bench --bench parallel_comparison --features parallel -- "par_add_compare" --quick
+          cargo bench --bench parallel -- "par_add_compare" --quick
+          cargo bench --bench parallel --features parallel -- "par_add_compare" --quick
 
   bench-regression:
     if: inputs.level == 'regression'
@@ -48,8 +48,10 @@ jobs:
         run: |
           cargo bench --bench math -- "elem_add_f64" > target/bench-smoke.txt
           cargo bench --bench reduction -- "sum_1d_f64" >> target/bench-smoke.txt
+      - name: Build bench-report
+        run: cargo build --release --manifest-path tools/report/Cargo.toml
       - name: Report regression analysis
-        run: python tools/bench/report.py --input target/bench-smoke.txt --baseline tools/bench/baseline.json
+        run: tools/report/target/release/bench-report --input target/bench-smoke.txt --baseline tools/bench/baseline.json
 
   bench-full:
     if: inputs.level == 'full'
@@ -95,16 +97,16 @@ jobs:
           - { bench: construction,        features: "--features simd" }
           - { bench: construction,        features: "--features parallel" }
           - { bench: construction,        features: "--features simd,parallel" }
-          # simd_comparison × 4
-          - { bench: simd_comparison,     features: "" }
-          - { bench: simd_comparison,     features: "--features simd" }
-          - { bench: simd_comparison,     features: "--features parallel" }
-          - { bench: simd_comparison,     features: "--features simd,parallel" }
-          # parallel_comparison × 4
-          - { bench: parallel_comparison, features: "" }
-          - { bench: parallel_comparison, features: "--features simd" }
-          - { bench: parallel_comparison, features: "--features parallel" }
-          - { bench: parallel_comparison, features: "--features simd,parallel" }
+          # simd × 4
+          - { bench: simd,                features: "" }
+          - { bench: simd,                features: "--features simd" }
+          - { bench: simd,                features: "--features parallel" }
+          - { bench: simd,                features: "--features simd,parallel" }
+          # parallel × 4
+          - { bench: parallel,            features: "" }
+          - { bench: parallel,            features: "--features simd" }
+          - { bench: parallel,            features: "--features parallel" }
+          - { bench: parallel,            features: "--features simd,parallel" }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
