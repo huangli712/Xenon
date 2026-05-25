@@ -61,6 +61,14 @@ impl<A> ArcRepr<A> {
     }
 
     /// Creates shared storage filled with zeros.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `AlignedBuf::zeros`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `len *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested zero-filled aligned buffer.
     pub fn zeros(len: usize) -> Result<Self, XenonError>
     where
         A: Element + Default,
@@ -70,6 +78,14 @@ impl<A> ArcRepr<A> {
     }
 
     /// Creates shared storage filled with clones of `value`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `AlignedBuf::from_elem`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `len *
+    ///   size_of::<A>()` (with alignment slack) exceeds `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested aligned buffer.
     pub fn from_elem(len: usize, value: A) -> Result<Self, XenonError>
     where
         A: Element + Clone,
