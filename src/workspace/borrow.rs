@@ -210,6 +210,13 @@ impl<'a> WorkspaceBorrowMut<'a> {
 
     /// Interprets the first `count` elements as initialized `T` values.
     ///
+    /// # Errors
+    ///
+    /// - `TypedViewRejected::ZeroSizedType` — `size_of::<T>() == 0`
+    /// - `TypedViewRejected::TypedByteLengthOverflow` — `count * size_of::<T>()` overflowed `usize`
+    /// - `SplitOutOfBounds` — requested byte length exceeds borrow length
+    /// - `TypedViewRejected::AlignmentMismatch` — buffer base not `T`-aligned
+    ///
     /// # Safety
     ///
     /// Caller must guarantee:
@@ -291,6 +298,13 @@ impl Workspace {
     /// Takes `&self`: at most one active read guard is enforced at runtime
     /// by the internal `AtomicU8` state machine — multiple read guards are
     /// mutually exclusive but do not require compile-time exclusivity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`XenonError::Workspace`] with
+    /// [`WorkspaceErrorCategory::BorrowConflict`] (`requested: Shared`) if
+    /// the workspace already has an active borrow (shared or exclusive). At
+    /// most one active read guard is allowed by design.
     pub fn borrow(&self) -> crate::error::Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
