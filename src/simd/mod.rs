@@ -6,7 +6,6 @@
 //! ## Architecture
 //!
 //! - [`SimdElement`]: sealed marker trait for types with SIMD lane support.
-//! - [`SimdKernel`]: trait for element-wise and reduction SIMD kernels.
 //! - Facade functions (`dispatch_vector_*_op`, `try_sum_*`, `try_dot_*`)
 //!   admit SIMD execution and return `bool`/`Option<A>` to signal
 //!   acceptance. The caller **must** run its own scalar fallback on
@@ -56,36 +55,6 @@ impl SimdElement for i32 {}
 impl SimdElement for i64 {}
 impl SimdElement for Complex<f32> {}
 impl SimdElement for Complex<f64> {}
-
-// ---------------------------------------------------------------------------
-// SimdKernel trait
-// ---------------------------------------------------------------------------
-
-/// Trait for SIMD kernels that operate on slices of `A`.
-///
-/// `sum` / `dot` methods are only called after the facade has already
-/// admitted the input; the trait itself does not perform admission or
-/// fallback.
-pub(crate) trait SimdKernel<A: SimdElement>: Send + Sync {
-    /// Human-readable kernel name (for diagnostics / logging).
-    fn name() -> &'static str
-    where
-        Self: Sized;
-
-    /// Returns the SIMD lane width (number of scalar elements per
-    /// vector register) for the currently active ISA.
-    fn width() -> usize
-    where
-        Self: Sized;
-
-    fn add(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
-    fn sub(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
-    fn mul(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
-    fn div(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
-    fn neg(&self, src: &[A], dst: &mut [A]);
-    fn sum(&self, data: &[A]) -> A;
-    fn dot(&self, lhs: &[A], rhs: &[A]) -> A;
-}
 
 // ---------------------------------------------------------------------------
 // Operation enums
@@ -242,6 +211,17 @@ pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>>
     vector::try_sum_complex_f64_impl(data)
 }
 
+#[allow(
+    dead_code,
+    reason = "08-simd §6.6 (W14T4) capability stub paired with try_dot_i32 — \
+              i32 sum via SIMD is unavailable in pulp 0.22 (no i32->i64 \
+              widening). Always returns None so callers fall back to scalar \
+              checked_add. Test in vector.rs verifies the contract \
+              (admission path is prepared even though no production caller \
+              wires through yet). (`allow` rather than `expect` because \
+              dead_code only fires without `--tests`; test-mode use \
+              suppresses the lint.)"
+)]
 pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
     // W14T0 spike: i32->i64 widening is unavailable in pulp 0.22.
     // No SIMD path exists; always returns None so caller uses
@@ -280,6 +260,16 @@ pub(crate) fn try_dot_complex_f64(
     vector::try_dot_complex_f64_impl(lhs, rhs)
 }
 
+#[allow(
+    dead_code,
+    reason = "08-simd capability stub paired with try_sum_i32 — i32 dot via \
+              SIMD is unavailable in pulp 0.22 (no i32->i64 widening). \
+              Always returns None so callers fall back to scalar checked_mul. \
+              Test in vector.rs verifies the contract (admission path is \
+              prepared even though no production caller wires through yet). \
+              (`allow` rather than `expect` because dead_code only fires \
+              without `--tests`; test-mode use suppresses the lint.)"
+)]
 pub(crate) fn try_dot_i32(lhs: &[i32], rhs: &[i32]) -> Option<i32> {
     assert_eq!(lhs.len(), rhs.len());
     None
@@ -297,6 +287,14 @@ pub(crate) fn try_dot_i32(lhs: &[i32], rhs: &[i32]) -> Option<i32> {
 ///
 /// Per [`08-simd §5.12`], callers use this to decide whether to attempt
 /// SIMD dispatch at all.
+#[allow(
+    dead_code,
+    reason = "08-simd §5.12 capability-query skeleton — returns None until \
+              ISA-specific implementations are wired in by later W14 tasks. \
+              Test in this module verifies the skeleton contract. \
+              (`allow` rather than `expect` because dead_code only fires \
+              without `--tests`; test-mode use suppresses the lint.)"
+)]
 pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize> {
     // Skeleton: returns None until ISA-specific implementations are filled in
     // by later W14 tasks. See 08-simd §5.12 for the capability-query contract.

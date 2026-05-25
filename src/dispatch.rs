@@ -138,6 +138,7 @@ fn get_parallel_threshold() -> usize {
     PARALLEL_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+#[cfg_attr(not(feature = "simd"), allow(dead_code))]
 fn get_simd_threshold() -> usize {
     SIMD_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
 }
