@@ -188,6 +188,11 @@ where
     /// Element-wise greater-or-equal comparison.
     /// Single broadcast traversal: combines `>` and `==` at each lane
     /// per 11-math §5.8 line 425, avoiding intermediate bool tensors.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::BroadcastError` if `self.shape()` and
+    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
     pub fn greater_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,

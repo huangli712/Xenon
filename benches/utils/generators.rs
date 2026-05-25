@@ -59,6 +59,7 @@ pub struct StridedFixture1D {
 impl StridedFixture1D {
     /// Returns a non-contiguous TensorView1 over row 1 of the 2×n owner.
     /// Uses the SliceInfo three-argument constructor frozen in 17-indexing.md §5.1.
+    #[allow(dead_code)]
     pub fn view(&self) -> TensorView1<'_, f64> {
         let n = self.owner.shape()[1];
         let mut elems = [None; 6];

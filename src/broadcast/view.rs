@@ -16,6 +16,18 @@ where
     /// Broadcast `self` to `shape`. Returns a read-only zero-copy view sharing the
     /// underlying storage. See `15-broadcast.md §5.1` line 124-132 and §6.4.
     ///
+    /// # Errors
+    ///
+    /// - `XenonError::BroadcastError` — `self.shape()` is not broadcast-compatible
+    ///   with `shape` (rank exceeds target, or a non-singleton source axis differs
+    ///   from the target axis). See `15-broadcast.md §6.3` and `26-error.md §5.1`.
+    /// - `XenonError::InvalidArgument` — defensive: `self.shape().len()` does not
+    ///   match `self.strides().len()` (caller bug; unreachable under correct
+    ///   `TensorBase` invariants).
+    /// - `XenonError::DimensionMismatch` — the broadcast stride vector length does
+    ///   not match the rank of `E::Dim` (caller-provided target rank mismatch for
+    ///   fixed-rank `E`). See `06-layout §5.5`.
+    ///
     /// # Read-only guarantee (compile-fail demonstration)
     ///
     /// The broadcast result is `TensorView<'_, A, E::Dim>` — a read-only view.

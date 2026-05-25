@@ -119,6 +119,12 @@ impl<'a> WorkspaceBorrowMut<'a> {
 
     /// Interprets an initialized prefix as `&mut [u8]`.
     ///
+    /// # Errors
+    ///
+    /// Returns [`XenonError::Workspace`] with
+    /// [`WorkspaceErrorCategory::SplitOutOfBounds`] if `initialized_len`
+    /// exceeds the borrow length.
+    ///
     /// # Safety
     ///
     /// The caller must guarantee that the first `initialized_len` bytes have

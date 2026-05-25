@@ -19,6 +19,13 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool {
 ///   4. Otherwise result = max(a, b): if one is 1, take the other; if both equal
 ///      (including both 1 or both 0 for empty-axis broadcast), take that value.
 ///   5. Return the resulting IxDyn shape.
+///
+/// # Errors
+///
+/// Returns `XenonError::BroadcastError` when two right-aligned axes differ and
+/// neither equals 1 — i.e. the shapes are not broadcast-compatible per
+/// `15-broadcast.md §6.2` step 3. `attempted_target_shape` is `None` because the
+/// target is derived bidirectionally (see `26-error.md §5.1`).
 pub fn broadcast_shape(shape_a: &[usize], shape_b: &[usize]) -> Result<IxDyn, XenonError> {
     let ndim = shape_a.len().max(shape_b.len());
     let mut out = vec![1usize; ndim];
