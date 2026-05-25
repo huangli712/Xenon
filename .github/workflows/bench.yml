@@ -38,7 +38,6 @@ jobs:
 
   bench-regression:
     if: inputs.level == 'regression'
-    needs: bench-smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +55,6 @@ jobs:
 
   bench-full:
     if: inputs.level == 'full'
-    needs: bench-smoke
     runs-on: ubuntu-latest
     strategy:
       matrix:
