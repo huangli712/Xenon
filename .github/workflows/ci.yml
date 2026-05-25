@@ -7,6 +7,15 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel previous runs on the same branch when a new commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Restrict the workflow token to read-only repository contents.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
@@ -21,6 +30,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.95
         with:
           components: rustfmt
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
 
   # ── Clippy lint matrix across feature combos ─────────────────
@@ -46,6 +56,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.95
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
       - run: >
           cargo clippy --all-targets ${{ matrix.args }} --
           -D warnings
@@ -74,6 +85,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       - name: Run lib + integration tests
         run: cargo test --lib --tests ${{ matrix.args }} -- --nocapture
       - name: Run doc tests
@@ -88,6 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       - run: cargo test --test compile_fail_tests
 
   # ── Source audit: std-only environment declarations ──────────
@@ -121,6 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       - run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: "-D warnings"
@@ -132,6 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       - name: Build examples (all features)
         run: cargo build --examples --all-features
       - name: Run key examples (default features)

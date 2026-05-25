@@ -14,13 +14,21 @@ on:
       - 'src/**/*.rs'
       - 'Cargo.toml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   bench-smoke:
-    if: github.event_name == 'pull_request' || inputs.level == 'smoke'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.level == 'smoke')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       # Smoke test: math.rs / reduction.rs / construction.rs
       - name: Quick smoke — core benches
         run: |
@@ -42,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       # Baseline consumption: elem_add_f64 + sum_1d_f64 (Medium = 65536)
       - name: Run regression benches and capture output
         run: |
@@ -57,6 +66,7 @@ jobs:
     if: inputs.level == 'full'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         # Full benchmark = all files × 4 feature combinations
         # (default / simd / parallel / simd+parallel)
@@ -105,5 +115,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95
+      - uses: Swatinem/rust-cache@v2
       - name: Run ${{ matrix.bench }} ${{ matrix.features || '(default)' }}
         run: cargo bench --bench ${{ matrix.bench }} ${{ matrix.features }}
