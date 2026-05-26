@@ -33,6 +33,7 @@ pub use crate::element::{
 pub use crate::tensor::{
     TensorBase,
 };
+
 pub use crate::tensor::{
     ArcTensor,
     ArcTensor0,
@@ -44,6 +45,7 @@ pub use crate::tensor::{
     ArcTensor6,
     ArcTensorD,
 };
+
 pub use crate::tensor::{
     Tensor,
     Tensor0,
@@ -55,6 +57,7 @@ pub use crate::tensor::{
     Tensor6,
     TensorD,
 };
+
 pub use crate::tensor::{
     TensorView,
     TensorView0,
@@ -66,6 +69,7 @@ pub use crate::tensor::{
     TensorView6,
     TensorViewD,
 };
+
 pub use crate::tensor::{
     TensorViewMut,
     TensorViewMut0,
@@ -84,6 +88,7 @@ pub use crate::dimension::{
     Dimension,
     IntoDimension,
 };
+
 pub use crate::dimension::{
     Ix0,
     Ix1,
@@ -118,6 +123,7 @@ pub use crate::storage::{
     ViewMut,
     ArcRepr,
 };
+
 pub use crate::storage::{
     Storage,
     StorageIntoOwned,

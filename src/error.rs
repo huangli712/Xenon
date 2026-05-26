@@ -40,6 +40,7 @@ pub enum FfiErrorCategory {
         /// The argument name identifying the offending pointer.
         argument: Cow<'static, str>,
     },
+
     /// Pointer alignment did not satisfy the type's alignment requirement.
     AlignmentMismatch {
         /// Required alignment in bytes.
@@ -47,6 +48,7 @@ pub enum FfiErrorCategory {
         /// Actual alignment in bytes.
         actual: usize,
     },
+
     /// Rank check failed (e.g., BLAS layer expects 2D matrix).
     InvalidRank {
         /// Expected rank.
@@ -140,8 +142,9 @@ impl fmt::Display for FfiErrorCategory {
     }
 }
 
-/// Backend identifier for `XenonError::Ffi.backend`. Closed enum: any
-/// future backend must extend this enum (SemVer-tracked).
+/// Backend identifier for `XenonError::Ffi.backend`.
+///
+/// Closed enum: any future backend must extend this enum (SemVer-tracked).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FfiBackend {
     /// Generic raw-parts FFI (no specific backend library).
@@ -574,8 +577,9 @@ impl fmt::Display for InvalidArgumentKind {
     }
 }
 
-/// Reason for `XenonError::InvalidLayout`. Closed enum: each reason
-/// has program-matchable semantics.
+/// Reason for `XenonError::InvalidLayout`.
+///
+/// Closed enum: each reason has program-matchable semantics.
 ///
 /// Marked `#[non_exhaustive]` to allow new layout-validation reasons in
 /// future minor versions.
@@ -628,30 +632,20 @@ impl fmt::Display for InvalidLayoutReason {
         match self {
             Self::ShapeProductOverflow => write!(f, "shape product overflow"),
             Self::StridesRankMismatch => write!(f, "strides rank mismatch"),
-            Self::AccessRangeExceedsStorage => {
-                write!(f, "access range exceeds storage")
-            },
-            Self::EmptyTensorOffsetExceedsStorage => {
-                write!(f, "empty tensor offset exceeds storage")
-            },
+            Self::AccessRangeExceedsStorage => write!(f, "access range exceeds storage"),
+            Self::EmptyTensorOffsetExceedsStorage => write!(f, "empty tensor offset exceeds storage"),
             Self::UnsupportedStride => write!(f, "unsupported stride"),
             Self::StrideExceedsIsizeMax => write!(f, "stride exceeds isize::MAX"),
             Self::StrideSpanOverflow => write!(f, "stride span overflow"),
             Self::AccessRangeOverflow => write!(f, "access range overflow"),
             Self::UnexpectedZeroStride => write!(f, "unexpected zero stride"),
-            Self::ZeroStrideRejectedForViewMut => {
-                write!(f, "zero stride rejected for ViewMut")
-            },
+            Self::ZeroStrideRejectedForViewMut => write!(f, "zero stride rejected for ViewMut"),
             Self::AmbiguousOverlap => write!(f, "ambiguous overlap"),
-            Self::OwnedRequiresZeroOffset => {
-                write!(f, "owned requires zero offset")
-            },
+            Self::OwnedRequiresZeroOffset => write!(f, "owned requires zero offset"),
             Self::LenShapeMismatch => write!(f, "len-shape mismatch"),
             Self::CapacityBelowLen => write!(f, "capacity below len"),
             Self::AlignmentInvalid => write!(f, "alignment invalid"),
-            Self::OwnedRequiresCanonicalFOrder => {
-                write!(f, "owned requires canonical F-order")
-            },
+            Self::OwnedRequiresCanonicalFOrder => write!(f, "owned requires canonical F-order"),
         }
     }
 }
