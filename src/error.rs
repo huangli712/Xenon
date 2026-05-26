@@ -56,6 +56,7 @@ pub enum FfiErrorCategory {
         /// Actual rank.
         actual: usize,
     },
+
     /// Layout cannot be expressed in the FFI ABI (e.g., non F-contiguous
     /// where BLAS layer requires column-major contiguous).
     BlasIncompatibleLayout {
@@ -64,6 +65,7 @@ pub enum FfiErrorCategory {
         /// Strides of the tensor.
         strides: Vec<usize>,
     },
+
     /// `usize`-to-backend-integer conversion overflowed (e.g., to `i32` LDA).
     IntegerOverflow {
         /// The value that overflowed.
@@ -71,11 +73,13 @@ pub enum FfiErrorCategory {
         /// Bit-width of the target integer type.
         target_width_bits: u8,
     },
+
     /// ABI shape mismatch when reconstructing tensor from raw parts.
     AbiMismatch {
         /// Detail describing the mismatch.
         detail: AbiMismatchKind,
     },
+
     /// `from_raw_parts_mut` rejected a layout whose disjointness cannot
     /// be conservatively proven (overlap-rejected guard).
     OverlapRejected {
@@ -84,6 +88,7 @@ pub enum FfiErrorCategory {
         /// Strides of the tensor.
         strides: Vec<usize>,
     },
+
     /// Foreign allocator metadata does not match Xenon's owned-tensor
     /// invariants (e.g., element type / capacity / alignment differ).
     ForeignAllocatorMismatch {
@@ -149,6 +154,7 @@ impl fmt::Display for FfiErrorCategory {
 pub enum FfiBackend {
     /// Generic raw-parts FFI (no specific backend library).
     RawParts,
+
     /// BLAS-compatible export.
     Blas,
 }
@@ -176,6 +182,7 @@ pub enum AbiMismatchKind {
         /// The actual type name.
         actual: &'static str,
     },
+
     /// Capacity (byte length) did not match.
     CapacityMismatch {
         /// Expected capacity.
@@ -183,6 +190,7 @@ pub enum AbiMismatchKind {
         /// Actual capacity.
         actual: usize,
     },
+
     /// Address alignment did not match.
     AlignmentMismatch {
         /// Required alignment.
@@ -190,6 +198,7 @@ pub enum AbiMismatchKind {
         /// Actual alignment.
         actual: usize,
     },
+
     /// Shape product exceeds storage length.
     ShapeProductExceedsLen {
         /// The computed shape product.
@@ -197,6 +206,7 @@ pub enum AbiMismatchKind {
         /// The actual storage length.
         storage_len: usize,
     },
+
     /// Strides length does not equal shape rank.
     StridesRankMismatch {
         /// Number of dimensions in the shape.
@@ -259,6 +269,7 @@ pub enum WorkspaceErrorCategory {
         /// Requested allocation alignment in bytes.
         align: usize,
     },
+
     /// Layout request violates `Layout::from_size_align` rules.
     InvalidLayout {
         /// Requested layout size in bytes.
@@ -266,6 +277,7 @@ pub enum WorkspaceErrorCategory {
         /// Requested layout alignment in bytes.
         align: usize,
     },
+
     /// Borrow request conflicts with current borrow state.
     BorrowConflict {
         /// The kind of borrow that was requested.
@@ -273,6 +285,7 @@ pub enum WorkspaceErrorCategory {
         /// The current borrow state preventing the request.
         current: WorkspaceBorrowState,
     },
+
     /// `split_at_mut` mid index out of bounds for current view length.
     SplitOutOfBounds {
         /// The midpoint index that was out of bounds.
@@ -280,12 +293,14 @@ pub enum WorkspaceErrorCategory {
         /// The current view length.
         len: usize,
     },
+
     /// Internal split-count atomic invariant was violated (e.g., underflow
     /// or leak detected in debug).
     SplitCountInvariant {
         /// Human-readable description of the violated invariant.
         detail: Cow<'static, str>,
     },
+
     /// Capacity grow overflow.
     ///
     /// `current_capacity` is the currently available byte length of the
@@ -300,6 +315,7 @@ pub enum WorkspaceErrorCategory {
         /// Requested additional bytes.
         additional: usize,
     },
+
     /// Typed view request rejected (e.g., ZST not supported, range not
     /// aligned for `T`, count×size_of overflow — the last via
     /// `TypedViewRejection::TypedByteLengthOverflow`).
@@ -351,8 +367,10 @@ impl fmt::Display for WorkspaceErrorCategory {
 pub enum WorkspaceBorrowKind {
     /// A shared (immutable) borrow.
     Shared,
+
     /// An exclusive (mutable) borrow.
     Exclusive,
+
     /// A split (partitioned) borrow.
     Split,
 }
@@ -372,10 +390,13 @@ impl fmt::Display for WorkspaceBorrowKind {
 pub enum WorkspaceBorrowState {
     /// No active borrow.
     None,
+
     /// One or more shared borrows are active.
     Shared,
+
     /// An exclusive borrow is active.
     Exclusive,
+
     /// Multiple split borrows are active.
     SplitActive {
         /// Number of active splits.
@@ -403,6 +424,7 @@ impl fmt::Display for WorkspaceBorrowState {
 pub enum TypedViewRejection {
     /// `T` is a zero-sized type; typed view of ZST is rejected.
     ZeroSizedType,
+
     /// Buffer base address does not satisfy `align_of::<T>()`.
     AlignmentMismatch {
         /// Required alignment.
@@ -410,6 +432,7 @@ pub enum TypedViewRejection {
         /// Actual alignment.
         actual: usize,
     },
+
     /// `count.checked_mul(size_of::<T>())` overflowed `usize`. We cannot
     /// represent the requested byte length, so reusing `GrowOverflow`
     /// (which expects bytes) would produce a misleading diagnostic. Carry
@@ -447,12 +470,16 @@ impl fmt::Display for TypedViewRejection {
 pub enum ConversionFailureReason {
     /// Integer → narrower integer where value doesn't fit.
     LossyIntegerNarrowing,
+
     /// Float → narrower float where value doesn't fit.
     LossyFloatNarrowing,
+
     /// Float → integer conversion.
     FloatToInteger,
+
     /// Integer → float loses precision for the specific value.
     IntegerToFloatPrecisionLoss,
+
     /// Complex → real attempted but imaginary part is non-zero.
     NonZeroImaginaryPart,
 }
@@ -489,6 +516,7 @@ pub enum InvalidArgumentKind {
         /// End of the range (exclusive).
         end: usize,
     },
+
     /// Range slice has `start > end`.
     RangeStartAfterEnd {
         /// The axis index.
@@ -498,6 +526,7 @@ pub enum InvalidArgumentKind {
         /// End of the invalid range.
         end: usize,
     },
+
     /// Numeric parameter outside its required domain.
     NumericOutOfRange {
         /// Name of the offending argument.
@@ -507,6 +536,7 @@ pub enum InvalidArgumentKind {
         /// The actual value received.
         actual: Cow<'static, str>,
     },
+
     /// Threshold / chunk-size / max-workers etc. configuration violated.
     InvalidConfig {
         /// Name of the configuration argument.
@@ -516,11 +546,13 @@ pub enum InvalidArgumentKind {
         /// The actual value provided.
         actual: Cow<'static, str>,
     },
+
     /// Unique-list / set parameter contained duplicate or empty groups.
     DuplicateOrEmpty {
         /// Name of the offending argument.
         argument: Cow<'static, str>,
     },
+
     /// Caller-provided shape parameter inconsistent with operation
     /// (e.g., `clip` min > max, `reshape` shape product mismatch but
     /// reported via `InvalidShape::ElementCountMismatch` instead — this
@@ -588,41 +620,56 @@ impl fmt::Display for InvalidArgumentKind {
 pub enum InvalidLayoutReason {
     /// `shape.checked_size()` overflowed `usize`.
     ShapeProductOverflow,
+
     /// `strides.len() != shape.len()`.
     StridesRankMismatch,
+
     /// Computed `max_offset` exceeds `storage_len`.
     AccessRangeExceedsStorage,
+
     /// Empty tensor metadata uses `offset > storage_len`.
     EmptyTensorOffsetExceedsStorage,
+
     /// Stride along an axis is not allowed for the current storage kind
     /// (e.g., negative stride; not representable as `usize`) or cannot
     /// be represented for pointer arithmetic.
     UnsupportedStride,
+
     /// A stride exceeds `isize::MAX`, so pointer `.add()` arithmetic
     /// cannot be proven valid.
     StrideExceedsIsizeMax,
+
     /// `(shape[axis] - 1) * stride[axis]` overflowed.
     StrideSpanOverflow,
+
     /// Accumulating the reachable access range overflowed.
     AccessRangeOverflow,
+
     /// Zero stride observed on a non-broadcast-view storage kind.
     UnexpectedZeroStride,
+
     /// Zero stride rejected specifically for ViewMut construction: the
     /// layout passes `validate_access_range` but contains a non-singleton
     /// axis with stride == 0. The caller can switch to a read-only view
     /// instead, which does accept broadcast zero strides.
     ZeroStrideRejectedForViewMut,
+
     /// Logical layout cannot be conservatively proven non-overlapping
     /// for the requested mutable access.
     AmbiguousOverlap,
+
     /// Owned raw-parts reconstruction requires `offset == 0`.
     OwnedRequiresZeroOffset,
+
     /// Owned raw-parts `len` does not equal `shape.checked_size()`.
     LenShapeMismatch,
+
     /// Owned raw-parts `cap` is smaller than `len`.
     CapacityBelowLen,
+
     /// Owned raw-parts allocator alignment is invalid for the element type.
     AlignmentInvalid,
+
     /// Owned raw-parts strides do not match canonical F-order strides.
     OwnedRequiresCanonicalFOrder,
 }
@@ -655,10 +702,13 @@ impl fmt::Display for InvalidLayoutReason {
 pub enum StorageKindTag {
     /// Owned storage (heap-allocated, exclusive ownership).
     Owned,
+
     /// Immutable borrowed view.
     View,
+
     /// Mutable borrowed view.
     ViewMut,
+
     /// Reference-counted shared storage.
     Shared,
 }
@@ -680,12 +730,16 @@ impl fmt::Display for StorageKindTag {
 pub enum StorageConversionKind {
     /// Conversion to owned storage.
     ToOwned,
+
     /// Conversion into owned storage (consuming self).
     IntoOwned,
+
     /// Transposition operation.
     Transpose,
+
     /// Mutable slice operation.
     SliceMut,
+
     /// Broadcast-to-shape operation.
     BroadcastTo,
 }
@@ -713,6 +767,7 @@ pub enum InvalidShapeKind {
     /// are intentionally absent because no finite expected/actual
     /// counts can be expressed.
     ProductOverflow,
+
     /// Provided element count does not equal `shape.checked_size()`.
     ElementCountMismatch {
         /// Expected element count from `shape.checked_size()`.
@@ -720,6 +775,7 @@ pub enum InvalidShapeKind {
         /// Actual element count provided.
         actual: usize,
     },
+
     /// Provided constructor input rank exceeds the static-rank support
     /// policy (`Ix0..=Ix6`) on a non-`try_from_dyn` path — for example,
     /// when an internal `IntoDimension` / `Tensor::from_shape_vec` pipeline
