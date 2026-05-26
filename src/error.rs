@@ -9,22 +9,6 @@ use std::borrow::Cow;
 use std::boxed::Box;
 use std::vec::Vec;
 
-/// Helper for formatting optional values in error messages.
-///
-/// Displays `<any>` if `None`, otherwise formats the value via `Display`.
-/// The `<any>` text preserves type-erased optional fields.
-#[cfg_attr(not(test), expect(dead_code))]
-struct OrAny<T>(Option<T>);
-
-impl<T: fmt::Display> fmt::Display for OrAny<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            Some(v) => write!(f, "{v}"),
-            None => write!(f, "<any>"),
-        }
-    }
-}
-
 /// Helper for formatting `[usize]` shape/stride slices in error messages.
 ///
 /// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — NumPy style.
@@ -1257,6 +1241,20 @@ mod tests {
     use super::*;
     use std::borrow::Cow;
     use std::error::Error;
+
+    /// Helper for formatting optional values in error messages.
+    ///
+    /// Displays `<any>` if `None`, otherwise formats the value via `Display`.
+    struct OrAny<T>(Option<T>);
+
+    impl<T: fmt::Display> fmt::Display for OrAny<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match &self.0 {
+                Some(v) => write!(f, "{v}"),
+                None => write!(f, "<any>"),
+            }
+        }
+    }
 
     /// Verify FFI auxiliary enums are constructable.
     #[test]
