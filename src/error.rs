@@ -1043,27 +1043,6 @@ impl std::error::Error for XenonError {
 
 /// Constructor helpers for common error variants.
 impl XenonError {
-    /// Construct a dispatch-specific `InvalidArgument` error with an
-    /// `InvalidConfig` detail.
-    ///
-    /// Used by dispatch-side configuration validation where the offending
-    /// argument name, constraint, and actual value are known.
-    #[cfg(feature = "parallel")]
-    pub(crate) fn dispatch_invalid_argument(
-        argument: impl Into<Cow<'static, str>>,
-        constraint: impl Into<Cow<'static, str>>,
-        actual: impl Into<Cow<'static, str>>,
-    ) -> Self {
-        XenonError::InvalidArgument {
-            operation: Cow::Borrowed("dispatch"),
-            kind: InvalidArgumentKind::InvalidConfig {
-                argument: argument.into(),
-                constraint: constraint.into(),
-                actual: actual.into(),
-            },
-        }
-    }
-
     // --- Workspace constructor helpers ---
     //
     // Each helper preserves the `operation` field and accepts structured

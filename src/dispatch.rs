@@ -126,6 +126,25 @@ pub struct ParallelExecStrategy {
     max_workers: Option<usize>,
 }
 
+/// Construct a dispatch-specific `InvalidArgument` error with an
+/// `InvalidConfig` detail. Private to `dispatch` so the error module
+/// does not carry module-specific constructors.
+#[cfg(feature = "parallel")]
+fn dispatch_invalid_argument(
+    argument: impl Into<std::borrow::Cow<'static, str>>,
+    constraint: impl Into<std::borrow::Cow<'static, str>>,
+    actual: impl Into<std::borrow::Cow<'static, str>>,
+) -> crate::error::XenonError {
+    crate::error::XenonError::InvalidArgument {
+        operation: std::borrow::Cow::Borrowed("dispatch"),
+        kind: crate::error::InvalidArgumentKind::InvalidConfig {
+            argument: argument.into(),
+            constraint: constraint.into(),
+            actual: actual.into(),
+        },
+    }
+}
+
 #[cfg(feature = "parallel")]
 impl ParallelExecStrategy {
     /// Construct a validated strategy. Performs ALL field-level
@@ -144,28 +163,22 @@ impl ParallelExecStrategy {
         max_workers: Option<usize>,
     ) -> crate::error::Result<Self> {
         if matches!(chunk_size, Some(0)) {
-            return Err(crate::error::XenonError::dispatch_invalid_argument(
-                "chunk_size",
-                "must be non-zero",
-                "0",
-            ));
+            return Err(dispatch_invalid_argument("chunk_size",
+            "must be non-zero",
+            "0",));
         }
         if matches!(max_workers, Some(0)) {
-            return Err(crate::error::XenonError::dispatch_invalid_argument(
-                "max_workers",
-                "must be non-zero",
-                "0",
-            ));
+            return Err(dispatch_invalid_argument("max_workers",
+            "must be non-zero",
+            "0",));
         }
         if let Some(n) = max_workers {
             // Read the pool size once at construction time.
             let pool = rayon::current_num_threads();
             if n > pool {
-                return Err(crate::error::XenonError::dispatch_invalid_argument(
-                    "max_workers",
-                    format!("must not exceed rayon pool size ({pool})"),
-                    n.to_string(),
-                ));
+                return Err(dispatch_invalid_argument("max_workers",
+                format!("must not exceed rayon pool size ({pool})"),
+                n.to_string(),));
             }
         }
         Ok(Self {
