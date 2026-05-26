@@ -11,6 +11,7 @@
 //! thresholds, and exercise parallel kernels directly. Those
 //! re-exports are NOT a stable public API.
 
+use core::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ---------------------------------------------------------------------------
@@ -183,7 +184,6 @@ impl ParallelExecStrategy {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // ParallelGuard — nested-parallel guard (feature-gated)
 // ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ impl ParallelExecStrategy {
 #[cfg(feature = "parallel")]
 #[derive(Debug)]
 pub struct ParallelGuard {
-    _private: core::marker::PhantomData<*const ()>,
+    _private: PhantomData<*const ()>,
 }
 
 #[cfg(feature = "parallel")]
@@ -224,9 +224,8 @@ impl Drop for ParallelGuard {
 #[cfg(not(feature = "parallel"))]
 #[derive(Debug)]
 pub struct ParallelGuard {
-    _private: core::marker::PhantomData<()>,
+    _private: PhantomData<()>,
 }
-
 
 // ---------------------------------------------------------------------------
 // Core dispatch functions
@@ -340,7 +339,7 @@ std::thread_local! {
 fn try_acquire_guard() -> Option<ParallelGuard> {
     IN_PARALLEL.with(|flag| {
         (!flag.replace(true)).then_some(ParallelGuard {
-            _private: core::marker::PhantomData,
+            _private: PhantomData,
         })
     })
 }
