@@ -50,10 +50,6 @@ fn get_simd_threshold() -> usize {
 }
 
 // ---------------------------------------------------------------------------
-// Threshold storage — setters
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Threshold runtime override API (testing/benchmarking only)
 // ---------------------------------------------------------------------------
 
@@ -65,18 +61,18 @@ pub fn set_parallel_threshold(threshold: usize) {
     PARALLEL_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Reset the parallel threshold to its compile-time default.
-#[cfg(any(test, feature = "parallel"))]
-pub fn reset_parallel_threshold() {
-    set_parallel_threshold(DEFAULT_PARALLEL_THRESHOLD);
-}
-
 /// Override the SIMD threshold at runtime.
 ///
 /// Use `usize::MAX` to disable the SIMD path (sentinel).
 #[cfg(any(test, feature = "simd"))]
 pub fn set_simd_threshold(threshold: usize) {
     SIMD_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Reset the parallel threshold to its compile-time default.
+#[cfg(any(test, feature = "parallel"))]
+pub fn reset_parallel_threshold() {
+    set_parallel_threshold(DEFAULT_PARALLEL_THRESHOLD);
 }
 
 /// Reset the SIMD threshold to its compile-time default.
