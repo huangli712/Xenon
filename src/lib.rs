@@ -146,6 +146,14 @@ pub mod matrix;
 /// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
+/// SIMD vectorized computation backend (opt-in via `simd` feature).
+#[cfg(feature = "simd")]
+pub(crate) mod simd;
+
+/// Parallel computation backend (opt-in via `parallel` feature).
+/// Module is always compiled; only rayon-dependent items are gated.
+pub(crate) mod parallel;
+
 // ── Test-only re-exports ────────────────────────────────────────────
 //
 // Integration tests under `tests/` are external crates and cannot reach
@@ -164,14 +172,6 @@ pub use crate::dispatch::{
 pub use crate::dispatch::{
     ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, set_parallel_threshold,
 };
-
-/// SIMD vectorized computation backend (opt-in via `simd` feature).
-#[cfg(feature = "simd")]
-pub(crate) mod simd;
-
-/// Parallel computation backend (opt-in via `parallel` feature).
-/// Module is always compiled; only rayon-dependent items are gated.
-pub(crate) mod parallel;
 
 // ── Test-only re-exports ────────────────────────────────────────────
 //
