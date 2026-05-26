@@ -24,6 +24,13 @@ pub use crate::element::{
 };
 
 // Tensor types
+//
+// Construction methods — zeros, ones, eye, from_shape_vec, from_scalar
+// are inherent methods on TensorBase, available via the tensor 
+// re-exports below; no separate `pub use` is needed.
+pub use crate::tensor::{
+    TensorBase
+};
 pub use crate::tensor::{
     ArcTensor,
     ArcTensor0,
@@ -45,9 +52,6 @@ pub use crate::tensor::{
     Tensor5,
     Tensor6,
     TensorD,
-};
-pub use crate::tensor::{
-    TensorBase
 };
 pub use crate::tensor::{
     TensorView,
@@ -74,9 +78,25 @@ pub use crate::tensor::{
 
 // Dimension and index types
 pub use crate::dimension::{
-    Axis, Dimension, IntoDimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn,
+    Axis,
+    Dimension,
+    IntoDimension
 };
-pub use crate::index::{SliceInfo, SliceInfoElem, SliceInfoIndices};
+pub use crate::dimension::{
+    Ix0,
+    Ix1,
+    Ix2,
+    Ix3,
+    Ix4,
+    Ix5,
+    Ix6,
+    IxDyn
+};
+pub use crate::index::{
+    SliceInfo,
+    SliceInfoElem,
+    SliceInfoIndices
+};
 
 // Storage and layout
 pub use crate::layout::{LayoutFlags, LayoutState, Strides};
@@ -92,10 +112,6 @@ pub use crate::error::{
     TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory,
     XenonError,
 };
-
-// Construction methods — zeros, ones, eye, from_shape_vec, from_scalar
-// are inherent methods on TensorBase, available via the tensor
-// re-exports above; no separate `pub use` is needed.
 
 // Traits and helpers
 pub use crate::overload::Scalar;
