@@ -99,7 +99,11 @@ pub use crate::index::{
 };
 
 // Storage and layout
-pub use crate::layout::{LayoutFlags, LayoutState, Strides};
+pub use crate::layout::{
+    LayoutFlags,
+    LayoutState,
+    Strides
+};
 pub use crate::storage::{
     ArcRepr, Owned, Storage, StorageIntoOwned, StorageMut, StorageOwned, StorageShared, View,
     ViewMut, ViewMutRepr, ViewRepr,
