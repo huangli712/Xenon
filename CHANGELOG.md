@@ -2,40 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
-
-
 ## [v0.0.8] — 2026-05-26
-
-### Changed
-
-- Refactored dispatch module: top-down dependency order, removed unused
-  `should_parallelize`, moved `dispatch_invalid_argument` from error.rs
-  to dispatch.rs, consolidated full-qualified paths to imports.
-- Consolidated test imports: `use super::*` and direct imports throughout dispatch tests.
-- Cleaned up stale design-doc cross-references and section labels in dispatch.rs.
 
 ### Removed
 
 - `should_parallelize` function and its dedicated tests.
 
-
-## [v0.0.7] — 2026-05-26
-
 ### Changed
 
-- Consolidated CI into single `ci.yml` (merged `test.yml`, `docs.yml`).
-- Pinned rust-toolchain to 1.95 across all workflows.
-- Restructured bench infrastructure: benches renamed (`simd_comparison` → `simd`,
-  `parallel_comparison` → `parallel`), utility module moved to `benches/common/`.
-- Replaced Python regression reporter (`tools/bench/report.py`) with Rust binary
-  (`benches/tool/bench-report`).
-- Extended clippy config with `disallowed-methods` (transmute), type-complexity and
-  too-many-arguments thresholds.
+- Refactored dispatch module into top-down dependency order.
+- Removed unused `should_parallelize` function.
+- Moved `dispatch_invalid_argument` from error.rs to dispatch.rs.
+- Replaced fully-qualified paths with direct imports throughout dispatch.rs.
+- Consolidated test imports: `use super::*` and direct imports throughout dispatch tests.
+- Cleaned up stale design-doc cross-references and section labels in dispatch.rs.
+
+## [v0.0.7] — 2026-05-26
 
 ### Removed
 
 - Redundant CI workflows (`test.yml`, `docs.yml`).
 - Obsolete baseline pin drift check from CI.
+
+### Changed
+
+- Consolidated CI into single `ci.yml` (merged `test.yml`, `docs.yml`).
+- Pinned rust-toolchain to 1.95 across all workflows.
+- Renamed `simd_comparison` benchmark to `simd`.
+- Renamed `parallel_comparison` benchmark to `parallel`.
+- Moved bench utility module to `benches/common/`.
+- Replaced Python regression reporter with Rust binary (`benches/tool/bench-report`).
+- Extended clippy config with `disallowed-methods` (transmute).
+- Added type-complexity and too-many-arguments thresholds to clippy config.
 
 ### Fixed
 
@@ -46,8 +44,21 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - `Tensor::into_shared()` for zero-copy `ArcTensor` conversion.
-- `Workspace::borrow()` and `Workspace::borrow_mut()`: public error-documented borrow APIs.
+- `Workspace::borrow()`: public error-documented borrow API.
+- `Workspace::borrow_mut()`: public error-documented borrow API.
 - Error and panic documentation sections across all public APIs.
+
+### Removed
+
+- `ParallelPool` struct.
+- `par_iter` and `parallel/iter.rs`.
+- `apply_binary` and `apply_compare` wrapper functions.
+- `StorageSharedExt` trait with `ref_count` and `is_unique` methods.
+- `broadcast_with` and `BroadcastPair` types.
+- `SimdKernel` trait.
+- f32 ULP helpers and `RealScalarBits::ulp` method.
+- Tier 1 assertion helpers.
+- `with_strategy` method and dead imports.
 
 ### Changed
 
@@ -58,13 +69,3 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Synchronized test version assertion and cleaned up inactive work-in-progress test placeholders.
-
-### Removed
-
-- `ParallelPool`, `par_iter`, `apply_binary`, `apply_compare`, and `parallel/iter.rs`.
-- `StorageSharedExt`, `ref_count`, `is_unique` methods.
-- `broadcast_with` / `BroadcastPair` types.
-- `SimdKernel` type.
-- f32 ULP helpers and `RealScalarBits::ulp` method.
-- Tier 1 assertion helpers.
-- `with_strategy` and dead imports.
