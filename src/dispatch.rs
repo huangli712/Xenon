@@ -5,9 +5,11 @@
 //! feature gates. Holds the nested-parallel guard (TLS flag) so library
 //! code never starts a parallel region inside another parallel region.
 //!
-//! All items here are `pub(crate)`. A minimal subset is re-exported at
-//! the crate root under `#[doc(hidden)]` solely for integration tests
-//! and is NOT a stable public API.
+//! All items here are `pub(crate)`. A minimal subset is re-exported
+//! through `crate::prelude` so integration tests under `tests/` (which
+//! are external crates) can observe dispatch decisions, tweak
+//! thresholds, and exercise parallel kernels directly. Those
+//! re-exports are NOT a stable public API.
 
 /// Three mutually exclusive execution paths recommended by dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
