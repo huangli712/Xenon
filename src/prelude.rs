@@ -174,16 +174,25 @@ pub use crate::ffi::{
 // NOT a stable public API: all marked `#[doc(hidden)]`.
 
 #[doc(hidden)]
-pub use crate::dispatch::{ExecPath, select_exec_path};
+pub use crate::dispatch::{
+    ExecPath,
+    select_exec_path
+};
 
 #[cfg(feature = "simd")]
 #[doc(hidden)]
-pub use crate::dispatch::{reset_simd_threshold, set_simd_threshold};
+pub use crate::dispatch::{
+    reset_simd_threshold,
+    set_simd_threshold
+};
 
 #[cfg(feature = "parallel")]
 #[doc(hidden)]
 pub use crate::dispatch::{
-    ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, set_parallel_threshold,
+    ParallelExecStrategy,
+    ParallelGuard,
+    reset_parallel_threshold,
+    set_parallel_threshold
 };
 
 #[cfg(feature = "parallel")]
@@ -192,7 +201,10 @@ pub use crate::parallel::map::par_map;
 
 #[cfg(feature = "parallel")]
 #[doc(hidden)]
-pub use crate::parallel::reduce::{par_dot, par_sum};
+pub use crate::parallel::reduce::{
+    par_dot,
+    par_sum
+};
 
 #[cfg(test)]
 mod tests {
