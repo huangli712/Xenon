@@ -74,14 +74,14 @@
 /// Internal sealed-trait infrastructure.
 mod private;
 
+/// Curated re-exports of the most commonly used types.
+pub mod prelude;
+
 /// Structured error types for fallible operations.
 pub mod error;
 
 /// Static and dynamic dimension types with compile-time rank checking.
 pub mod dimension;
-
-/// Curated re-exports of the most commonly used types.
-pub mod prelude;
 
 /// Complex number type with a sealed real-component bound.
 pub mod complex;
@@ -128,6 +128,21 @@ pub mod ffi;
 /// Element-wise math operations: arithmetic, unary, comparison.
 pub mod math;
 
+/// Broadcasting: shape compatibility, stride expansion, zero-copy views.
+pub mod broadcast;
+
+/// Operator overloading for `Tensor` / `TensorView` arithmetic.
+pub mod overload;
+
+/// Aligned scratch workspace for internal temporary buffers.
+pub mod workspace;
+
+/// Reduction operations: sum, sum_axis, sum_axis_keepdims.
+pub mod reduction;
+
+/// Matrix operations: multiplication, decompositions, and linear algebra utilities.
+pub mod matrix;
+
 /// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
@@ -149,16 +164,6 @@ pub use crate::dispatch::{
 pub use crate::dispatch::{
     ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, set_parallel_threshold,
 };
-
-/// Broadcasting: shape compatibility, stride expansion, zero-copy views.
-pub mod broadcast;
-
-/// Operator overloading for `Tensor` / `TensorView` arithmetic.
-/// Delegates to inherent methods in [`crate::math`].
-pub mod overload;
-
-/// Aligned scratch workspace for internal temporary buffers.
-pub mod workspace;
 
 /// SIMD vectorized computation backend (opt-in via `simd` feature).
 #[cfg(feature = "simd")]
@@ -184,12 +189,7 @@ pub use crate::parallel::map::par_map;
 #[doc(hidden)]
 pub use crate::parallel::reduce::{par_dot, par_sum};
 
-/// Reduction operations: sum, sum_axis, sum_axis_keepdims.
-pub mod reduction;
-
-pub mod matrix;
 pub use matrix::dot;
-
 pub use error::XenonError;
 pub use prelude::*;
 
