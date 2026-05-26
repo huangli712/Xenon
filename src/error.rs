@@ -728,16 +728,10 @@ impl fmt::Display for InvalidShapeKind {
         match self {
             Self::ProductOverflow => write!(f, "product overflow"),
             Self::ElementCountMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "element count mismatch: expected {expected}, got {actual}"
-                )
+                write!(f, "element count mismatch: expected {expected}, got {actual}")
             },
-            Self::RankExceedsStaticMax {
-                provided_ndim,
-                max_ndim,
-            } => {
-                write!(f, "rank exceeds static max: {provided_ndim} > {max_ndim}",)
+            Self::RankExceedsStaticMax { provided_ndim, max_ndim } => {
+                write!(f, "rank exceeds static max: {provided_ndim} > {max_ndim}")
             },
         }
     }
