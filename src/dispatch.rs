@@ -166,11 +166,13 @@ pub fn reset_parallel_threshold() {
 ///
 /// Use `usize::MAX` to disable the SIMD path (sentinel per
 /// 30-dispatch.md §5.6 line 520-523).
+#[cfg(any(test, feature = "simd"))]
 pub fn set_simd_threshold(threshold: usize) {
     SIMD_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Reset the SIMD threshold to its compile-time default.
+#[cfg(any(test, feature = "simd"))]
 pub fn reset_simd_threshold() {
     set_simd_threshold(DEFAULT_SIMD_THRESHOLD);
 }

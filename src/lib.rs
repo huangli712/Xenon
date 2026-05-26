@@ -151,20 +151,26 @@ pub(crate) mod dispatch;
 pub(crate) mod simd;
 
 /// Parallel computation backend (opt-in via `parallel` feature).
-/// Module is always compiled; only rayon-dependent items are gated.
+#[cfg(feature = "parallel")]
 pub(crate) mod parallel;
 
 // ── Test-only re-exports ────────────────────────────────────────────
 //
 // Integration tests under `tests/` are external crates and cannot reach
-// `pub(crate)` items inside `dispatch`. The items below are re-exported
-// solely so those tests can observe dispatch decisions and tweak
-// thresholds. They are NOT a stable public API: marked `#[doc(hidden)]`
-// to keep them out of generated documentation.
+// `pub(crate)` items inside `dispatch` or `parallel`. The items below
+// are re-exported solely so those tests can observe dispatch decisions,
+// tweak thresholds, and exercise parallel kernels directly.
+// NOT a stable public API: all marked `#[doc(hidden)]`.
 
 #[doc(hidden)]
 pub use crate::dispatch::{
-    ExecPath, reset_simd_threshold, select_exec_path, set_simd_threshold,
+    ExecPath, select_exec_path,
+};
+
+#[cfg(feature = "simd")]
+#[doc(hidden)]
+pub use crate::dispatch::{
+    reset_simd_threshold, set_simd_threshold,
 };
 
 #[cfg(feature = "parallel")]
@@ -172,14 +178,6 @@ pub use crate::dispatch::{
 pub use crate::dispatch::{
     ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, set_parallel_threshold,
 };
-
-// ── Test-only re-exports ────────────────────────────────────────────
-//
-// Integration tests under `tests/` are external crates and cannot reach
-// `pub(crate)` items inside `parallel`. The items below are re-exported
-// solely so those tests can exercise the parallel kernels directly.
-// They are NOT a stable public API: marked `#[doc(hidden)]` to keep
-// them out of generated documentation.
 
 #[cfg(feature = "parallel")]
 #[doc(hidden)]
