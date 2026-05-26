@@ -144,12 +144,11 @@ pub use crate::overload::Scalar;
 pub use crate::set::UniqueElement;
 pub use crate::workspace::Workspace;
 
-// FFI types
-// FfiBackend and FfiErrorCategory are already exported via `crate::error` above.
-pub use crate::ffi::{BlasInfo, ElementType, TensorExportMutRaw, TensorExportRaw};
-
 // Matrix operations
 pub use crate::matrix::dot;
+
+// FFI types
+pub use crate::ffi::{BlasInfo, ElementType, TensorExportMutRaw, TensorExportRaw};
 
 // ── Test-only re-exports ────────────────────────────────────────────
 //
