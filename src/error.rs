@@ -1400,6 +1400,7 @@ mod tests {
         assert!(err.is_err());
     }
 
+    /// Verify Display output contains operation name and shape info.
     #[test]
     fn test_display_contains_structured_info() {
         let e = XenonError::ShapeMismatch {
@@ -1413,6 +1414,7 @@ mod tests {
         assert!(s.contains("[3 × 4]"));
     }
 
+    /// Verify IndexOutOfBounds Display includes operation, axis, and shape.
     #[test]
     fn test_display_index_out_of_bounds() {
         let e = XenonError::IndexOutOfBounds {
@@ -1427,6 +1429,7 @@ mod tests {
         assert!(s.contains("[3 × 4]"));
     }
 
+    /// Verify TypeConversion Display includes source/target types and reason.
     #[test]
     fn test_display_type_conversion() {
         let e = XenonError::TypeConversion {
@@ -1442,6 +1445,7 @@ mod tests {
         assert!(s.contains("float to integer"));
     }
 
+    /// Verify BroadcastError Display includes all shapes when present.
     #[test]
     fn test_display_broadcast_error() {
         let e = XenonError::BroadcastError {
@@ -1457,29 +1461,33 @@ mod tests {
         assert!(s.contains("[3 × 4]"));
     }
 
+    /// Verify empty `FmtShape` renders as `[]`.
     #[test]
     fn test_fmt_shape_empty() {
         assert_eq!(format!("{}", FmtShape(&[])), "[]");
     }
 
+    /// Verify single-dimension `FmtShape` renders as `[N]`.
     #[test]
     fn test_fmt_shape_1d() {
         assert_eq!(format!("{}", FmtShape(&[5])), "[5]");
     }
 
+    /// Verify multi-dimension `FmtShape` renders as `[a × b × c]`.
     #[test]
     fn test_fmt_shape_3d() {
         assert_eq!(format!("{}", FmtShape(&[2, 3, 4])), "[2 × 3 × 4]");
     }
 
+    /// Verify `OrAny(Some(v))` renders the inner value via Display.
     #[test]
     fn test_or_any_some() {
         assert_eq!(format!("{}", OrAny(Some(42))), "42");
     }
 
+    /// Verify `OrAny(None)` renders as `<any>`.
     #[test]
     fn test_or_any_none() {
-        // Verify `None` fields render as `<any>`.
         assert_eq!(format!("{}", OrAny(None::<i32>)), "<any>");
     }
 
@@ -1560,6 +1568,7 @@ mod tests {
         assert!(s.contains("invalid axis"));
     }
 
+    /// Verify `XenonError` implements `std::error::Error`.
     #[test]
     fn test_error_trait_implemented() {
         fn assert_error<E: std::error::Error>(_: &E) {}
@@ -1572,6 +1581,7 @@ mod tests {
         assert_error(&e);
     }
 
+    /// Verify `source()` returns `None` for leaf (non-chained) variants.
     #[test]
     fn test_source_returns_none_for_leaf_variants() {
         let e = XenonError::IndexOutOfBounds {
@@ -1590,6 +1600,7 @@ mod tests {
         assert!(e.source().is_none());
     }
 
+    /// Verify `Ffi` variant exposes its inner `cause` via `source()`.
     #[test]
     fn test_source_chains_ffi_cause() {
         let inner = Box::new(XenonError::InvalidAxis {
@@ -1613,6 +1624,7 @@ mod tests {
         assert!(source_msg.contains("invalid axis"));
     }
 
+    /// Verify `Workspace` variant exposes its inner `cause` via `source()`.
     #[test]
     fn test_source_chains_workspace_cause() {
         let inner = Box::new(XenonError::InvalidLayout {
@@ -1637,6 +1649,7 @@ mod tests {
         assert!(source_msg.contains("invalid layout"));
     }
 
+    /// Verify `source()` returns `None` when `Ffi`/`Workspace` carry no cause.
     #[test]
     fn test_source_returns_none_when_no_cause() {
         let e = XenonError::Ffi {
@@ -1650,12 +1663,14 @@ mod tests {
         assert!(e.source().is_none());
     }
 
+    /// Verify `XenonError` is `Send + Sync` for use across threads.
     #[test]
     fn test_error_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<XenonError>();
     }
 
+    /// Verify `XenonError` is usable as `Box<dyn std::error::Error>`.
     #[test]
     fn test_dyn_error_compatible() {
         let e: Box<dyn std::error::Error> = Box::new(XenonError::DimensionMismatch {
