@@ -104,41 +104,22 @@ impl fmt::Display for FfiErrorCategory {
                 write!(f, "null pointer for argument {argument}")
             },
             Self::AlignmentMismatch { required, actual } => {
-                write!(
-                    f,
-                    "alignment mismatch: required {required}, actual {actual}",
-                )
+                write!(f, "alignment mismatch: required {required}, actual {actual}")
             },
             Self::InvalidRank { expected, actual } => {
                 write!(f, "invalid rank: expected {expected}, actual {actual}")
             },
             Self::BlasIncompatibleLayout { shape, strides } => {
-                write!(
-                    f,
-                    "BLAS-incompatible layout: shape {}, strides {}",
-                    FmtShape(shape),
-                    FmtShape(strides),
-                )
+                write!(f, "BLAS-incompatible layout: shape {}, strides {}", FmtShape(shape), FmtShape(strides))
             },
-            Self::IntegerOverflow {
-                value,
-                target_width_bits,
-            } => {
-                write!(
-                    f,
-                    "integer overflow: {value} does not fit in i{target_width_bits}",
-                )
+            Self::IntegerOverflow { value, target_width_bits } => {
+                write!(f, "integer overflow: {value} does not fit in i{target_width_bits}")
             },
             Self::AbiMismatch { detail } => {
                 write!(f, "ABI mismatch: {detail:?}")
             },
             Self::OverlapRejected { shape, strides } => {
-                write!(
-                    f,
-                    "potentially overlapping layout rejected: shape {}, strides {}",
-                    FmtShape(shape),
-                    FmtShape(strides),
-                )
+                write!(f, "Overlapping layout rejected: shape {}, strides {}", FmtShape(shape), FmtShape(strides))
             },
             Self::ForeignAllocatorMismatch { detail } => {
                 write!(f, "foreign allocator metadata mismatch: {detail:?}")
