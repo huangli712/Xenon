@@ -82,10 +82,6 @@ pub fn reset_simd_threshold() {
     set_simd_threshold(DEFAULT_SIMD_THRESHOLD);
 }
 
-
-
-
-
 /// Three mutually exclusive execution paths recommended by dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecPath {
@@ -124,25 +120,6 @@ pub struct ParallelExecStrategy {
     /// Maximum worker count. `None` means use rayon's default thread
     /// pool size.
     max_workers: Option<usize>,
-}
-
-/// Construct a dispatch-specific `InvalidArgument` error with an
-/// `InvalidConfig` detail. Private to `dispatch` so the error module
-/// does not carry module-specific constructors.
-#[cfg(feature = "parallel")]
-fn dispatch_invalid_argument(
-    argument: impl Into<std::borrow::Cow<'static, str>>,
-    constraint: impl Into<std::borrow::Cow<'static, str>>,
-    actual: impl Into<std::borrow::Cow<'static, str>>,
-) -> crate::error::XenonError {
-    crate::error::XenonError::InvalidArgument {
-        operation: std::borrow::Cow::Borrowed("dispatch"),
-        kind: crate::error::InvalidArgumentKind::InvalidConfig {
-            argument: argument.into(),
-            constraint: constraint.into(),
-            actual: actual.into(),
-        },
-    }
 }
 
 #[cfg(feature = "parallel")]
@@ -252,6 +229,25 @@ pub struct ParallelGuard {
 // ---------------------------------------------------------------------------
 // Core dispatch functions
 // ---------------------------------------------------------------------------
+
+/// Construct a dispatch-specific `InvalidArgument` error with an
+/// `InvalidConfig` detail. Private to `dispatch` so the error module
+/// does not carry module-specific constructors.
+#[cfg(feature = "parallel")]
+fn dispatch_invalid_argument(
+    argument: impl Into<std::borrow::Cow<'static, str>>,
+    constraint: impl Into<std::borrow::Cow<'static, str>>,
+    actual: impl Into<std::borrow::Cow<'static, str>>,
+) -> crate::error::XenonError {
+    crate::error::XenonError::InvalidArgument {
+        operation: std::borrow::Cow::Borrowed("dispatch"),
+        kind: crate::error::InvalidArgumentKind::InvalidConfig {
+            argument: argument.into(),
+            constraint: constraint.into(),
+            actual: actual.into(),
+        },
+    }
+}
 
 /// Selects the optimal execution path for an operation, atomically
 /// binding "select Parallel" with "enter the parallel region".
