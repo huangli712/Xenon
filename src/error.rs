@@ -12,7 +12,7 @@ use std::vec::Vec;
 /// Helper for formatting optional values in error messages.
 ///
 /// Displays `<any>` if `None`, otherwise formats the value via `Display`.
-/// The `<any>` text is mandated by `26-error §5.7`.
+/// The `<any>` text preserves type-erased optional fields.
 #[cfg_attr(not(test), expect(dead_code))]
 struct OrAny<T>(Option<T>);
 
@@ -27,8 +27,7 @@ impl<T: fmt::Display> fmt::Display for OrAny<T> {
 
 /// Helper for formatting `[usize]` shape/stride slices in error messages.
 ///
-/// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — NumPy style;
-/// see `26-error §5.7` for Display output requirements.
+/// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — NumPy style.
 struct FmtShape<'a>(&'a [usize]);
 
 impl<'a> fmt::Display for FmtShape<'a> {
@@ -307,7 +306,7 @@ pub enum WorkspaceErrorCategory {
     /// bytes (always in BYTES). For typed-view `count * size_of::<T>()`
     /// overflows where `count` is in element units (not bytes), use
     /// `TypedViewRejection::TypedByteLengthOverflow` instead — see
-    /// `24-workspace.md §5.6`.
+    /// `TypedViewRejection::TypedByteLengthOverflow`.
     GrowOverflow {
         /// Current available byte capacity.
         current_capacity: usize,
@@ -746,8 +745,7 @@ pub enum InvalidShapeKind {
     /// receives a shape vector with `provided_ndim > 6`.
     ///
     /// **Excludes** `Dimension::try_from_dyn(IxDyn(...))` rank-mismatch
-    /// path, which returns `XenonError::DimensionMismatch` (see
-    /// `02-dimension.md §5.4` + `§8.3` in this doc); that path is a
+    /// path, which returns `XenonError::DimensionMismatch`; that path is a
     /// dimension-conversion mismatch, not a constructor rank-policy
     /// violation.
     RankExceedsStaticMax {
@@ -786,7 +784,7 @@ impl fmt::Display for InvalidShapeKind {
 ///
 /// # Examples
 ///
-/// Access via direct re-export (matches `01-architecture.md §8` line 635):
+/// Access via direct re-export:
 ///
 /// ```
 /// use xenon::XenonError;
@@ -1112,9 +1110,9 @@ impl fmt::Display for XenonError {
                     "FFI error (`{category}`) in `{operation}` (backend: {backend})",
                 )?;
                 if let Some(inner) = cause {
-                    // Contract from `26-error §5.7`: append `; caused by: <inner>`
-                    // so a single Display call shows the whole chain. Programmatic
-                    // traversal still uses `std::error::Error::source()`.
+                    // Append `; caused by: <inner>` so a single Display call
+                    // shows the whole chain. Programmatic traversal still
+                    // uses `std::error::Error::source()`.
                     write!(f, "; caused by: {inner}")?;
                 }
                 Ok(())
@@ -1126,7 +1124,7 @@ impl fmt::Display for XenonError {
             } => {
                 write!(f, "workspace error (`{category}`) in `{operation}`",)?;
                 if let Some(inner) = cause {
-                    // Same chain contract as `Ffi` above; see `26-error §5.7`.
+                    // Same chain contract as `Ffi` above.
                     write!(f, "; caused by: {inner}")?;
                 }
                 Ok(())
@@ -1202,7 +1200,7 @@ impl XenonError {
         }
     }
 
-    // --- XenonError::Workspace constructor helpers (used by W9T4, W9T5, W9T6) ---
+    // --- Workspace constructor helpers ---
     //
     // Each helper preserves the `operation` field and accepts structured
     // borrow / overflow context so callers (the borrow/split/expand modules)
@@ -1605,15 +1603,12 @@ mod tests {
 
     #[test]
     fn test_or_any_none() {
-        // 26-error §5.7: `None` fields render as `<any>`.
+        // Verify `None` fields render as `<any>`.
         assert_eq!(format!("{}", OrAny(None::<i32>)), "<any>");
     }
 
-    /// Ref: 26-error §8.2 — test_display_option_fields_render_any
-    ///
-    /// `BroadcastError.attempted_target_shape` and `BroadcastError.axis`
-    /// are both `Option`; when `None` the Display must omit them, never
-    /// output `Some(...)` / `None` Debug text (§5.7 contract).
+    /// Verify optional fields are omitted in Display output when `None`,
+    /// never rendered as `Some(...)` or `None`.
     #[test]
     fn test_display_option_fields_render_any() {
         let e = XenonError::BroadcastError {
@@ -1631,10 +1626,7 @@ mod tests {
         assert!(s.contains("[1 × 4]"));
     }
 
-    /// Ref: 26-error §8.2 — test_type_conversion_carries_operation
-    ///
-    /// `TypeConversion.operation` field must appear in Display output,
-    /// never be empty (§5.5 contract).
+    /// Verify `TypeConversion.operation` field appears in Display output.
     #[test]
     fn test_type_conversion_carries_operation() {
         let e = XenonError::TypeConversion {
@@ -1649,10 +1641,8 @@ mod tests {
         assert!(s.contains("element index 7"));
     }
 
-    /// Ref: 26-error §8.2 — test_type_conversion_uses_element_type_name
-    ///
-    /// `source_type` / `target_type` are `&'static str`, Display must
-    /// write them directly; forbid `{:?}` / TypeId style (§5.7 contract).
+    /// Verify `source_type` / `target_type` are written directly in Display,
+    /// not wrapped in `{:?}` or TypeId style.
     #[test]
     fn test_type_conversion_uses_element_type_name() {
         let e = XenonError::TypeConversion {
@@ -1670,9 +1660,8 @@ mod tests {
         assert!(s.contains("non-zero imaginary part"));
     }
 
-    /// Ref: 26-error §5.7 — Ffi/Workspace cause chain Display contract
-    ///
-    /// When `cause: Some(_)`, Display must append `; caused by: <inner>`.
+    /// Verify cause chain: when `cause: Some(_)`, Display appends
+    /// `; caused by: <inner>`.
     #[test]
     fn test_display_ffi_cause_chain_format() {
         let inner = Box::new(XenonError::InvalidAxis {
@@ -1801,8 +1790,7 @@ mod tests {
         assert!(e.to_string().contains("2"));
     }
 
-    /// §8.2-style verification: DimensionMismatch must carry
-    /// operation/expected/actual.
+    /// Verify DimensionMismatch carries operation, expected, actual fields.
     #[test]
     fn test_dimension_mismatch_variant_fields() {
         let err = XenonError::DimensionMismatch {
@@ -1824,7 +1812,7 @@ mod tests {
         }
     }
 
-    /// W2T3 Display format includes operation, expected, actual.
+    /// Verify Display format includes operation, expected, and actual.
     #[test]
     fn test_dimension_mismatch_display_includes_operation() {
         let err = XenonError::DimensionMismatch {
@@ -1838,10 +1826,10 @@ mod tests {
         assert!(msg.contains("3"), "msg: {msg}");
     }
 
-    // ── W9T1: workspace error category + constructor helper tests ──
+    // ── Workspace error category + constructor helper tests ──
 
     /// Verify all 7 `WorkspaceErrorCategory` variants are constructable
-    /// and carry structured fields (24-workspace.md §8.2).
+    /// and carry structured fields.
     #[test]
     fn test_workspace_workspace_error_category() {
         // InvalidLayout
