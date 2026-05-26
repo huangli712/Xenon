@@ -82,6 +82,10 @@ pub fn reset_simd_threshold() {
     set_simd_threshold(DEFAULT_SIMD_THRESHOLD);
 }
 
+// ---------------------------------------------------------------------------
+// Execution path types
+// ---------------------------------------------------------------------------
+
 /// Three mutually exclusive execution paths recommended by dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecPath {
