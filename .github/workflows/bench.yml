@@ -57,7 +57,7 @@ jobs:
           # Cache both the main crate and the bench-report tool crate.
           workspaces: |
             .
-            tools/report
+            benches/report
       # Baseline consumption: elem_add_f64 + sum_1d_f64 (Medium = 65536)
       - name: Run regression benches and capture output
         run: |
@@ -65,9 +65,9 @@ jobs:
           cargo bench --bench math -- "elem_add_f64" > target/bench-smoke.txt
           cargo bench --bench reduction -- "sum_1d_f64" >> target/bench-smoke.txt
       - name: Build bench-report
-        run: cargo build --release --manifest-path tools/report/Cargo.toml
+        run: cargo build --release --manifest-path benches/report/Cargo.toml
       - name: Report regression analysis
-        run: tools/report/target/release/bench-report --input target/bench-smoke.txt --baseline tools/bench/baseline.json
+        run: benches/report/target/release/bench-report --input target/bench-smoke.txt --baseline benches/bench/baseline.json
 
   bench-full:
     if: github.event_name == 'workflow_dispatch' && inputs.level == 'full'
