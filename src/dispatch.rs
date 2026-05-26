@@ -1,15 +1,15 @@
 //! Internal execution-path dispatch.
 //!
-//! See `docs/design/30-dispatch.md` for the full design (path
-//! arbitration, nested-parallel guard, threshold storage, feature
-//! gates). All items in this module are `pub(crate)` by default; a
-//! minimal subset is re-exported under `#[doc(hidden)]` at the crate
-//! root solely so integration tests under `tests/` can observe
-//! dispatch decisions. These re-exports are NOT a stable public API.
+//! Arbitrates between Serial, SIMD, and Parallel execution paths based on
+//! input length, contiguity, alignment hints, runtime thresholds, and
+//! feature gates. Holds the nested-parallel guard (TLS flag) so library
+//! code never starts a parallel region inside another parallel region.
+//!
+//! All items here are `pub(crate)`. A minimal subset is re-exported at
+//! the crate root under `#[doc(hidden)]` solely for integration tests
+//! and is NOT a stable public API.
 
 /// Three mutually exclusive execution paths recommended by dispatch.
-///
-/// See `30-dispatch.md §5.2` for full per-variant semantics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecPath {
     /// Serial scalar execution. Default fallback when neither SIMD
@@ -17,13 +17,12 @@ pub enum ExecPath {
     Serial,
     /// Serial path with SIMD acceleration. dispatch only signals
     /// "SIMD path is preferred"; the `simd/` backend retains final
-    /// admission (ISA, lane width, alignment per `08-simd.md §5.7`).
+    /// admission (ISA, lane width, alignment).
     Simd,
     /// Parallel execution. Returned only when `feature = "parallel"`
     /// is enabled, the input meets the parallel threshold, and the
     /// current thread is not already inside a library-internal
-    /// parallel region. Always accompanied by `Some(ParallelGuard)`
-    /// per `30-dispatch.md §5.5`.
+    /// parallel region. Always accompanied by `Some(ParallelGuard)`.
     Parallel,
 }
 
@@ -31,12 +30,11 @@ pub enum ExecPath {
 ///
 /// Defined here; consumed by `parallel/` module functions such as
 /// `par_map`, `par_zip_map`, `par_sum`, `par_dot`. Fields are private
-/// to enforce construction via `ParallelExecStrategy::new()` (see
-/// `30-dispatch.md §5.3`).
+/// to enforce construction via `ParallelExecStrategy::new()`.
 ///
-/// Only compiled under `feature = "parallel"` per §5.1: outside that
-/// feature `select_exec_path()` can never return `ExecPath::Parallel`,
-/// so the strategy type itself is unreachable.
+/// Only compiled under `feature = "parallel"`: outside that feature
+/// `select_exec_path()` can never return `ExecPath::Parallel`, so the
+/// strategy type itself is unreachable.
 #[cfg(feature = "parallel")]
 #[derive(Debug, Clone, Copy)]
 pub struct ParallelExecStrategy {
@@ -51,8 +49,8 @@ pub struct ParallelExecStrategy {
 #[cfg(feature = "parallel")]
 impl ParallelExecStrategy {
     /// Construct a validated strategy. Performs ALL field-level
-    /// validation per 30-dispatch.md §5.3 so that the parallel/
-    /// backend can consume the value without re-validation.
+    /// validation so that the parallel/ backend can consume the value
+    /// without re-validation.
     ///
     /// # Errors
     ///
@@ -80,7 +78,7 @@ impl ParallelExecStrategy {
             ));
         }
         if let Some(n) = max_workers {
-            // Read the pool size once at construction time per §5.3 line 215-219.
+            // Read the pool size once at construction time.
             let pool = rayon::current_num_threads();
             if n > pool {
                 return Err(crate::error::XenonError::dispatch_invalid_argument(
@@ -149,8 +147,7 @@ fn get_simd_threshold() -> usize {
 
 /// Override the parallel threshold at runtime.
 ///
-/// Setting `threshold = 0` disables the parallel path entirely
-/// (sentinel per 30-dispatch.md §5.6 line 494-499).
+/// Setting `threshold = 0` disables the parallel path entirely (sentinel).
 #[cfg(any(test, feature = "parallel"))]
 pub fn set_parallel_threshold(threshold: usize) {
     PARALLEL_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
@@ -164,8 +161,7 @@ pub fn reset_parallel_threshold() {
 
 /// Override the SIMD threshold at runtime.
 ///
-/// Use `usize::MAX` to disable the SIMD path (sentinel per
-/// 30-dispatch.md §5.6 line 520-523).
+/// Use `usize::MAX` to disable the SIMD path (sentinel).
 #[cfg(any(test, feature = "simd"))]
 pub fn set_simd_threshold(threshold: usize) {
     SIMD_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
@@ -183,8 +179,6 @@ pub fn reset_simd_threshold() {
 
 /// Selects the optimal execution path for an operation, atomically
 /// binding "select Parallel" with "enter the parallel region".
-///
-/// See `30-dispatch.md §5.5` for the full contract.
 pub fn select_exec_path(
     len: usize,
     is_contiguous: bool,
@@ -195,7 +189,8 @@ pub fn select_exec_path(
         return (ExecPath::Serial, None);
     }
 
-    // §6.4: zero sentinel disables parallel; non-contiguous gets saturating doubled threshold.
+    // Zero sentinel disables parallel; non-contiguous gets saturating
+    // doubled threshold.
     let base = get_parallel_threshold();
     let parallel_eligible_by_threshold = if base == 0 {
         false
@@ -222,8 +217,8 @@ pub fn select_exec_path(
     #[cfg(feature = "simd")]
     {
         if is_contiguous && len >= get_simd_threshold() {
-            // alignment_ok is a hint to the simd backend (§5.5 / §5.6 / §6.4);
-            // dispatch does not gate SIMD on alignment.
+            // alignment_ok is a hint to the simd backend; dispatch does
+            // not gate SIMD on alignment.
             let _simd_alignment_hint = alignment_ok;
             return (ExecPath::Simd, None);
         }
@@ -239,7 +234,7 @@ pub fn select_exec_path(
 /// Quick boolean query for "should I use parallel?"
 ///
 /// Does **not** acquire a `ParallelGuard`. Includes `is_in_parallel()`
-/// check (§6.4) so the result matches what `select_exec_path()` would do.
+/// check so the result matches what `select_exec_path()` would do.
 #[cfg(feature = "parallel")]
 #[cfg_attr(
     not(test),
@@ -247,7 +242,7 @@ pub fn select_exec_path(
 )]
 pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
     let base = get_parallel_threshold();
-    // §6.4: zero sentinel disables; in-parallel TLS suppresses nested parallel.
+    // Zero sentinel disables; in-parallel TLS suppresses nested parallel.
     if base == 0 || is_in_parallel() {
         return false;
     }
@@ -392,17 +387,18 @@ mod tests {
         }
     }
 
-    // === W10T1: Skeleton compile-smoke ===
+    // === ExecPath enum smoke ===
 
+    /// Verify `ExecPath` is constructable and equality-comparable.
     #[test]
     fn test_exec_path_enum_defined() {
-        // Skeleton compile-smoke: verifies the enum type is usable.
-        // Real threshold-vs-path behaviour is tested in W10T4/W10T6.
         assert_eq!(ExecPath::Serial, ExecPath::Serial);
     }
 
-    // === W10T2: ParallelGuard and worker context ===
+    // === ParallelGuard and worker context ===
 
+    /// Verify dropping a `ParallelGuard` releases the TLS flag so a
+    /// subsequent `select_exec_path()` can re-enter the parallel region.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_guard_drop_releases_flag() {
@@ -420,11 +416,11 @@ mod tests {
         drop(second_guard);
     }
 
+    /// Verify `with_parallel_worker_context` saves the previous TLS
+    /// value, sets it to true, runs `f`, and restores on drop.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_worker_context_restores_previous_flag() {
-        // 30-dispatch §5.4: with_parallel_worker_context must save the
-        // previous TLS value, set it to true, run f, and restore on drop.
         assert!(!super::is_in_parallel());
         let observed = super::with_parallel_worker_context(super::is_in_parallel);
         assert!(observed, "TLS must be true inside the worker context");
@@ -434,6 +430,8 @@ mod tests {
         );
     }
 
+    /// Verify `ParallelGuard::drop` clears the TLS flag even during
+    /// panic unwind.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_guard_drop_releases_flag_after_panic_unwind() {
@@ -454,6 +452,8 @@ mod tests {
         drop(guard);
     }
 
+    /// Verify the worker-context RAII restores the TLS flag during
+    /// panic unwind.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_worker_context_restores_previous_flag_after_panic_unwind() {
@@ -469,11 +469,12 @@ mod tests {
         assert!(!super::is_in_parallel());
     }
 
+    /// Verify nested worker contexts: inner runs with true, outer
+    /// restores its own previous value (also true), then outermost
+    /// restores false.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_worker_context_nests_correctly() {
-        // Nested worker contexts: inner runs with true, outer restores
-        // its own previous value (also true), then outermost restores false.
         let outer_inner = super::with_parallel_worker_context(|| {
             assert!(super::is_in_parallel());
             super::with_parallel_worker_context(super::is_in_parallel)
@@ -482,20 +483,25 @@ mod tests {
         assert!(!super::is_in_parallel());
     }
 
+    /// Verify `ParallelGuard` is `!Send + !Sync` so the TLS flag stays
+    /// bound to the acquiring thread.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_guard_is_not_send_or_sync() {
         static_assertions::assert_not_impl_any!(super::ParallelGuard: Send, Sync);
     }
 
+    /// Verify the placeholder `ParallelGuard` (without `parallel`
+    /// feature) is `Send + Sync` so `(ExecPath, Option<_>)` stays so too.
     #[cfg(not(feature = "parallel"))]
     #[test]
     fn test_placeholder_parallel_guard_is_send_sync() {
         static_assertions::assert_impl_all!(super::ParallelGuard: Send, Sync);
     }
 
-    // === W10T3: ParallelExecStrategy construction ===
+    // === ParallelExecStrategy construction ===
 
+    /// Verify `new()` rejects `chunk_size=0` and `max_workers=0`.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_strategy_new_rejects_zero() {
@@ -532,10 +538,10 @@ mod tests {
         ));
     }
 
+    /// Verify `new(None, None)` produces a strategy equivalent to `auto()`.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_strategy_new_accepts_none() {
-        // 30-dispatch §8.2 line 1008: new(None, None) ≡ auto().
         let lhs =
             super::ParallelExecStrategy::new(None, None).expect("new(None, None) should succeed");
         let rhs = super::ParallelExecStrategy::auto();
@@ -543,10 +549,10 @@ mod tests {
         assert_eq!(lhs.max_workers(), rhs.max_workers());
     }
 
+    /// Verify `new()` rejects `max_workers` exceeding the rayon pool size.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_strategy_new_rejects_oversized_max_workers() {
-        // 30-dispatch §5.3 line 211-213: max_workers > rayon pool size → InvalidArgument.
         let pool = rayon::current_num_threads();
         let actual = pool.saturating_add(1);
         let error = super::ParallelExecStrategy::new(None, Some(actual))
@@ -567,24 +573,24 @@ mod tests {
         ));
     }
 
-    // === W10T4: select_exec_path / should_parallelize ===
+    // === select_exec_path / should_parallelize ===
 
+    /// Verify `select_exec_path` returns `Some(guard)` iff path is
+    /// `Parallel`.
     #[test]
     fn test_select_returns_guard_iff_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // Default thresholds: parallel=65536. usize::MAX should be eligible
-        // under feature=parallel; otherwise Serial/Simd with None guard.
         let (path, guard) = super::select_exec_path(usize::MAX, true, true);
         assert_eq!(path == ExecPath::Parallel, guard.is_some());
     }
 
+    /// Verify `should_parallelize` is a pure query: it must not consume
+    /// the nested-parallel slot that `select_exec_path()` needs to
+    /// return `(Parallel, Some(_))`.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_should_parallelize_diagnostic_does_not_acquire_guard() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // should_parallelize is a pure query: it must not consume the
-        // nested-parallel slot that select_exec_path() needs to return
-        // (Parallel, Some(_)).
         assert!(super::should_parallelize(usize::MAX, true));
 
         let (path, guard) = super::select_exec_path(usize::MAX, true, true);
@@ -593,28 +599,30 @@ mod tests {
         drop(guard);
     }
 
+    /// Verify `should_parallelize` returns false when already inside a
+    /// parallel region, even if length threshold is satisfied.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_should_parallelize_returns_false_when_in_parallel_region() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // 30-dispatch §6.4 line 826: should_parallelize returns false when
-        // is_in_parallel() == true, even if length threshold is satisfied.
         let _outer = super::try_acquire_guard().expect("outer guard acquisition");
         assert!(!super::should_parallelize(usize::MAX, true));
     }
 
+    /// Verify a nested `select_exec_path()` falls back to `Serial`
+    /// when an outer parallel guard is alive.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_nested_select_falls_back_to_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // Hold an outer guard, then verify that a nested select_exec_path()
-        // correctly falls back to Serial instead of re-entering Parallel.
         let _outer = super::try_acquire_guard().expect("outer guard acquisition");
         let (path, guard) = super::select_exec_path(usize::MAX, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
     }
 
+    /// Verify a nested SIMD-eligible call inside a worker context
+    /// still falls back to `Serial`.
     #[cfg(all(feature = "parallel", feature = "simd"))]
     #[test]
     fn test_nested_simd_eligible_select_falls_back_to_serial() {
@@ -628,8 +636,9 @@ mod tests {
         assert!(guard.is_none());
     }
 
-    // === W10T5: Threshold configuration ===
+    // === Threshold configuration ===
 
+    /// Verify runtime threshold override is honored by `select_exec_path()`.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_threshold_override_respected() {
@@ -646,11 +655,11 @@ mod tests {
         drop(at_guard);
     }
 
+    /// Verify `threshold = 0` disables the parallel path entirely.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_threshold_zero_disables_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // 30-dispatch §5.6 line 494-499: threshold=0 is the parallel-disable sentinel.
         super::set_parallel_threshold(0);
         assert!(!super::should_parallelize(usize::MAX, true));
 
@@ -659,15 +668,17 @@ mod tests {
         assert!(guard.is_none());
     }
 
+    /// Verify threshold near `usize::MAX` saturates without wrapping
+    /// when doubled for non-contiguous inputs.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_threshold_saturating_mul_no_overflow() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // 30-dispatch §8.2 / §8.3: threshold near usize::MAX must saturate, never wrap.
         super::set_parallel_threshold(usize::MAX / 2 + 1);
         assert!(!super::should_parallelize(usize::MAX - 1, false));
     }
 
+    /// Verify `reset_parallel_threshold` restores the compile-time default.
     #[test]
     fn test_reset_threshold_restores_default() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -679,6 +690,7 @@ mod tests {
         );
     }
 
+    /// Verify `reset_simd_threshold` restores the compile-time default.
     #[test]
     fn test_reset_simd_threshold_restores_default() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -687,14 +699,14 @@ mod tests {
         assert_eq!(super::get_simd_threshold(), super::DEFAULT_SIMD_THRESHOLD);
     }
 
-    // === W10T6: Full dispatch unit tests per 30-dispatch.md §8.2 / §8.3 / §8.4 ===
+    // === Full dispatch unit tests ===
 
     // --- Path selection — Serial ---
 
+    /// Verify Serial path is chosen when `len` is below all thresholds.
     #[test]
     fn test_exec_path_serial_below_threshold() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // Default thresholds: parallel=65536, simd=64. len=1 is below both.
         let (path, guard) = super::select_exec_path(1, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
@@ -702,6 +714,7 @@ mod tests {
 
     // --- Path selection — Parallel ---
 
+    /// Verify Parallel path is chosen for large inputs.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_exec_path_parallel_above_threshold() {
@@ -714,11 +727,12 @@ mod tests {
 
     // --- Path selection — SIMD ---
 
+    /// Verify SIMD path is chosen for aligned contiguous inputs when
+    /// the parallel path is disabled.
     #[cfg(feature = "simd")]
     #[test]
     fn test_exec_path_simd_when_aligned() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // 30-dispatch §5.6 line 494-499: threshold=0 is the parallel-disable sentinel.
         super::set_parallel_threshold(0);
         let (path, guard) = super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, true, true);
         assert_eq!(path, ExecPath::Simd);
@@ -727,21 +741,22 @@ mod tests {
 
     // --- Non-contiguous penalty ---
 
+    /// Verify non-contiguous inputs need `len >= 2 * threshold` to
+    /// qualify for the parallel path.
     #[test]
     fn test_exec_path_serial_when_noncontiguous_below_doubled_threshold() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // 30-dispatch §5.6 line 541: non-contiguous needs len >= 2*threshold.
         super::set_parallel_threshold(100);
         let (path, guard) = super::select_exec_path(199, false, true);
         assert_ne!(path, ExecPath::Parallel);
         assert!(guard.is_none());
     }
 
+    /// Verify SIMD path is rejected for non-contiguous inputs.
     #[cfg(feature = "simd")]
     #[test]
     fn test_simd_rejected_when_noncontiguous() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // SIMD requires contiguous; non-contiguous must not select Simd.
         super::set_parallel_threshold(0); // disable parallel via sentinel
         let (path, _guard) = super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, false, true);
         assert_ne!(path, ExecPath::Simd);
@@ -750,11 +765,12 @@ mod tests {
 
     // --- Alignment hint pass-through ---
 
+    /// Verify `alignment_ok=false` is a hint only and does NOT close
+    /// the SIMD path.
     #[cfg(feature = "simd")]
     #[test]
     fn test_simd_allows_misaligned_hint_when_contiguous() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // 30-dispatch §5.5 line 403-410: alignment_ok=false must NOT close SIMD.
         super::set_parallel_threshold(0); // disable parallel via sentinel
         let (path, _guard) = super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, true, false);
         assert_eq!(path, ExecPath::Simd);
@@ -762,6 +778,7 @@ mod tests {
 
     // --- Priority: Parallel > SIMD ---
 
+    /// Verify Parallel takes priority over SIMD for large inputs.
     #[cfg(all(feature = "parallel", feature = "simd"))]
     #[test]
     fn test_parallel_preferred_over_simd_for_large_input() {
@@ -774,6 +791,8 @@ mod tests {
 
     // --- Feature gate combos ---
 
+    /// Verify Parallel path is never returned without the `parallel`
+    /// feature.
     #[cfg(not(feature = "parallel"))]
     #[test]
     fn test_no_parallel_feature_never_returns_parallel() {
@@ -782,6 +801,7 @@ mod tests {
         assert_ne!(path, ExecPath::Parallel);
     }
 
+    /// Verify SIMD path is never returned without the `simd` feature.
     #[cfg(not(feature = "simd"))]
     #[test]
     fn test_no_simd_feature_never_returns_simd() {
@@ -794,6 +814,8 @@ mod tests {
 
     // --- Determinism ---
 
+    /// Verify identical inputs produce identical path choices
+    /// (no randomization in dispatch).
     #[test]
     fn test_deterministic_same_input_same_output() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -803,8 +825,9 @@ mod tests {
         assert_eq!(first, second);
     }
 
-    // --- Boundary: length extremes (§8.3) ---
+    // --- Boundary: length extremes ---
 
+    /// Verify `len == 0` returns Serial.
     #[test]
     fn test_len_zero_returns_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -813,6 +836,7 @@ mod tests {
         assert!(guard.is_none());
     }
 
+    /// Verify `len == 1` returns Serial.
     #[test]
     fn test_len_one_returns_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -821,8 +845,10 @@ mod tests {
         assert!(guard.is_none());
     }
 
-    // --- Boundary: threshold edges (§8.3) ---
+    // --- Boundary: threshold edges ---
 
+    /// Verify boundary: `len == threshold` is eligible, `len == threshold - 1`
+    /// is not.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_threshold_boundary() {
@@ -836,6 +862,8 @@ mod tests {
         assert_ne!(path2, ExecPath::Parallel);
     }
 
+    /// Verify non-contiguous boundary: `2 * threshold` is eligible,
+    /// `2 * threshold - 1` is not.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_noncontiguous_doubled_threshold_boundary() {
@@ -848,7 +876,7 @@ mod tests {
         assert_eq!(path2, ExecPath::Parallel);
     }
 
-    // --- Property: Monotonic path grade (§8.4) ---
+    // --- Property: Monotonic path grade ---
 
     fn path_grade(path: ExecPath) -> u8 {
         match path {
@@ -858,11 +886,11 @@ mod tests {
         }
     }
 
+    /// Verify path grade is non-decreasing as `len` grows with other
+    /// parameters fixed (Serial < Simd < Parallel).
     #[test]
     fn test_monotonic_path_grade() {
         let _threshold_guard = ThresholdTestGuard::new();
-        // For increasing len with same other params, path grade never decreases.
-        // 30-dispatch §8.4: Serial < Simd < Parallel
         let get_grade = |len: usize| -> u8 {
             let (path, guard) = super::select_exec_path(len, true, true);
             drop(guard);
