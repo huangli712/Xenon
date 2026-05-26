@@ -1111,7 +1111,6 @@ impl XenonError {
 }
 
 /// Canonical `Result` alias used by all public Xenon APIs.
-/// Canonical `Result` alias used by all public Xenon APIs.
 ///
 /// Equivalent to `core::result::Result<T, XenonError>`.
 pub type Result<T> = core::result::Result<T, XenonError>;
@@ -1170,8 +1169,7 @@ mod tests {
         };
     }
 
-    /// Verify Conversion / Argument / Layout / Storage enums are
-    /// constructable.
+    /// Verify Conversion / Argument / Layout / Storage enums are constructable.
     #[test]
     fn test_other_aux_enums_construct() {
         let _ = ConversionFailureReason::FloatToInteger;
