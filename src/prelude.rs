@@ -1,10 +1,8 @@
 //! The Xenon prelude.
 //!
 //! Re-exports the most commonly used types so downstream code can
-//! write `use xenon::prelude::*;` instead of importing each item.
-//! Includes: `Tensor`, dimension aliases, `XenonError`, `Result`, and
-//! the conventional element/storage marker traits required by typical
-//! tensor construction and arithmetic.
+//! write `use xenon::prelude::*;` instead of importing each item
+//! individually.
 //!
 //! # Example
 //!
@@ -12,82 +10,56 @@
 //! use xenon::prelude::*;
 //! ```
 
-// --- Core types (added incrementally as modules are implemented) ---
-// Order strictly follows 01-architecture.md §7 prelude export list (lines 542-576).
+// ── Public re-exports ────────────────────────────────────────────────
 
-// Tensor types — available after W8
+// Core type hierarchy
+pub use crate::complex::Complex;
+pub use crate::element::{CastElement, CastTo, ComplexScalar, Element, Numeric, RealScalar};
+
+// Tensor types
 pub use crate::tensor::{
-    ArcTensor, ArcTensor0, ArcTensor1, ArcTensor2, ArcTensor3, ArcTensor4, ArcTensor5,
-    ArcTensor6, ArcTensorD, Tensor, Tensor0, Tensor1, Tensor2, Tensor3, Tensor4, Tensor5, Tensor6,
-    TensorBase, TensorD, TensorView, TensorView0, TensorView1, TensorView2, TensorView3,
-    TensorView4, TensorView5, TensorView6, TensorViewD, TensorViewMut, TensorViewMut0,
-    TensorViewMut1, TensorViewMut2, TensorViewMut3, TensorViewMut4, TensorViewMut5,
-    TensorViewMut6, TensorViewMutD,
+    ArcTensor, ArcTensor0, ArcTensor1, ArcTensor2, ArcTensor3, ArcTensor4, ArcTensor5, ArcTensor6,
+    ArcTensorD, Tensor, Tensor0, Tensor1, Tensor2, Tensor3, Tensor4, Tensor5, Tensor6, TensorBase,
+    TensorD, TensorView, TensorView0, TensorView1, TensorView2, TensorView3, TensorView4,
+    TensorView5, TensorView6, TensorViewD, TensorViewMut, TensorViewMut0, TensorViewMut1,
+    TensorViewMut2, TensorViewMut3, TensorViewMut4, TensorViewMut5, TensorViewMut6, TensorViewMutD,
 };
 
-// Dimension types — available after W3
+// Dimension and index types
 pub use crate::dimension::{
     Axis, Dimension, IntoDimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn,
 };
+pub use crate::index::{SliceInfo, SliceInfoElem, SliceInfoIndices};
 
-// Element traits — available after W4
-pub use crate::element::{CastElement, CastTo, ComplexScalar, Element, Numeric, RealScalar};
-
-// Complex type — available after W5
-pub use crate::complex::Complex;
-
-// Error types — active (W2T5)
-pub use crate::error::{
-    // Auxiliary enums
-    AbiMismatchKind,
-    ConversionFailureReason,
-    FfiBackend,
-    FfiErrorCategory,
-    InvalidArgumentKind,
-    InvalidLayoutReason,
-    InvalidShapeKind,
-    Result,
-    StorageConversionKind,
-    StorageKindTag,
-    TypedViewRejection,
-    WorkspaceBorrowKind,
-    WorkspaceBorrowState,
-    WorkspaceErrorCategory,
-    // Core types
-    XenonError,
-};
-
-// Construction convenience helpers — available after W22
-// Note: zeros/ones/eye/from_scalar are inherent methods on TensorBase,
-// not free functions. They become available when Tensor1/etc. are in scope
-// (via the tensor re-exports above). No separate re-export needed.
-
-// Set operations — available after W19
-pub use crate::set::UniqueElement;
-
-// Storage types — available after W7
+// Storage and layout
+pub use crate::layout::{LayoutFlags, LayoutState, Strides};
 pub use crate::storage::{
     ArcRepr, Owned, Storage, StorageIntoOwned, StorageMut, StorageOwned, StorageShared, View,
     ViewMut, ViewMutRepr, ViewRepr,
 };
 
-// Layout types — available after W6
-pub use crate::layout::{LayoutFlags, LayoutState, Strides};
+// Error types and Result alias
+pub use crate::error::{
+    AbiMismatchKind, ConversionFailureReason, FfiBackend, FfiErrorCategory, InvalidArgumentKind,
+    InvalidLayoutReason, InvalidShapeKind, Result, StorageConversionKind, StorageKindTag,
+    TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory,
+    XenonError,
+};
 
-// Index types — available after W17
-pub use crate::index::{SliceInfo, SliceInfoElem, SliceInfoIndices};
+// Construction methods — zeros, ones, eye, from_shape_vec, from_scalar
+// are inherent methods on TensorBase, available via the tensor
+// re-exports above; no separate `pub use` is needed.
 
-// Operator overload types — available after W19
+// Traits and helpers
 pub use crate::overload::Scalar;
-
-// Workspace type — available after W24
+pub use crate::set::UniqueElement;
 pub use crate::workspace::Workspace;
 
-// FFI types — available after W13
-// Note: FfiBackend and FfiErrorCategory are already exported via `crate::error` above;
-// no need to re-export them from `crate::ffi` to avoid name conflicts.
+// FFI types
+// FfiBackend and FfiErrorCategory are already exported via `crate::error` above.
 pub use crate::ffi::{BlasInfo, ElementType, TensorExportMutRaw, TensorExportRaw};
 
+// Matrix operations
 pub use crate::matrix::dot;
 
 // ── Test-only re-exports ────────────────────────────────────────────
@@ -99,15 +71,11 @@ pub use crate::matrix::dot;
 // NOT a stable public API: all marked `#[doc(hidden)]`.
 
 #[doc(hidden)]
-pub use crate::dispatch::{
-    ExecPath, select_exec_path,
-};
+pub use crate::dispatch::{ExecPath, select_exec_path};
 
 #[cfg(feature = "simd")]
 #[doc(hidden)]
-pub use crate::dispatch::{
-    reset_simd_threshold, set_simd_threshold,
-};
+pub use crate::dispatch::{reset_simd_threshold, set_simd_threshold};
 
 #[cfg(feature = "parallel")]
 #[doc(hidden)]
@@ -129,7 +97,6 @@ mod tests {
 
     #[test]
     fn test_prelude_error_imports() {
-        // Verify XenonError is importable from prelude
         let e: XenonError = XenonError::InvalidLayout {
             operation: std::borrow::Cow::Borrowed("validate"),
             storage_kind: StorageKindTag::Owned,
@@ -144,7 +111,6 @@ mod tests {
 
     #[test]
     fn test_prelude_result_alias() {
-        // Verify Result type alias is importable from prelude
         let _ok: Result<i32> = Ok(42);
     }
 
@@ -155,14 +121,12 @@ mod tests {
             expected: 2,
             actual: 3,
         };
-        // Must compile — confirms Debug + Display are in scope
         let _debug = format!("{:?}", e);
         let _display = format!("{}", e);
     }
 
     #[test]
     fn test_prelude_auxiliary_enums_importable() {
-        // Verify auxiliary enums are importable from prelude
         let _cat = FfiErrorCategory::NullPointer {
             argument: std::borrow::Cow::Borrowed("data"),
         };
@@ -174,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_xenon_error_direct_reexport_at_crate_root() {
-        let _e: crate::XenonError = crate::XenonError::DimensionMismatch {
+        let _e: crate::XenonError = XenonError::DimensionMismatch {
             operation: std::borrow::Cow::Borrowed("test"),
             expected: 1,
             actual: 2,
