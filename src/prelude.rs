@@ -14,15 +14,62 @@
 
 // Core type hierarchy
 pub use crate::complex::Complex;
-pub use crate::element::{CastElement, CastTo, ComplexScalar, Element, Numeric, RealScalar};
+pub use crate::element::{
+    CastElement,
+    CastTo,
+    Element,
+    Numeric,
+    RealScalar,
+    ComplexScalar
+};
 
 // Tensor types
 pub use crate::tensor::{
-    ArcTensor, ArcTensor0, ArcTensor1, ArcTensor2, ArcTensor3, ArcTensor4, ArcTensor5, ArcTensor6,
-    ArcTensorD, Tensor, Tensor0, Tensor1, Tensor2, Tensor3, Tensor4, Tensor5, Tensor6, TensorBase,
-    TensorD, TensorView, TensorView0, TensorView1, TensorView2, TensorView3, TensorView4,
-    TensorView5, TensorView6, TensorViewD, TensorViewMut, TensorViewMut0, TensorViewMut1,
-    TensorViewMut2, TensorViewMut3, TensorViewMut4, TensorViewMut5, TensorViewMut6, TensorViewMutD,
+    ArcTensor,
+    ArcTensor0,
+    ArcTensor1,
+    ArcTensor2,
+    ArcTensor3,
+    ArcTensor4,
+    ArcTensor5,
+    ArcTensor6,
+    ArcTensorD,
+};
+pub use crate::tensor::{
+    Tensor,
+    Tensor0,
+    Tensor1,
+    Tensor2,
+    Tensor3,
+    Tensor4,
+    Tensor5,
+    Tensor6,
+    TensorD,
+};
+pub use crate::tensor::{
+    TensorBase
+};
+pub use crate::tensor::{
+    TensorView,
+    TensorView0,
+    TensorView1,
+    TensorView2,
+    TensorView3,
+    TensorView4,
+    TensorView5,
+    TensorView6,
+    TensorViewD
+};
+pub use crate::tensor::{
+    TensorViewMut,
+    TensorViewMut0,
+    TensorViewMut1,
+    TensorViewMut2,
+    TensorViewMut3,
+    TensorViewMut4,
+    TensorViewMut5,
+    TensorViewMut6,
+    TensorViewMutD
 };
 
 // Dimension and index types
