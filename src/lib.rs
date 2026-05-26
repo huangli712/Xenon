@@ -154,6 +154,7 @@ pub(crate) mod simd;
 #[cfg(feature = "parallel")]
 pub(crate) mod parallel;
 
+// Re-export commonly used and test-only items at the crate root.
 pub use prelude::*;
 
 #[cfg(test)]
@@ -176,10 +177,7 @@ mod tests {
         );
     }
 
-    /// Verifies that src/prelude.rs exists on disk.
-    /// Created in Step 4 of this task and required by the `pub mod prelude;`
-    /// declaration in Step 3. W1T4 will later overwrite this placeholder
-    /// file with the full prelude module skeleton.
+    /// Verifies that the prelude module file exists.
     #[test]
     fn test_prelude_module_file_exists() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/prelude.rs");
