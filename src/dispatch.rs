@@ -14,6 +14,11 @@
 use core::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[cfg(feature = "parallel")]
+use core::cell::Cell;
+#[cfg(feature = "parallel")]
+use std::borrow::Cow;
+
 // ---------------------------------------------------------------------------
 // Threshold storage — constants
 // ---------------------------------------------------------------------------
@@ -286,9 +291,15 @@ pub fn select_exec_path(
 // Thread-local IN_PARALLEL flag and guard acquisition helpers
 // ---------------------------------------------------------------------------
 
+// Per-thread flag indicating the current thread is inside a
+// library-internal parallel region. Set by `try_acquire_guard()` when
+// a `ParallelGuard` is issued; cleared by the guard's `Drop`.
+//
+// Read by `select_exec_path()` to force nested calls to fall back to
+// `Serial`, preventing rayon worker threads from re-entering rayon.
 #[cfg(feature = "parallel")]
 std::thread_local! {
-    static IN_PARALLEL: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    static IN_PARALLEL: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Module-private: produces a guard only via `select_exec_path()`.
@@ -314,7 +325,7 @@ fn is_in_parallel() -> bool {
 /// Runs `f` while marking the current worker thread as being inside a
 /// Xenon-internal parallel region.
 ///
-/// Used by `parallel/` inside Rayon worker closures: outer `ParallelGuard`
+/// Used by `parallel` inside Rayon worker closures: outer `ParallelGuard`
 /// stays on the dispatching thread; each worker closure wraps its chunk
 /// execution in this helper so nested `select_exec_path()` calls inside
 /// the worker thread correctly observe `IN_PARALLEL == true`.
@@ -325,7 +336,7 @@ fn is_in_parallel() -> bool {
 pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
     IN_PARALLEL.with(|flag| {
         let previous = flag.replace(true);
-        struct Reset<'a>(&'a core::cell::Cell<bool>, bool);
+        struct Reset<'a>(&'a Cell<bool>, bool);
         impl Drop for Reset<'_> {
             fn drop(&mut self) {
                 self.0.set(self.1);
@@ -336,17 +347,21 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
     })
 }
 
+// ---------------------------------------------------------------------------
+// Error construction helper
+// ---------------------------------------------------------------------------
+
 /// Construct a dispatch-specific `InvalidArgument` error with an
 /// `InvalidConfig` detail. Private to `dispatch` so the error module
 /// does not carry module-specific constructors.
 #[cfg(feature = "parallel")]
 fn dispatch_invalid_argument(
-    argument: impl Into<std::borrow::Cow<'static, str>>,
-    constraint: impl Into<std::borrow::Cow<'static, str>>,
-    actual: impl Into<std::borrow::Cow<'static, str>>,
+    argument: impl Into<Cow<'static, str>>,
+    constraint: impl Into<Cow<'static, str>>,
+    actual: impl Into<Cow<'static, str>>,
 ) -> crate::error::XenonError {
     crate::error::XenonError::InvalidArgument {
-        operation: std::borrow::Cow::Borrowed("dispatch"),
+        operation: Cow::Borrowed("dispatch"),
         kind: crate::error::InvalidArgumentKind::InvalidConfig {
             argument: argument.into(),
             constraint: constraint.into(),
