@@ -163,7 +163,7 @@ impl fmt::Display for FfiBackend {
 ///
 /// Marked `#[non_exhaustive]` to allow new ABI mismatch kinds in future
 /// minor versions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AbiMismatchKind {
     /// Element type did not match.
@@ -392,7 +392,10 @@ impl fmt::Display for WorkspaceBorrowState {
 }
 
 /// Identifies a typed view rejection reason.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Marked `#[non_exhaustive]` to allow new typed-view rejection kinds in
+/// future minor versions without breaking downstream `match` exhaustiveness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TypedViewRejection {
     /// `T` is a zero-sized type; typed view of ZST is rejected.
@@ -1162,6 +1165,7 @@ impl std::error::Error for XenonError {
     }
 }
 
+/// Constructor helpers for common error variants.
 impl XenonError {
     /// Construct a dispatch-specific `InvalidArgument` error with an
     /// `InvalidConfig` detail.
