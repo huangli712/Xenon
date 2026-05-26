@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(feature = "parallel")]
 use core::cell::Cell;
+
 #[cfg(feature = "parallel")]
 use std::borrow::Cow;
 
