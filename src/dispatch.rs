@@ -373,20 +373,33 @@ fn dispatch_invalid_argument(
 
 #[cfg(test)]
 mod tests {
-    use super::ExecPath;
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
 
+    #[cfg(feature = "parallel")]
+    use crate::error::{InvalidArgumentKind, XenonError};
+
+    /// Marker type held inside `THRESHOLD_TEST_LOCK` to give the mutex
+    /// a distinct type without carrying meaningful data.
     struct ThresholdTestLock;
 
-    static THRESHOLD_TEST_LOCK: std::sync::Mutex<ThresholdTestLock> =
-        std::sync::Mutex::new(ThresholdTestLock);
+    /// Serializes tests that mutate the global threshold atomics. Without
+    /// this lock, parallel test execution would race on threshold state
+    /// and produce flaky results.
+    static THRESHOLD_TEST_LOCK: Mutex<ThresholdTestLock> = Mutex::new(ThresholdTestLock);
 
+    /// RAII guard that captures the current thresholds on construction
+    /// and restores them on drop, so threshold-mutating tests do not
+    /// leak state to subsequent tests.
     struct ThresholdTestGuard<'lock> {
-        _lock: std::sync::MutexGuard<'lock, ThresholdTestLock>,
+        _lock: MutexGuard<'lock, ThresholdTestLock>,
         parallel_threshold: usize,
         simd_threshold: usize,
     }
 
     impl ThresholdTestGuard<'_> {
+        /// Acquire the global threshold lock (recovering from poisoning)
+        /// and snapshot the current parallel and SIMD thresholds.
         fn new() -> Self {
             let lock = match THRESHOLD_TEST_LOCK.lock() {
                 Ok(lock) => lock,
@@ -394,16 +407,16 @@ mod tests {
             };
             Self {
                 _lock: lock,
-                parallel_threshold: super::get_parallel_threshold(),
-                simd_threshold: super::get_simd_threshold(),
+                parallel_threshold: get_parallel_threshold(),
+                simd_threshold: get_simd_threshold(),
             }
         }
     }
 
     impl Drop for ThresholdTestGuard<'_> {
         fn drop(&mut self) {
-            super::set_parallel_threshold(self.parallel_threshold);
-            super::set_simd_threshold(self.simd_threshold);
+            set_parallel_threshold(self.parallel_threshold);
+            set_simd_threshold(self.simd_threshold);
         }
     }
 
@@ -424,13 +437,13 @@ mod tests {
     fn test_guard_drop_releases_flag() {
         let _threshold_guard = ThresholdTestGuard::new();
 
-        let (first_path, first_guard) = super::select_exec_path(usize::MAX, true, true);
+        let (first_path, first_guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(first_path, ExecPath::Parallel);
 
         let first_guard = first_guard.expect("parallel path must return a guard");
         drop(first_guard);
 
-        let (second_path, second_guard) = super::select_exec_path(usize::MAX, true, true);
+        let (second_path, second_guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(second_path, ExecPath::Parallel);
         assert!(second_guard.is_some());
         drop(second_guard);
@@ -441,11 +454,11 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_worker_context_restores_previous_flag() {
-        assert!(!super::is_in_parallel());
-        let observed = super::with_parallel_worker_context(super::is_in_parallel);
+        assert!(!is_in_parallel());
+        let observed = with_parallel_worker_context(is_in_parallel);
         assert!(observed, "TLS must be true inside the worker context");
         assert!(
-            !super::is_in_parallel(),
+            !is_in_parallel(),
             "TLS must be restored after the context exits"
         );
     }
@@ -458,7 +471,7 @@ mod tests {
         let _threshold_guard = ThresholdTestGuard::new();
 
         let panic_result = std::panic::catch_unwind(|| {
-            let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+            let (path, guard) = select_exec_path(usize::MAX, true, true);
             assert_eq!(path, ExecPath::Parallel);
 
             let _guard = guard.expect("parallel path must return a guard");
@@ -466,7 +479,7 @@ mod tests {
         });
         assert!(panic_result.is_err());
 
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(path, ExecPath::Parallel);
         assert!(guard.is_some());
         drop(guard);
@@ -477,16 +490,16 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_worker_context_restores_previous_flag_after_panic_unwind() {
-        assert!(!super::is_in_parallel());
+        assert!(!is_in_parallel());
 
         let panic_result = std::panic::catch_unwind(|| {
-            super::with_parallel_worker_context(|| {
-                assert!(super::is_in_parallel());
+            with_parallel_worker_context(|| {
+                assert!(is_in_parallel());
                 panic!("intentional panic to test worker-context unwind reset");
             });
         });
         assert!(panic_result.is_err());
-        assert!(!super::is_in_parallel());
+        assert!(!is_in_parallel());
     }
 
     /// Verify nested worker contexts: inner runs with true, outer
@@ -495,12 +508,12 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_worker_context_nests_correctly() {
-        let outer_inner = super::with_parallel_worker_context(|| {
-            assert!(super::is_in_parallel());
-            super::with_parallel_worker_context(super::is_in_parallel)
+        let outer_inner = with_parallel_worker_context(|| {
+            assert!(is_in_parallel());
+            with_parallel_worker_context(is_in_parallel)
         });
         assert!(outer_inner);
-        assert!(!super::is_in_parallel());
+        assert!(!is_in_parallel());
     }
 
     /// Verify `ParallelGuard` is `!Send + !Sync` so the TLS flag stays
@@ -508,7 +521,7 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_guard_is_not_send_or_sync() {
-        static_assertions::assert_not_impl_any!(super::ParallelGuard: Send, Sync);
+        static_assertions::assert_not_impl_any!(ParallelGuard: Send, Sync);
     }
 
     /// Verify the placeholder `ParallelGuard` (without `parallel`
@@ -516,7 +529,7 @@ mod tests {
     #[cfg(not(feature = "parallel"))]
     #[test]
     fn test_placeholder_parallel_guard_is_send_sync() {
-        static_assertions::assert_impl_all!(super::ParallelGuard: Send, Sync);
+        static_assertions::assert_impl_all!(ParallelGuard: Send, Sync);
     }
 
     // === ParallelExecStrategy construction ===
@@ -525,12 +538,12 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_strategy_new_rejects_zero() {
-        let chunk_size_error = super::ParallelExecStrategy::new(Some(0), None)
+        let chunk_size_error = ParallelExecStrategy::new(Some(0), None)
             .expect_err("chunk_size=0 must be rejected");
         assert!(matches!(
             chunk_size_error,
-            crate::error::XenonError::InvalidArgument {
-                kind: crate::error::InvalidArgumentKind::InvalidConfig {
+            XenonError::InvalidArgument {
+                kind: InvalidArgumentKind::InvalidConfig {
                     argument,
                     constraint,
                     actual,
@@ -541,12 +554,12 @@ mod tests {
                 && actual == "0"
         ));
 
-        let max_workers_error = super::ParallelExecStrategy::new(None, Some(0))
+        let max_workers_error = ParallelExecStrategy::new(None, Some(0))
             .expect_err("max_workers=0 must be rejected");
         assert!(matches!(
             max_workers_error,
-            crate::error::XenonError::InvalidArgument {
-                kind: crate::error::InvalidArgumentKind::InvalidConfig {
+            XenonError::InvalidArgument {
+                kind: InvalidArgumentKind::InvalidConfig {
                     argument,
                     constraint,
                     actual,
@@ -563,8 +576,8 @@ mod tests {
     #[test]
     fn test_parallel_strategy_new_accepts_none() {
         let lhs =
-            super::ParallelExecStrategy::new(None, None).expect("new(None, None) should succeed");
-        let rhs = super::ParallelExecStrategy::auto();
+            ParallelExecStrategy::new(None, None).expect("new(None, None) should succeed");
+        let rhs = ParallelExecStrategy::auto();
         assert_eq!(lhs.chunk_size(), rhs.chunk_size());
         assert_eq!(lhs.max_workers(), rhs.max_workers());
     }
@@ -575,13 +588,13 @@ mod tests {
     fn test_parallel_strategy_new_rejects_oversized_max_workers() {
         let pool = rayon::current_num_threads();
         let actual = pool.saturating_add(1);
-        let error = super::ParallelExecStrategy::new(None, Some(actual))
+        let error = ParallelExecStrategy::new(None, Some(actual))
             .expect_err("oversized max_workers must be rejected");
 
         assert!(matches!(
             error,
-            crate::error::XenonError::InvalidArgument {
-                kind: crate::error::InvalidArgumentKind::InvalidConfig {
+            XenonError::InvalidArgument {
+                kind: InvalidArgumentKind::InvalidConfig {
                     argument,
                     constraint,
                     actual: actual_value,
@@ -600,7 +613,7 @@ mod tests {
     #[test]
     fn test_select_returns_guard_iff_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(path == ExecPath::Parallel, guard.is_some());
     }
 
@@ -610,8 +623,8 @@ mod tests {
     #[test]
     fn test_nested_select_falls_back_to_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let _outer = super::try_acquire_guard().expect("outer guard acquisition");
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        let _outer = try_acquire_guard().expect("outer guard acquisition");
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
     }
@@ -623,8 +636,8 @@ mod tests {
     fn test_nested_simd_eligible_select_falls_back_to_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
 
-        let (path, guard) = super::with_parallel_worker_context(|| {
-            super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, true, true)
+        let (path, guard) = with_parallel_worker_context(|| {
+            select_exec_path(DEFAULT_SIMD_THRESHOLD, true, true)
         });
 
         assert_eq!(path, ExecPath::Serial);
@@ -638,13 +651,13 @@ mod tests {
     #[test]
     fn test_threshold_override_respected() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(42);
+        set_parallel_threshold(42);
 
-        let (below_path, below_guard) = super::select_exec_path(41, true, true);
+        let (below_path, below_guard) = select_exec_path(41, true, true);
         assert_ne!(below_path, ExecPath::Parallel);
         assert!(below_guard.is_none());
 
-        let (at_path, at_guard) = super::select_exec_path(42, true, true);
+        let (at_path, at_guard) = select_exec_path(42, true, true);
         assert_eq!(at_path, ExecPath::Parallel);
         assert!(at_guard.is_some());
         drop(at_guard);
@@ -655,9 +668,9 @@ mod tests {
     #[test]
     fn test_threshold_zero_disables_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(0);
+        set_parallel_threshold(0);
 
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_ne!(path, ExecPath::Parallel);
         assert!(guard.is_none());
     }
@@ -668,8 +681,8 @@ mod tests {
     #[test]
     fn test_threshold_saturating_mul_no_overflow() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(usize::MAX / 2 + 1);
-        let (path, _guard) = super::select_exec_path(usize::MAX - 1, false, true);
+        set_parallel_threshold(usize::MAX / 2 + 1);
+        let (path, _guard) = select_exec_path(usize::MAX - 1, false, true);
         assert_ne!(path, ExecPath::Parallel);
     }
 
@@ -677,11 +690,11 @@ mod tests {
     #[test]
     fn test_reset_threshold_restores_default() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(1);
-        super::reset_parallel_threshold();
+        set_parallel_threshold(1);
+        reset_parallel_threshold();
         assert_eq!(
-            super::get_parallel_threshold(),
-            super::DEFAULT_PARALLEL_THRESHOLD
+            get_parallel_threshold(),
+            DEFAULT_PARALLEL_THRESHOLD
         );
     }
 
@@ -689,9 +702,9 @@ mod tests {
     #[test]
     fn test_reset_simd_threshold_restores_default() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_simd_threshold(1);
-        super::reset_simd_threshold();
-        assert_eq!(super::get_simd_threshold(), super::DEFAULT_SIMD_THRESHOLD);
+        set_simd_threshold(1);
+        reset_simd_threshold();
+        assert_eq!(get_simd_threshold(), DEFAULT_SIMD_THRESHOLD);
     }
 
     // === Full dispatch unit tests ===
@@ -702,7 +715,7 @@ mod tests {
     #[test]
     fn test_exec_path_serial_below_threshold() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, guard) = super::select_exec_path(1, true, true);
+        let (path, guard) = select_exec_path(1, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
     }
@@ -714,7 +727,7 @@ mod tests {
     #[test]
     fn test_exec_path_parallel_above_threshold() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(path, ExecPath::Parallel);
         assert!(guard.is_some());
         drop(guard);
@@ -728,8 +741,8 @@ mod tests {
     #[test]
     fn test_exec_path_simd_when_aligned() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(0);
-        let (path, guard) = super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, true, true);
+        set_parallel_threshold(0);
+        let (path, guard) = select_exec_path(DEFAULT_SIMD_THRESHOLD, true, true);
         assert_eq!(path, ExecPath::Simd);
         assert!(guard.is_none());
     }
@@ -741,8 +754,8 @@ mod tests {
     #[test]
     fn test_exec_path_serial_when_noncontiguous_below_doubled_threshold() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(100);
-        let (path, guard) = super::select_exec_path(199, false, true);
+        set_parallel_threshold(100);
+        let (path, guard) = select_exec_path(199, false, true);
         assert_ne!(path, ExecPath::Parallel);
         assert!(guard.is_none());
     }
@@ -752,8 +765,8 @@ mod tests {
     #[test]
     fn test_simd_rejected_when_noncontiguous() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(0); // disable parallel via sentinel
-        let (path, _guard) = super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, false, true);
+        set_parallel_threshold(0); // disable parallel via sentinel
+        let (path, _guard) = select_exec_path(DEFAULT_SIMD_THRESHOLD, false, true);
         assert_ne!(path, ExecPath::Simd);
         assert_eq!(path, ExecPath::Serial);
     }
@@ -766,8 +779,8 @@ mod tests {
     #[test]
     fn test_simd_allows_misaligned_hint_when_contiguous() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(0); // disable parallel via sentinel
-        let (path, _guard) = super::select_exec_path(super::DEFAULT_SIMD_THRESHOLD, true, false);
+        set_parallel_threshold(0); // disable parallel via sentinel
+        let (path, _guard) = select_exec_path(DEFAULT_SIMD_THRESHOLD, true, false);
         assert_eq!(path, ExecPath::Simd);
     }
 
@@ -778,7 +791,7 @@ mod tests {
     #[test]
     fn test_parallel_preferred_over_simd_for_large_input() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(path, ExecPath::Parallel);
         assert!(guard.is_some());
         drop(guard);
@@ -792,7 +805,7 @@ mod tests {
     #[test]
     fn test_no_parallel_feature_never_returns_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, _guard) = super::select_exec_path(usize::MAX, true, true);
+        let (path, _guard) = select_exec_path(usize::MAX, true, true);
         assert_ne!(path, ExecPath::Parallel);
     }
 
@@ -801,8 +814,8 @@ mod tests {
     #[test]
     fn test_no_simd_feature_never_returns_simd() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(0); // disable parallel via sentinel
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
+        set_parallel_threshold(0); // disable parallel via sentinel
+        let (path, guard) = select_exec_path(usize::MAX, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
     }
@@ -814,9 +827,9 @@ mod tests {
     #[test]
     fn test_deterministic_same_input_same_output() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::reset_parallel_threshold();
-        let first = super::select_exec_path(1, true, true).0;
-        let second = super::select_exec_path(1, true, true).0;
+        reset_parallel_threshold();
+        let first = select_exec_path(1, true, true).0;
+        let second = select_exec_path(1, true, true).0;
         assert_eq!(first, second);
     }
 
@@ -826,7 +839,7 @@ mod tests {
     #[test]
     fn test_len_zero_returns_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, guard) = super::select_exec_path(0, true, true);
+        let (path, guard) = select_exec_path(0, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
     }
@@ -835,7 +848,7 @@ mod tests {
     #[test]
     fn test_len_one_returns_serial() {
         let _threshold_guard = ThresholdTestGuard::new();
-        let (path, guard) = super::select_exec_path(1, true, true);
+        let (path, guard) = select_exec_path(1, true, true);
         assert_eq!(path, ExecPath::Serial);
         assert!(guard.is_none());
     }
@@ -848,12 +861,12 @@ mod tests {
     #[test]
     fn test_parallel_threshold_boundary() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(100);
+        set_parallel_threshold(100);
         // Exactly at threshold → eligible for parallel.
-        let (path, _guard) = super::select_exec_path(100, true, true);
+        let (path, _guard) = select_exec_path(100, true, true);
         assert_eq!(path, ExecPath::Parallel);
         // One below threshold → should NOT be parallel.
-        let (path2, _guard2) = super::select_exec_path(99, true, true);
+        let (path2, _guard2) = select_exec_path(99, true, true);
         assert_ne!(path2, ExecPath::Parallel);
     }
 
@@ -863,16 +876,18 @@ mod tests {
     #[test]
     fn test_noncontiguous_doubled_threshold_boundary() {
         let _threshold_guard = ThresholdTestGuard::new();
-        super::set_parallel_threshold(100);
+        set_parallel_threshold(100);
         // Non-contiguous: threshold × 2 = 200. 199 → not eligible; 200 → eligible.
-        let (path, _guard) = super::select_exec_path(199, false, true);
+        let (path, _guard) = select_exec_path(199, false, true);
         assert_ne!(path, ExecPath::Parallel);
-        let (path2, _guard2) = super::select_exec_path(200, false, true);
+        let (path2, _guard2) = select_exec_path(200, false, true);
         assert_eq!(path2, ExecPath::Parallel);
     }
 
     // --- Property: Monotonic path grade ---
 
+    /// Map an `ExecPath` to a numeric grade so monotonicity can be
+    /// asserted: Serial (0) < Simd (1) < Parallel (2).
     fn path_grade(path: ExecPath) -> u8 {
         match path {
             ExecPath::Serial => 0,
@@ -887,7 +902,7 @@ mod tests {
     fn test_monotonic_path_grade() {
         let _threshold_guard = ThresholdTestGuard::new();
         let get_grade = |len: usize| -> u8 {
-            let (path, guard) = super::select_exec_path(len, true, true);
+            let (path, guard) = select_exec_path(len, true, true);
             drop(guard);
             path_grade(path)
         };
