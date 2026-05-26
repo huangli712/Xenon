@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use xenon::dimension::Axis;
 
-mod utils;
-use utils::{generators, run_timed, SIZES_1D, SIZES_2D};
+mod common;
+use common::{generators, run_timed, SIZES_1D, SIZES_2D};
 
 fn bench_sum_1d_f64(quick: bool) {
     for &size in SIZES_1D {
@@ -67,7 +67,7 @@ fn main() {
     let quick = args.iter().any(|arg| arg == "--quick");
     let filter = args.iter().find(|arg| !arg.starts_with("--")).map(String::as_str);
 
-    let benches: &[(&str, utils::BenchFn)] = &[
+    let benches: &[(&str, common::BenchFn)] = &[
         ("sum_1d_f64", bench_sum_1d_f64),
         ("sum_2d_axis0", bench_sum_2d_axis0),
         ("sum_2d_axis1", bench_sum_2d_axis1),
@@ -95,6 +95,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }

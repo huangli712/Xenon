@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
-mod utils;
-use utils::{generators, run_timed};
+mod common;
+use common::{generators, run_timed};
 
 // 27-benchmark §5.5: SIMD comparison entries fixed to Medium (M) scale only.
 const SIMD_COMPARE_SIZE: usize = 65_536;
@@ -92,7 +92,7 @@ fn main() {
     let quick = args.iter().any(|arg| arg == "--quick");
     let filter = args.iter().find(|arg| !arg.starts_with("--")).map(String::as_str);
 
-    let benches: &[(&str, utils::BenchFn)] = &[
+    let benches: &[(&str, common::BenchFn)] = &[
         ("simd_add_compare", bench_simd_add_compare),
         ("simd_sum_compare", bench_simd_sum_compare),
         ("simd_dot_compare", bench_simd_dot_compare),
@@ -118,6 +118,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }

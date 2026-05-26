@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use xenon::tensor::{Tensor1, Tensor2};
 
-mod utils;
-use utils::{run_timed, SIZES_1D, SIZES_2D};
+mod common;
+use common::{run_timed, SIZES_1D, SIZES_2D};
 
 fn bench_zeros_1d(quick: bool) {
     for &size in SIZES_1D {
@@ -70,6 +70,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }

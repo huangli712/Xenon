@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
-mod utils;
-use utils::{run_timed, SIZES_1D};
+mod common;
+use common::{run_timed, SIZES_1D};
 
 // 27-benchmark §5.5: unique_1d — single canonical entry over SIZES_1D.
 // Inputs use a moderate unique ratio (~50%) by mapping idx -> idx / 2 as f64.
@@ -46,6 +46,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }

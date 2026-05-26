@@ -3,8 +3,8 @@ use std::hint::black_box;
 use xenon::tensor::Tensor0;
 use xenon::tensor::Tensor2;
 
-mod utils;
-use utils::{generators, run_timed, SIZES_1D, SIZES_2D};
+mod common;
+use common::{generators, run_timed, SIZES_1D, SIZES_2D};
 
 fn bench_broadcast_scalar(quick: bool) {
     for &size in SIZES_1D {
@@ -78,7 +78,7 @@ fn main() {
     let quick = args.iter().any(|arg| arg == "--quick");
     let filter = args.iter().find(|arg| !arg.starts_with("--")).map(String::as_str);
 
-    let benches: &[(&str, utils::BenchFn)] = &[
+    let benches: &[(&str, common::BenchFn)] = &[
         ("broadcast_scalar", bench_broadcast_scalar),
         ("broadcast_row", bench_broadcast_row),
         ("broadcast_col", bench_broadcast_col),
@@ -105,6 +105,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }

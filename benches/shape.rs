@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
-mod utils;
-use utils::{generators, run_timed, SIZES_2D};
+mod common;
+use common::{generators, run_timed, SIZES_2D};
 
 fn bench_transpose_2d(quick: bool) {
     for &(rows, cols) in SIZES_2D {
@@ -39,6 +39,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }

@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
-mod utils;
-use utils::{generators, run_timed, SIZES_1D};
+mod common;
+use common::{generators, run_timed, SIZES_1D};
 
 fn bench_dot_1d_f64(quick: bool) {
     for &size in SIZES_1D {
@@ -51,6 +51,6 @@ mod tests {
         let mut calls = 0usize;
         let median = run_timed(true, || calls += 1);
         assert!(median <= u128::MAX);
-        assert!(calls >= utils::WARMUP_ITERATIONS + 10);
+        assert!(calls >= common::WARMUP_ITERATIONS + 10);
     }
 }
