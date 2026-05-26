@@ -154,39 +154,6 @@ pub(crate) mod simd;
 #[cfg(feature = "parallel")]
 pub(crate) mod parallel;
 
-// ── Test-only re-exports ────────────────────────────────────────────
-//
-// Integration tests under `tests/` are external crates and cannot reach
-// `pub(crate)` items inside `dispatch` or `parallel`. The items below
-// are re-exported solely so those tests can observe dispatch decisions,
-// tweak thresholds, and exercise parallel kernels directly.
-// NOT a stable public API: all marked `#[doc(hidden)]`.
-
-#[doc(hidden)]
-pub use crate::dispatch::{
-    ExecPath, select_exec_path,
-};
-
-#[cfg(feature = "simd")]
-#[doc(hidden)]
-pub use crate::dispatch::{
-    reset_simd_threshold, set_simd_threshold,
-};
-
-#[cfg(feature = "parallel")]
-#[doc(hidden)]
-pub use crate::dispatch::{
-    ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, set_parallel_threshold,
-};
-
-#[cfg(feature = "parallel")]
-#[doc(hidden)]
-pub use crate::parallel::map::par_map;
-
-#[cfg(feature = "parallel")]
-#[doc(hidden)]
-pub use crate::parallel::reduce::{par_dot, par_sum};
-
 pub use prelude::*;
 
 #[cfg(test)]
