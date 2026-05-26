@@ -189,8 +189,6 @@ pub use crate::parallel::map::par_map;
 #[doc(hidden)]
 pub use crate::parallel::reduce::{par_dot, par_sum};
 
-pub use matrix::dot;
-pub use error::XenonError;
 pub use prelude::*;
 
 #[cfg(test)]
