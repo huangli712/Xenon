@@ -196,8 +196,8 @@ impl ParallelExecStrategy {
 /// `ExecPath::Parallel`. There is no public `enter()` constructor.
 ///
 /// While the guard is alive, the thread-local flag is set. Any nested
-/// call to `select_exec_path()` or `should_parallelize()` will observe
-/// `is_in_parallel() == true` and fall back to `Serial`.
+/// call to `select_exec_path()` will observe `is_in_parallel() == true`
+/// and fall back to `Serial`.
 ///
 /// Dropping the guard clears the thread-local flag.
 ///
@@ -230,25 +230,6 @@ pub struct ParallelGuard {
 // ---------------------------------------------------------------------------
 // Core dispatch functions
 // ---------------------------------------------------------------------------
-
-/// Construct a dispatch-specific `InvalidArgument` error with an
-/// `InvalidConfig` detail. Private to `dispatch` so the error module
-/// does not carry module-specific constructors.
-#[cfg(feature = "parallel")]
-fn dispatch_invalid_argument(
-    argument: impl Into<std::borrow::Cow<'static, str>>,
-    constraint: impl Into<std::borrow::Cow<'static, str>>,
-    actual: impl Into<std::borrow::Cow<'static, str>>,
-) -> crate::error::XenonError {
-    crate::error::XenonError::InvalidArgument {
-        operation: std::borrow::Cow::Borrowed("dispatch"),
-        kind: crate::error::InvalidArgumentKind::InvalidConfig {
-            argument: argument.into(),
-            constraint: constraint.into(),
-            actual: actual.into(),
-        },
-    }
-}
 
 /// Selects the optimal execution path for an operation, atomically
 /// binding "select Parallel" with "enter the parallel region".
@@ -300,30 +281,6 @@ pub fn select_exec_path(
 
     (ExecPath::Serial, None)
 }
-
-/// Quick boolean query for "should I use parallel?"
-///
-/// Does **not** acquire a `ParallelGuard`. Includes `is_in_parallel()`
-/// check so the result matches what `select_exec_path()` would do.
-#[cfg(feature = "parallel")]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
-    let base = get_parallel_threshold();
-    // Zero sentinel disables; in-parallel TLS suppresses nested parallel.
-    if base == 0 || is_in_parallel() {
-        return false;
-    }
-    let effective = if is_contiguous {
-        base
-    } else {
-        base.saturating_mul(2)
-    };
-    len >= effective
-}
-
 
 // ---------------------------------------------------------------------------
 // Thread-local IN_PARALLEL flag and guard acquisition helpers
@@ -377,6 +334,25 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
         let _reset = Reset(flag, previous);
         f()
     })
+}
+
+/// Construct a dispatch-specific `InvalidArgument` error with an
+/// `InvalidConfig` detail. Private to `dispatch` so the error module
+/// does not carry module-specific constructors.
+#[cfg(feature = "parallel")]
+fn dispatch_invalid_argument(
+    argument: impl Into<std::borrow::Cow<'static, str>>,
+    constraint: impl Into<std::borrow::Cow<'static, str>>,
+    actual: impl Into<std::borrow::Cow<'static, str>>,
+) -> crate::error::XenonError {
+    crate::error::XenonError::InvalidArgument {
+        operation: std::borrow::Cow::Borrowed("dispatch"),
+        kind: crate::error::InvalidArgumentKind::InvalidConfig {
+            argument: argument.into(),
+            constraint: constraint.into(),
+            actual: actual.into(),
+        },
+    }
 }
 
 #[cfg(test)]
@@ -601,7 +577,7 @@ mod tests {
         ));
     }
 
-    // === select_exec_path / should_parallelize ===
+    // === select_exec_path ===
 
     /// Verify `select_exec_path` returns `Some(guard)` iff path is
     /// `Parallel`.
@@ -610,31 +586,6 @@ mod tests {
         let _threshold_guard = ThresholdTestGuard::new();
         let (path, guard) = super::select_exec_path(usize::MAX, true, true);
         assert_eq!(path == ExecPath::Parallel, guard.is_some());
-    }
-
-    /// Verify `should_parallelize` is a pure query: it must not consume
-    /// the nested-parallel slot that `select_exec_path()` needs to
-    /// return `(Parallel, Some(_))`.
-    #[cfg(feature = "parallel")]
-    #[test]
-    fn test_should_parallelize_diagnostic_does_not_acquire_guard() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        assert!(super::should_parallelize(usize::MAX, true));
-
-        let (path, guard) = super::select_exec_path(usize::MAX, true, true);
-        assert_eq!(path, ExecPath::Parallel);
-        assert!(guard.is_some());
-        drop(guard);
-    }
-
-    /// Verify `should_parallelize` returns false when already inside a
-    /// parallel region, even if length threshold is satisfied.
-    #[cfg(feature = "parallel")]
-    #[test]
-    fn test_should_parallelize_returns_false_when_in_parallel_region() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        let _outer = super::try_acquire_guard().expect("outer guard acquisition");
-        assert!(!super::should_parallelize(usize::MAX, true));
     }
 
     /// Verify a nested `select_exec_path()` falls back to `Serial`
@@ -689,7 +640,6 @@ mod tests {
     fn test_threshold_zero_disables_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
         super::set_parallel_threshold(0);
-        assert!(!super::should_parallelize(usize::MAX, true));
 
         let (path, guard) = super::select_exec_path(usize::MAX, true, true);
         assert_ne!(path, ExecPath::Parallel);
@@ -703,7 +653,8 @@ mod tests {
     fn test_threshold_saturating_mul_no_overflow() {
         let _threshold_guard = ThresholdTestGuard::new();
         super::set_parallel_threshold(usize::MAX / 2 + 1);
-        assert!(!super::should_parallelize(usize::MAX - 1, false));
+        let (path, _guard) = super::select_exec_path(usize::MAX - 1, false, true);
+        assert_ne!(path, ExecPath::Parallel);
     }
 
     /// Verify `reset_parallel_threshold` restores the compile-time default.
