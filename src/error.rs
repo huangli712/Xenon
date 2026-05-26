@@ -938,9 +938,7 @@ impl fmt::Display for XenonError {
                 left_shape,
                 right_shape,
             } => {
-                write!(
-                    f,
-                    "shape mismatch in `{operation}`: cannot operate on {} and {}",
+                write!(f, "shape mismatch in `{operation}`: cannot operate on {} and {}",
                     FmtShape(left_shape),
                     FmtShape(right_shape),
                 )
@@ -952,9 +950,7 @@ impl fmt::Display for XenonError {
                 attempted_target_shape,
                 axis,
             } => {
-                write!(
-                    f,
-                    "broadcast error in `{operation}`: cannot broadcast {} with {}",
+                write!(f, "broadcast error in `{operation}`: cannot broadcast {} with {}",
                     FmtShape(lhs_shape),
                     FmtShape(rhs_shape),
                 )?;
@@ -972,11 +968,8 @@ impl fmt::Display for XenonError {
                 actual_layout,
                 shape,
             } => {
-                write!(
-                    f,
-                    "layout mismatch in `{operation}`: required {required_layout}, ",
-                )?;
-                write!(f, "got {actual_layout} for shape {}", FmtShape(shape),)
+                write!(f, "layout mismatch in `{operation}`: required {required_layout}, ")?;
+                write!(f, "got {actual_layout} for shape {}", FmtShape(shape))
             },
             Self::InvalidLayout {
                 operation,
@@ -987,13 +980,8 @@ impl fmt::Display for XenonError {
                 storage_len,
                 reason,
             } => {
-                write!(
-                    f,
-                    "invalid layout ({reason}) in `{operation}`: storage={storage_kind}, ",
-                )?;
-                write!(
-                    f,
-                    "shape={}, strides={}, offset={offset}, len={storage_len}",
+                write!(f, "invalid layout ({reason}) in `{operation}`: storage={storage_kind}, ")?;
+                write!(f, "shape={}, strides={}, offset={offset}, len={storage_len}",
                     FmtShape(shape),
                     FmtShape(strides),
                 )
@@ -1004,10 +992,7 @@ impl fmt::Display for XenonError {
                 ndim,
                 shape,
             } => {
-                write!(
-                    f,
-                    "invalid axis {axis} in `{operation}`: valid range is 0..{ndim} ",
-                )?;
+                write!(f, "invalid axis {axis} in `{operation}`: valid range is 0..{ndim} ")?;
                 write!(f, "for shape {}", FmtShape(shape))
             },
             Self::InvalidShape {
@@ -1016,11 +1001,7 @@ impl fmt::Display for XenonError {
                 kind,
                 offending_dim,
             } => {
-                write!(
-                    f,
-                    "invalid shape ({kind}) in `{operation}`: shape={}",
-                    FmtShape(shape),
-                )?;
+                write!(f, "invalid shape ({kind}) in `{operation}`: shape={}", FmtShape(shape))?;
                 if let Some(dim) = offending_dim {
                     write!(f, " (offending dim: {dim})")?;
                 }
@@ -1031,10 +1012,7 @@ impl fmt::Display for XenonError {
                 expected,
                 actual,
             } => {
-                write!(
-                    f,
-                    "dimension mismatch in `{operation}`: expected {expected} ",
-                )?;
+                write!(f, "dimension mismatch in `{operation}`: expected {expected} ")?;
                 write!(f, "dimensions, got {actual}")
             },
             Self::InvalidArgument { operation, kind } => {
@@ -1047,10 +1025,7 @@ impl fmt::Display for XenonError {
                 shape,
                 conversion,
             } => {
-                write!(
-                    f,
-                    "invalid storage mode in `{operation}`: expected {expected}, ",
-                )?;
+                write!(f, "invalid storage mode in `{operation}`: expected {expected}, ")?;
                 write!(f, "got {actual}")?;
                 if let Some(s) = shape {
                     write!(f, " for shape {}", FmtShape(s))?;
@@ -1066,10 +1041,7 @@ impl fmt::Display for XenonError {
                 backend,
                 cause,
             } => {
-                write!(
-                    f,
-                    "FFI error (`{category}`) in `{operation}` (backend: {backend})",
-                )?;
+                write!(f, "FFI error (`{category}`) in `{operation}` (backend: {backend})")?;
                 if let Some(inner) = cause {
                     // Append `; caused by: <inner>` so a single Display call
                     // shows the whole chain. Programmatic traversal still
@@ -1078,11 +1050,7 @@ impl fmt::Display for XenonError {
                 }
                 Ok(())
             },
-            Self::Workspace {
-                operation,
-                category,
-                cause,
-            } => {
+            Self::Workspace { operation, category, cause } => {
                 write!(f, "workspace error (`{category}`) in `{operation}`",)?;
                 if let Some(inner) = cause {
                     // Same chain contract as `Ffi` above.
@@ -1096,11 +1064,7 @@ impl fmt::Display for XenonError {
                 axis,
                 shape,
             } => {
-                write!(
-                    f,
-                    "index out of bounds in `{operation}`: attempted {} at ",
-                    FmtShape(attempted_index),
-                )?;
+                write!(f, "index out of bounds in `{operation}`: attempted {} at ", FmtShape(attempted_index))?;
                 write!(f, "axis {axis} (shape: {})", FmtShape(shape))
             },
             Self::TypeConversion {
@@ -1110,10 +1074,7 @@ impl fmt::Display for XenonError {
                 reason,
                 element_index,
             } => {
-                write!(
-                    f,
-                    "type conversion failed in `{operation}`: {source_type} -> ",
-                )?;
+                write!(f, "type conversion failed in `{operation}`: {source_type} -> ")?;
                 write!(f, "{target_type} ({reason})")?;
                 if let Some(idx) = element_index {
                     write!(f, " at element index {idx}")?;
