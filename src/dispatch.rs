@@ -11,6 +11,84 @@
 //! thresholds, and exercise parallel kernels directly. Those
 //! re-exports are NOT a stable public API.
 
+// ---------------------------------------------------------------------------
+// Threshold storage — constants
+// ---------------------------------------------------------------------------
+
+/// Compile-time default for parallel threshold.
+const DEFAULT_PARALLEL_THRESHOLD: usize = 65_536;
+
+/// Compile-time default for SIMD threshold.
+const DEFAULT_SIMD_THRESHOLD: usize = 64;
+
+// ---------------------------------------------------------------------------
+// Threshold storage — atomics
+// ---------------------------------------------------------------------------
+
+/// Runtime-overridable parallel threshold.
+///
+/// Uses `AtomicUsize` for lock-free reads. Written only during
+/// initialization or explicit override (testing/benchmarking).
+static PARALLEL_THRESHOLD: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(DEFAULT_PARALLEL_THRESHOLD);
+
+/// Runtime-overridable SIMD threshold.
+static SIMD_THRESHOLD: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(DEFAULT_SIMD_THRESHOLD);
+
+// ---------------------------------------------------------------------------
+// Threshold storage — getters
+// ---------------------------------------------------------------------------
+
+fn get_parallel_threshold() -> usize {
+    PARALLEL_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg_attr(not(feature = "simd"), allow(dead_code))]
+fn get_simd_threshold() -> usize {
+    SIMD_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// ---------------------------------------------------------------------------
+// Threshold storage — setters
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Threshold runtime override API (testing/benchmarking only)
+// ---------------------------------------------------------------------------
+
+/// Override the parallel threshold at runtime.
+///
+/// Setting `threshold = 0` disables the parallel path entirely (sentinel).
+#[cfg(any(test, feature = "parallel"))]
+pub fn set_parallel_threshold(threshold: usize) {
+    PARALLEL_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Reset the parallel threshold to its compile-time default.
+#[cfg(any(test, feature = "parallel"))]
+pub fn reset_parallel_threshold() {
+    set_parallel_threshold(DEFAULT_PARALLEL_THRESHOLD);
+}
+
+/// Override the SIMD threshold at runtime.
+///
+/// Use `usize::MAX` to disable the SIMD path (sentinel).
+#[cfg(any(test, feature = "simd"))]
+pub fn set_simd_threshold(threshold: usize) {
+    SIMD_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Reset the SIMD threshold to its compile-time default.
+#[cfg(any(test, feature = "simd"))]
+pub fn reset_simd_threshold() {
+    set_simd_threshold(DEFAULT_SIMD_THRESHOLD);
+}
+
+
+
+
+
 /// Three mutually exclusive execution paths recommended by dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecPath {
@@ -113,67 +191,50 @@ impl ParallelExecStrategy {
     }
 }
 
+
 // ---------------------------------------------------------------------------
-// Threshold storage — constants, atomics, getters
+// ParallelGuard — nested-parallel guard (feature-gated)
 // ---------------------------------------------------------------------------
 
-/// Compile-time default for parallel threshold.
-const DEFAULT_PARALLEL_THRESHOLD: usize = 65_536;
-
-/// Runtime-overridable parallel threshold.
+/// RAII guard that indicates the current thread is inside a
+/// library-internal parallel region.
 ///
-/// Uses `AtomicUsize` for lock-free reads. Written only during
-/// initialization or explicit override (testing/benchmarking).
-static PARALLEL_THRESHOLD: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(DEFAULT_PARALLEL_THRESHOLD);
-
-/// Compile-time default for SIMD threshold.
-const DEFAULT_SIMD_THRESHOLD: usize = 64;
-
-/// Runtime-overridable SIMD threshold.
-static SIMD_THRESHOLD: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(DEFAULT_SIMD_THRESHOLD);
-
-fn get_parallel_threshold() -> usize {
-    PARALLEL_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-#[cfg_attr(not(feature = "simd"), allow(dead_code))]
-fn get_simd_threshold() -> usize {
-    SIMD_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-// ---------------------------------------------------------------------------
-// Threshold runtime override API (testing/benchmarking only)
-// ---------------------------------------------------------------------------
-
-/// Override the parallel threshold at runtime.
+/// A `ParallelGuard` value is **only ever obtained as the second tuple
+/// element of `select_exec_path()`** when that function selects
+/// `ExecPath::Parallel`. There is no public `enter()` constructor.
 ///
-/// Setting `threshold = 0` disables the parallel path entirely (sentinel).
-#[cfg(any(test, feature = "parallel"))]
-pub fn set_parallel_threshold(threshold: usize) {
-    PARALLEL_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
-}
-
-/// Reset the parallel threshold to its compile-time default.
-#[cfg(any(test, feature = "parallel"))]
-pub fn reset_parallel_threshold() {
-    set_parallel_threshold(DEFAULT_PARALLEL_THRESHOLD);
-}
-
-/// Override the SIMD threshold at runtime.
+/// While the guard is alive, the thread-local flag is set. Any nested
+/// call to `select_exec_path()` or `should_parallelize()` will observe
+/// `is_in_parallel() == true` and fall back to `Serial`.
 ///
-/// Use `usize::MAX` to disable the SIMD path (sentinel).
-#[cfg(any(test, feature = "simd"))]
-pub fn set_simd_threshold(threshold: usize) {
-    SIMD_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
+/// Dropping the guard clears the thread-local flag.
+///
+/// Under `feature = "parallel"`, the guard is `!Send + !Sync` because
+/// its `Drop` clears the **current** thread's TLS flag.
+#[cfg(feature = "parallel")]
+#[derive(Debug)]
+pub struct ParallelGuard {
+    _private: core::marker::PhantomData<*const ()>,
 }
 
-/// Reset the SIMD threshold to its compile-time default.
-#[cfg(any(test, feature = "simd"))]
-pub fn reset_simd_threshold() {
-    set_simd_threshold(DEFAULT_SIMD_THRESHOLD);
+#[cfg(feature = "parallel")]
+impl Drop for ParallelGuard {
+    fn drop(&mut self) {
+        IN_PARALLEL.with(|flag| flag.set(false));
+    }
 }
+
+/// Placeholder `ParallelGuard` when `feature = "parallel"` is disabled.
+///
+/// Zero-size, never constructed; no Drop, intentionally `Send + Sync`.
+/// This keeps `(ExecPath, Option<ParallelGuard>)` `Send + Sync` in
+/// default builds where the option is always `None`.
+#[cfg(not(feature = "parallel"))]
+#[derive(Debug)]
+pub struct ParallelGuard {
+    _private: core::marker::PhantomData<()>,
+}
+
 
 // ---------------------------------------------------------------------------
 // Core dispatch functions
@@ -256,48 +317,6 @@ pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
     len >= effective
 }
 
-// ---------------------------------------------------------------------------
-// ParallelGuard — nested-parallel guard (feature-gated)
-// ---------------------------------------------------------------------------
-
-/// RAII guard that indicates the current thread is inside a
-/// library-internal parallel region.
-///
-/// A `ParallelGuard` value is **only ever obtained as the second tuple
-/// element of `select_exec_path()`** when that function selects
-/// `ExecPath::Parallel`. There is no public `enter()` constructor.
-///
-/// While the guard is alive, the thread-local flag is set. Any nested
-/// call to `select_exec_path()` or `should_parallelize()` will observe
-/// `is_in_parallel() == true` and fall back to `Serial`.
-///
-/// Dropping the guard clears the thread-local flag.
-///
-/// Under `feature = "parallel"`, the guard is `!Send + !Sync` because
-/// its `Drop` clears the **current** thread's TLS flag.
-#[cfg(feature = "parallel")]
-#[derive(Debug)]
-pub struct ParallelGuard {
-    _private: core::marker::PhantomData<*const ()>,
-}
-
-#[cfg(feature = "parallel")]
-impl Drop for ParallelGuard {
-    fn drop(&mut self) {
-        IN_PARALLEL.with(|flag| flag.set(false));
-    }
-}
-
-/// Placeholder `ParallelGuard` when `feature = "parallel"` is disabled.
-///
-/// Zero-size, never constructed; no Drop, intentionally `Send + Sync`.
-/// This keeps `(ExecPath, Option<ParallelGuard>)` `Send + Sync` in
-/// default builds where the option is always `None`.
-#[cfg(not(feature = "parallel"))]
-#[derive(Debug)]
-pub struct ParallelGuard {
-    _private: core::marker::PhantomData<()>,
-}
 
 // ---------------------------------------------------------------------------
 // Thread-local IN_PARALLEL flag and guard acquisition helpers
