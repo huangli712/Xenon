@@ -12,24 +12,26 @@
 
 // ── Public re-exports ────────────────────────────────────────────────
 
-// Core type hierarchy
+// Complex number type
 pub use crate::complex::Complex;
+
+// Element traits
 pub use crate::element::{
     CastElement,
     CastTo,
     Element,
     Numeric,
     RealScalar,
-    ComplexScalar
+    ComplexScalar,
 };
 
 // Tensor types
 //
 // Construction methods — zeros, ones, eye, from_shape_vec, from_scalar
-// are inherent methods on TensorBase, available via the tensor 
+// are inherent methods on TensorBase, available via the tensor
 // re-exports below; no separate `pub use` is needed.
 pub use crate::tensor::{
-    TensorBase
+    TensorBase,
 };
 pub use crate::tensor::{
     ArcTensor,
@@ -62,7 +64,7 @@ pub use crate::tensor::{
     TensorView4,
     TensorView5,
     TensorView6,
-    TensorViewD
+    TensorViewD,
 };
 pub use crate::tensor::{
     TensorViewMut,
@@ -73,14 +75,14 @@ pub use crate::tensor::{
     TensorViewMut4,
     TensorViewMut5,
     TensorViewMut6,
-    TensorViewMutD
+    TensorViewMutD,
 };
 
-// Dimension and index types
+// Dimension types
 pub use crate::dimension::{
     Axis,
     Dimension,
-    IntoDimension
+    IntoDimension,
 };
 pub use crate::dimension::{
     Ix0,
@@ -90,20 +92,24 @@ pub use crate::dimension::{
     Ix4,
     Ix5,
     Ix6,
-    IxDyn
+    IxDyn,
 };
+
+// Index / slicing types
 pub use crate::index::{
     SliceInfo,
     SliceInfoElem,
-    SliceInfoIndices
+    SliceInfoIndices,
 };
 
-// Storage and layout
+// Layout types
 pub use crate::layout::{
     LayoutFlags,
     LayoutState,
-    Strides
+    Strides,
 };
+
+// Storage types
 pub use crate::storage::{
     Owned,
     ViewRepr,
@@ -139,16 +145,25 @@ pub use crate::error::{
     XenonError,
 };
 
-// Traits and helpers
+// Operator overload helper
 pub use crate::overload::Scalar;
+
+// Set trait
 pub use crate::set::UniqueElement;
-pub use crate::workspace::Workspace;
 
 // Matrix operations
 pub use crate::matrix::dot;
 
+// Scratch workspace type
+pub use crate::workspace::Workspace;
+
 // FFI types
-pub use crate::ffi::{BlasInfo, ElementType, TensorExportMutRaw, TensorExportRaw};
+pub use crate::ffi::{
+    BlasInfo,
+    ElementType,
+    TensorExportMutRaw,
+    TensorExportRaw
+};
 
 // ── Test-only re-exports ────────────────────────────────────────────
 //
