@@ -105,8 +105,19 @@ pub use crate::layout::{
     Strides
 };
 pub use crate::storage::{
-    ArcRepr, Owned, Storage, StorageIntoOwned, StorageMut, StorageOwned, StorageShared, View,
-    ViewMut, ViewMutRepr, ViewRepr,
+    Owned,
+    ViewRepr,
+    View,
+    ViewMutRepr,
+    ViewMut,
+    ArcRepr,
+};
+pub use crate::storage::{
+    Storage,
+    StorageIntoOwned,
+    StorageMut,
+    StorageOwned,
+    StorageShared,
 };
 
 // Error types and Result alias
