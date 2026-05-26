@@ -986,45 +986,25 @@ impl fmt::Display for XenonError {
                     FmtShape(strides),
                 )
             },
-            Self::InvalidAxis {
-                operation,
-                axis,
-                ndim,
-                shape,
-            } => {
+            Self::InvalidAxis { operation, axis, ndim, shape } => {
                 write!(f, "invalid axis {axis} in `{operation}`: valid range is 0..{ndim} ")?;
                 write!(f, "for shape {}", FmtShape(shape))
             },
-            Self::InvalidShape {
-                operation,
-                shape,
-                kind,
-                offending_dim,
-            } => {
+            Self::InvalidShape { operation, shape, kind, offending_dim } => {
                 write!(f, "invalid shape ({kind}) in `{operation}`: shape={}", FmtShape(shape))?;
                 if let Some(dim) = offending_dim {
                     write!(f, " (offending dim: {dim})")?;
                 }
                 Ok(())
             },
-            Self::DimensionMismatch {
-                operation,
-                expected,
-                actual,
-            } => {
+            Self::DimensionMismatch { operation, expected, actual } => {
                 write!(f, "dimension mismatch in `{operation}`: expected {expected} ")?;
                 write!(f, "dimensions, got {actual}")
             },
             Self::InvalidArgument { operation, kind } => {
                 write!(f, "invalid argument ({kind}) in `{operation}`")
             },
-            Self::InvalidStorageMode {
-                operation,
-                expected,
-                actual,
-                shape,
-                conversion,
-            } => {
+            Self::InvalidStorageMode { operation, expected, actual, shape, conversion } => {
                 write!(f, "invalid storage mode in `{operation}`: expected {expected}, ")?;
                 write!(f, "got {actual}")?;
                 if let Some(s) = shape {
@@ -1035,12 +1015,7 @@ impl fmt::Display for XenonError {
                 }
                 Ok(())
             },
-            Self::Ffi {
-                operation,
-                category,
-                backend,
-                cause,
-            } => {
+            Self::Ffi { operation, category, backend, cause } => {
                 write!(f, "FFI error (`{category}`) in `{operation}` (backend: {backend})")?;
                 if let Some(inner) = cause {
                     // Append `; caused by: <inner>` so a single Display call
@@ -1058,22 +1033,11 @@ impl fmt::Display for XenonError {
                 }
                 Ok(())
             },
-            Self::IndexOutOfBounds {
-                operation,
-                attempted_index,
-                axis,
-                shape,
-            } => {
+            Self::IndexOutOfBounds { operation, attempted_index, axis, shape } => {
                 write!(f, "index out of bounds in `{operation}`: attempted {} at ", FmtShape(attempted_index))?;
                 write!(f, "axis {axis} (shape: {})", FmtShape(shape))
             },
-            Self::TypeConversion {
-                operation,
-                source_type,
-                target_type,
-                reason,
-                element_index,
-            } => {
+            Self::TypeConversion { operation, source_type, target_type, reason, element_index } => {
                 write!(f, "type conversion failed in `{operation}`: {source_type} -> ")?;
                 write!(f, "{target_type} ({reason})")?;
                 if let Some(idx) = element_index {
