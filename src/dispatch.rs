@@ -40,6 +40,7 @@ static SIMD_THRESHOLD: std::sync::atomic::AtomicUsize =
 // Threshold storage — getters
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(not(feature = "parallel"), allow(dead_code))]
 fn get_parallel_threshold() -> usize {
     PARALLEL_THRESHOLD.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -91,10 +92,12 @@ pub enum ExecPath {
     /// Serial scalar execution. Default fallback when neither SIMD
     /// nor parallel preconditions are met.
     Serial,
+
     /// Serial path with SIMD acceleration. dispatch only signals
     /// "SIMD path is preferred"; the `simd/` backend retains final
     /// admission (ISA, lane width, alignment).
     Simd,
+
     /// Parallel execution. Returned only when `feature = "parallel"`
     /// is enabled, the input meets the parallel threshold, and the
     /// current thread is not already inside a library-internal
@@ -117,6 +120,7 @@ pub struct ParallelExecStrategy {
     /// Suggested chunk size for parallel chunking. `None` means the
     /// parallel backend decides (typically via `compute_safe_chunks`).
     chunk_size: Option<usize>,
+
     /// Maximum worker count. `None` means use rayon's default thread
     /// pool size.
     max_workers: Option<usize>,
@@ -248,29 +252,24 @@ pub fn select_exec_path(
         return (ExecPath::Serial, None);
     }
 
-    // Zero sentinel disables parallel; non-contiguous gets saturating
-    // doubled threshold.
-    let base = get_parallel_threshold();
-    let parallel_eligible_by_threshold = if base == 0 {
-        false
-    } else {
-        let effective = if is_contiguous {
-            base
-        } else {
-            base.saturating_mul(2)
-        };
-        len >= effective
-    };
-
     #[cfg(feature = "parallel")]
     {
+        // Zero sentinel disables parallel; non-contiguous gets saturating
+        // doubled threshold.
+        let base = get_parallel_threshold();
+        let parallel_eligible_by_threshold = if base == 0 {
+            false
+        } else {
+            let effective = if is_contiguous {
+                base
+            } else {
+                base.saturating_mul(2)
+            };
+            len >= effective
+        };
         if parallel_eligible_by_threshold && let Some(guard) = try_acquire_guard() {
             return (ExecPath::Parallel, Some(guard));
         }
-    }
-    #[cfg(not(feature = "parallel"))]
-    {
-        let _ = parallel_eligible_by_threshold;
     }
 
     #[cfg(feature = "simd")]
@@ -278,14 +277,16 @@ pub fn select_exec_path(
         if is_contiguous && len >= get_simd_threshold() {
             // alignment_ok is a hint to the simd backend; dispatch does
             // not gate SIMD on alignment.
-            let _simd_alignment_hint = alignment_ok;
+            let _ = alignment_ok;
             return (ExecPath::Simd, None);
         }
     }
+
+    // Discard unused params under feature-disabled builds.
+    #[cfg(not(feature = "parallel"))]
+    let _ = (len, is_contiguous);
     #[cfg(not(feature = "simd"))]
-    {
-        let _ = alignment_ok;
-    }
+    let _ = alignment_ok;
 
     (ExecPath::Serial, None)
 }
