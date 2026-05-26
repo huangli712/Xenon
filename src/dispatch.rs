@@ -144,36 +144,34 @@ impl ParallelExecStrategy {
         max_workers: Option<usize>,
     ) -> crate::error::Result<Self> {
         if matches!(chunk_size, Some(0)) {
-            return Err(dispatch_invalid_argument("chunk_size",
-            "must be non-zero",
-            "0",));
+            return Err(
+                dispatch_invalid_argument("chunk_size", "must be non-zero", "0")
+            );
         }
         if matches!(max_workers, Some(0)) {
-            return Err(dispatch_invalid_argument("max_workers",
-            "must be non-zero",
-            "0",));
+            return Err(
+                dispatch_invalid_argument("max_workers", "must be non-zero", "0")
+            );
         }
         if let Some(n) = max_workers {
             // Read the pool size once at construction time.
             let pool = rayon::current_num_threads();
             if n > pool {
-                return Err(dispatch_invalid_argument("max_workers",
-                format!("must not exceed rayon pool size ({pool})"),
-                n.to_string(),));
+                return Err(
+                    dispatch_invalid_argument(
+                        "max_workers",
+                        format!("must not exceed rayon pool size ({pool})"),
+                        n.to_string()
+                    )
+                );
             }
         }
-        Ok(Self {
-            chunk_size,
-            max_workers,
-        })
+        Ok(Self { chunk_size, max_workers })
     }
 
     /// Default strategy: let the parallel backend decide everything.
     pub fn auto() -> Self {
-        Self {
-            chunk_size: None,
-            max_workers: None,
-        }
+        Self { chunk_size: None, max_workers: None }
     }
 
     pub(crate) fn chunk_size(&self) -> Option<usize> {
