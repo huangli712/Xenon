@@ -242,7 +242,7 @@ pub struct ParallelGuard {
 pub fn select_exec_path(
     len: usize,
     is_contiguous: bool,
-    alignment_ok: bool,
+    alignment_ok: bool
 ) -> (ExecPath, Option<ParallelGuard>) {
     #[cfg(feature = "parallel")]
     if is_in_parallel() {

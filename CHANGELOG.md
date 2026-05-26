@@ -3,6 +3,22 @@
 All notable changes to this project are documented in this file.
 
 
+
+## [v0.0.8] — 2026-05-26
+
+### Changed
+
+- Refactored dispatch module: top-down dependency order, removed unused
+  `should_parallelize`, moved `dispatch_invalid_argument` from error.rs
+  to dispatch.rs, consolidated full-qualified paths to imports.
+- Consolidated test imports: `use super::*` and direct imports throughout dispatch tests.
+- Cleaned up stale design-doc cross-references and section labels in dispatch.rs.
+
+### Removed
+
+- `should_parallelize` function and its dedicated tests.
+
+
 ## [v0.0.7] — 2026-05-26
 
 ### Changed
