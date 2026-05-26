@@ -933,23 +933,13 @@ pub enum XenonError {
 impl fmt::Display for XenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ShapeMismatch {
-                operation,
-                left_shape,
-                right_shape,
-            } => {
+            Self::ShapeMismatch { operation, left_shape, right_shape } => {
                 write!(f, "shape mismatch in `{operation}`: cannot operate on {} and {}",
                     FmtShape(left_shape),
                     FmtShape(right_shape),
                 )
             },
-            Self::BroadcastError {
-                operation,
-                lhs_shape,
-                rhs_shape,
-                attempted_target_shape,
-                axis,
-            } => {
+            Self::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis } => {
                 write!(f, "broadcast error in `{operation}`: cannot broadcast {} with {}",
                     FmtShape(lhs_shape),
                     FmtShape(rhs_shape),
@@ -962,24 +952,11 @@ impl fmt::Display for XenonError {
                 }
                 Ok(())
             },
-            Self::LayoutMismatch {
-                operation,
-                required_layout,
-                actual_layout,
-                shape,
-            } => {
+            Self::LayoutMismatch { operation, required_layout, actual_layout, shape } => {
                 write!(f, "layout mismatch in `{operation}`: required {required_layout}, ")?;
                 write!(f, "got {actual_layout} for shape {}", FmtShape(shape))
             },
-            Self::InvalidLayout {
-                operation,
-                storage_kind,
-                shape,
-                strides,
-                offset,
-                storage_len,
-                reason,
-            } => {
+            Self::InvalidLayout { operation, storage_kind, shape, strides, offset, storage_len, reason } => {
                 write!(f, "invalid layout ({reason}) in `{operation}`: storage={storage_kind}, ")?;
                 write!(f, "shape={}, strides={}, offset={offset}, len={storage_len}",
                     FmtShape(shape),
