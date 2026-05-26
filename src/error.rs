@@ -407,16 +407,10 @@ impl fmt::Display for TypedViewRejection {
         match self {
             Self::ZeroSizedType => write!(f, "zero-sized type"),
             Self::AlignmentMismatch { required, actual } => {
-                write!(
-                    f,
-                    "alignment mismatch: required {required}, actual {actual}",
-                )
+                write!(f, "alignment mismatch: required {required}, actual {actual}")
             },
             Self::TypedByteLengthOverflow { count, elem_size } => {
-                write!(
-                    f,
-                    "byte length overflow: count={count}, elem_size={elem_size}",
-                )
+                write!(f, "byte length overflow: count={count}, elem_size={elem_size}")
             },
         }
     }
@@ -447,9 +441,7 @@ impl fmt::Display for ConversionFailureReason {
             Self::LossyIntegerNarrowing => write!(f, "lossy integer narrowing"),
             Self::LossyFloatNarrowing => write!(f, "lossy float narrowing"),
             Self::FloatToInteger => write!(f, "float to integer"),
-            Self::IntegerToFloatPrecisionLoss => {
-                write!(f, "integer to float precision loss")
-            },
+            Self::IntegerToFloatPrecisionLoss => write!(f, "integer to float precision loss"),
             Self::NonZeroImaginaryPart => write!(f, "non-zero imaginary part"),
         }
     }
@@ -525,41 +517,22 @@ pub enum InvalidArgumentKind {
 impl fmt::Display for InvalidArgumentKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RangeOutOfBounds {
-                axis,
-                axis_len,
-                start,
-                end,
-            } => {
-                write!(
-                    f,
-                    "range [{start}..{end}] out of bounds for axis {axis} (len={axis_len})",
-                )
+            Self::RangeOutOfBounds { axis, axis_len, start, end } => {
+                write!(f, "range [{start}..{end}] out of bounds for axis {axis} (len={axis_len})")
             },
             Self::RangeStartAfterEnd { axis, start, end } => {
                 write!(f, "range start ({start}) after end ({end}) at axis {axis}",)
             },
-            Self::NumericOutOfRange {
-                argument,
-                domain,
-                actual,
-            } => {
+            Self::NumericOutOfRange { argument, domain, actual } => {
                 write!(f, "`{argument}` out of range: {domain}, got {actual}")
             },
-            Self::InvalidConfig {
-                argument,
-                constraint,
-                actual,
-            } => {
+            Self::InvalidConfig { argument, constraint, actual } => {
                 write!(f, "invalid config `{argument}`: {constraint}, got {actual}",)
             },
             Self::DuplicateOrEmpty { argument } => {
                 write!(f, "duplicate or empty `{argument}`")
             },
-            Self::OperationSpecific {
-                argument,
-                constraint,
-            } => {
+            Self::OperationSpecific { argument, constraint } => {
                 write!(f, "`{argument}`: {constraint}")
             },
         }
