@@ -201,10 +201,7 @@ impl fmt::Display for AbiMismatchKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ElementTypeMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "element type mismatch: expected {expected}, got {actual}",
-                )
+                write!(f, "element type mismatch: expected {expected}, got {actual}")
             },
             Self::CapacityMismatch { expected, actual } => {
                 write!(f, "capacity mismatch: expected {expected}, got {actual}")
@@ -212,23 +209,11 @@ impl fmt::Display for AbiMismatchKind {
             Self::AlignmentMismatch { expected, actual } => {
                 write!(f, "alignment mismatch: expected {expected}, got {actual}",)
             },
-            Self::ShapeProductExceedsLen {
-                product,
-                storage_len,
-            } => {
-                write!(
-                    f,
-                    "shape product ({product}) exceeds storage len ({storage_len})",
-                )
+            Self::ShapeProductExceedsLen { product, storage_len } => {
+                write!(f, "shape product ({product}) exceeds storage len ({storage_len})")
             },
-            Self::StridesRankMismatch {
-                shape_ndim,
-                strides_ndim,
-            } => {
-                write!(
-                    f,
-                    "strides rank mismatch: shape_ndim={shape_ndim}, strides_ndim={strides_ndim}",
-                )
+            Self::StridesRankMismatch { shape_ndim, strides_ndim } => {
+                write!(f, "strides rank mismatch: shape_ndim={shape_ndim}, strides_ndim={strides_ndim}")
             },
         }
     }
@@ -316,10 +301,7 @@ impl fmt::Display for WorkspaceErrorCategory {
                 write!(f, "invalid layout (size={size}, align={align})")
             },
             Self::BorrowConflict { requested, current } => {
-                write!(
-                    f,
-                    "borrow conflict: requested {requested:?}, current {current:?}",
-                )
+                write!(f, "borrow conflict: requested {requested:?}, current {current:?}")
             },
             Self::SplitOutOfBounds { mid, len } => {
                 write!(f, "split out of bounds (mid={mid}, len={len})")
@@ -327,14 +309,8 @@ impl fmt::Display for WorkspaceErrorCategory {
             Self::SplitCountInvariant { detail } => {
                 write!(f, "split-count invariant violated: {detail}")
             },
-            Self::GrowOverflow {
-                current_capacity,
-                additional,
-            } => {
-                write!(
-                    f,
-                    "grow overflow: capacity={current_capacity} + additional={additional}",
-                )
+            Self::GrowOverflow { current_capacity, additional } => {
+                write!(f, "grow overflow: capacity={current_capacity} + additional={additional}")
             },
             Self::TypedViewRejected { detail } => {
                 write!(f, "typed view rejected: {detail:?}")
