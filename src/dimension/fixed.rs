@@ -430,6 +430,34 @@ impl From<(usize, usize, usize)> for Ix3 {
 #[repr(C)]
 pub struct Ix4(pub usize, pub usize, pub usize, pub usize);
 
+impl Ix4 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 4, actual }` when
+    /// `dyn_dim.ndim() != 4`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 4 {
+            let s = dyn_dim.slice();
+            Ok(Ix4(s[0], s[1], s[2], s[3]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix4::try_from_dyn"),
+                expected: 4,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
+
 impl Dimension for Ix4 {
     const NDIM: Option<usize> = Some(4);
 
@@ -487,34 +515,6 @@ impl From<(usize, usize, usize, usize)> for Ix4 {
     }
 }
 
-impl Ix4 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { expected: 4, actual }` when
-    /// `dyn_dim.ndim() != 4`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 4 {
-            let s = dyn_dim.slice();
-            Ok(Ix4(s[0], s[1], s[2], s[3]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix4::try_from_dyn"),
-                expected: 4,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
-
 /// Five-dimensional dimension.
 ///
 /// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as
@@ -533,6 +533,34 @@ impl Ix4 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
+
+impl Ix5 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 5, actual }` when
+    /// `dyn_dim.ndim() != 5`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 5 {
+            let s = dyn_dim.slice();
+            Ok(Ix5(s[0], s[1], s[2], s[3], s[4]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix5::try_from_dyn"),
+                expected: 5,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
 
 impl Dimension for Ix5 {
     const NDIM: Option<usize> = Some(5);
@@ -590,34 +618,6 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize)) -> Self {
         Ix5(t.0, t.1, t.2, t.3, t.4)
-    }
-}
-
-impl Ix5 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { expected: 5, actual }` when
-    /// `dyn_dim.ndim() != 5`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 5 {
-            let s = dyn_dim.slice();
-            Ok(Ix5(s[0], s[1], s[2], s[3], s[4]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix5::try_from_dyn"),
-                expected: 5,
-                actual: dyn_dim.ndim(),
-            })
-        }
     }
 }
 
@@ -705,6 +705,34 @@ const _: () = {
     assert!(offset_of!(Ix6, 5) == 5 * size_of::<usize>());
 };
 
+impl Ix6 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4, self.5])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 6, actual }` when
+    /// `dyn_dim.ndim() != 6`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 6 {
+            let s = dyn_dim.slice();
+            Ok(Ix6(s[0], s[1], s[2], s[3], s[4], s[5]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix6::try_from_dyn"),
+                expected: 6,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
+
 impl Dimension for Ix6 {
     const NDIM: Option<usize> = Some(6);
 
@@ -763,34 +791,6 @@ impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize, usize)) -> Self {
         Ix6(t.0, t.1, t.2, t.3, t.4, t.5)
-    }
-}
-
-impl Ix6 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4, self.5])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { expected: 6, actual }` when
-    /// `dyn_dim.ndim() != 6`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 6 {
-            let s = dyn_dim.slice();
-            Ok(Ix6(s[0], s[1], s[2], s[3], s[4], s[5]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix6::try_from_dyn"),
-                expected: 6,
-                actual: dyn_dim.ndim(),
-            })
-        }
     }
 }
 
