@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.10] — 2026-05-27
+
+### Changed
+
+- Replaced fully-qualified paths with direct imports throughout dimension module.
+- Made axes/broadcast/dynamic/fixed/into submodules private; exposed via re-exports.
+- Extracted Dimension/Reverse/RemoveAxis traits into dimension/types.rs.
+- Moved MAX_DIMENSION and tests from mod.rs into types.rs.
+- Reordered submodule declarations and re-exports in dimension/mod.rs.
+- Colocated Reverse/RemoveAxis/Index/From impls with respective IxN structs.
+- Moved into_dyn/try_from_dyn methods next to each IxN struct definition.
+- Added RemoveAxis impls for Ix4, Ix5, Ix6.
+- Added `///` doc comments to all Reverse/RemoveAxis impls.
+
+### Removed
+
+- Stale design-doc cross-references (5.x, 8.x) from dimension doc comments.
+- Unused test helper `assert_dimension_bounds` in types.rs.
+
+### Fixed
+
+- Missing IntoDimension import in types.rs test module.
+
+### Added
+
+- Reverse and RemoveAxis tests for Ix4-Ix6 (9 new tests, 688→697).
+
+
 ## [v0.0.9] — 2026-05-27
 
 ### Changed
