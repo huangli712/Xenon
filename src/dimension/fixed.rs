@@ -257,8 +257,8 @@ impl Ix2 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 2, actual }` when
-    /// `dyn_dim.ndim() != 2`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 2`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 2 {
@@ -308,9 +308,6 @@ impl Dimension for Ix2 {
         Ok(acc)
     }
 
-    // `checked()` uses the trait default implementation (equivalent to
-    // `self.checked_size().map(|_| ())`); no override needed.
-
     #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 2 {
@@ -323,9 +320,6 @@ impl Dimension for Ix2 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically.
 }
 
 impl Reverse for Ix2 {
