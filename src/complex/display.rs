@@ -1,13 +1,13 @@
 //! `Display` formatting for `Complex<T>`.
 //!
 //! NaN-aware, `-0.0`-preserving, precision-aware. Distinguishes IEEE-754
-//! `+0.0` from `-0.0` via the crate-private [`PositiveZero`] helper.
+//! `+0.0` from `-0.0` via the crate-private [`PositiveZero`] trait.
+
+use core::fmt::Display;
 
 use super::{Complex, ComplexFloat};
 
 /// Crate-private helper: distinguishes IEEE-754 `+0.0` from `-0.0`.
-///
-/// This is an implementation detail, not a public extension point.
 pub(crate) trait PositiveZero {
     fn is_positive_zero(&self) -> bool;
 }
@@ -26,9 +26,9 @@ impl PositiveZero for f64 {
     }
 }
 
-impl<T> core::fmt::Display for Complex<T>
+impl<T> Display for Complex<T>
 where
-    T: ComplexFloat + core::fmt::Display + PositiveZero,
+    T: ComplexFloat + Display + PositiveZero,
 {
     /// Formats the complex number in standard mathematical notation.
     ///
