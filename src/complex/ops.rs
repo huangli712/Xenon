@@ -109,6 +109,7 @@ impl Div for Complex<f32> {
 mod tests {
     use super::*;
 
+    /// (1+2j) + (3+4j) = (4+6j).
     #[test]
     fn test_add_complex() {
         assert_eq!(
@@ -117,6 +118,7 @@ mod tests {
         );
     }
 
+    /// (5+7j) - (2+3j) = (3+4j).
     #[test]
     fn test_sub_complex() {
         assert_eq!(
@@ -125,6 +127,7 @@ mod tests {
         );
     }
 
+    /// (1+2j) * (3+4j) = (-5+10j).
     #[test]
     fn test_mul_complex() {
         assert_eq!(
@@ -133,6 +136,7 @@ mod tests {
         );
     }
 
+    /// `f64` basic division: (6+8j)/(3+4j) = 2+0j.
     #[test]
     fn test_div_complex_f64() {
         let z = Complex::new(6.0_f64, 8.0) / Complex::new(3.0_f64, 4.0);
@@ -140,6 +144,7 @@ mod tests {
         assert!(z.im.abs() < 1e-12);
     }
 
+    /// `f32` basic division: (6+8j)/(3+4j) = 2+0j.
     #[test]
     fn test_div_complex_f32() {
         let z = Complex::new(6.0_f32, 8.0) / Complex::new(3.0_f32, 4.0);
@@ -147,6 +152,7 @@ mod tests {
         assert!(z.im.abs() < 1e-5);
     }
 
+    /// `f64` division by zero propagates NaN or ∞ per IEEE 754.
     #[test]
     fn test_div_zero_propagates_ieee754_f64() {
         let z = Complex::new(1.0_f64, 2.0) / Complex::new(0.0_f64, 0.0);
@@ -154,6 +160,7 @@ mod tests {
         assert!(z.im.is_nan() || z.im.is_infinite());
     }
 
+    /// `f32` division by zero propagates NaN or ∞ per IEEE 754.
     #[test]
     fn test_div_zero_propagates_ieee754_f32() {
         let z = Complex::new(1.0_f32, 2.0) / Complex::new(0.0_f32, 0.0);
@@ -161,6 +168,7 @@ mod tests {
         assert!(z.im.is_nan() || z.im.is_infinite());
     }
 
+    /// `f64` division exercices the |im| > |re| Smith branch.
     #[test]
     fn test_div_branch_selection_large_im_f64() {
         let result = Complex::new(1.0_f64, 0.0) / Complex::new(0.0_f64, 1.0);
@@ -168,6 +176,7 @@ mod tests {
         assert!((result.im - (-1.0)).abs() < 1e-12);
     }
 
+    /// `f32` division exercices the |im| > |re| Smith branch.
     #[test]
     fn test_div_branch_selection_large_im_f32() {
         let result = Complex::new(1.0_f32, 0.0) / Complex::new(0.0_f32, 1.0);
@@ -175,11 +184,13 @@ mod tests {
         assert!((result.im - (-1.0)).abs() < 1e-5);
     }
 
+    /// -(1+2j) = (-1-2j).
     #[test]
     fn test_neg_complex() {
         assert_eq!(-Complex::new(1.0_f64, 2.0), Complex::new(-1.0, -2.0));
     }
 
+    /// Explicit real-to-complex promotion: `Complex::from(r)` works with all operators.
     #[test]
     fn test_explicit_real_to_complex_ops() {
         let c = Complex::new(1.0_f64, 2.0);
