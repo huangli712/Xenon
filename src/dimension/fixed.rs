@@ -6,6 +6,8 @@ use std::ops::Index;
 use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse, IxDyn};
 use crate::error::{XenonError, InvalidShapeKind};
 
+// ----------------------------------- Ix0 -----------------------------------
+
 /// Zero-dimensional index (scalar). Always has rank 0, size 1.
 /// This type is a ZST (Zero-Sized Type); `size_of::<Ix0>() == 0`.
 ///
@@ -32,8 +34,8 @@ impl Ix0 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 0, actual }` when
-    /// `dyn_dim.ndim() != 0`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 0`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 0 {
@@ -83,10 +85,6 @@ impl Dimension for Ix0 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically (slice is empty so any index is
-    // invalid).
 }
 
 impl Reverse for Ix0 {
@@ -138,8 +136,8 @@ impl Ix1 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 1, actual }` when
-    /// `dyn_dim.ndim() != 1`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 1`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 1 {
@@ -185,9 +183,6 @@ impl Dimension for Ix1 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically (single axis at index 0).
 }
 
 impl Reverse for Ix1 {
