@@ -885,6 +885,8 @@ impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
     }
 }
 
+// ---------------------------- Layout Assertions ----------------------------
+
 /// Compile-time layout assertions for unsafe pointer casts in `slice()`.
 ///
 /// Verifies `size_of`, `align_of`, and field offsets of each `IxN` type
@@ -897,6 +899,7 @@ const _: () = {
     use core::mem::{align_of, offset_of, size_of};
 
     // Ix0 is a ZST — no repr(C) / no pointer cast needed.
+
     // Ix1
     assert!(size_of::<Ix1>() == size_of::<[usize; 1]>());
     assert!(align_of::<Ix1>() == align_of::<[usize; 1]>());
@@ -947,6 +950,8 @@ const _: () = {
 mod tests {
     use super::*;
     use std::mem::size_of;
+
+    // ---------------------------- Per-type tests ---------------------------
 
     /// Ix0 is a Zero-Sized Type.
     #[test]
@@ -1116,6 +1121,9 @@ mod tests {
             _ => panic!("expected ProductOverflow at axis 1, got {err:?}"),
         }
     }
+
+    // --------------------------- Cross-type tests --------------------------
+
     /// `into_dyn` for each static rank.
     #[test]
     fn test_static_to_dyn() {
@@ -1226,7 +1234,7 @@ mod tests {
         ));
     }
 
-    // ── Reverse tests ──
+    // ---------------------------- Reverse tests ----------------------------
 
     /// `reverse()` for Ix0 and Ix1 is identity.
     #[test]
@@ -1252,7 +1260,7 @@ mod tests {
         assert_eq!(dim.reverse().reverse(), dim);
     }
 
-    // ── RemoveAxis tests ──
+    // --------------------------- RemoveAxis tests --------------------------
 
     /// Ix0 has no axes, so `remove_axis` always errors.
     #[test]
