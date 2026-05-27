@@ -137,6 +137,7 @@ pub trait RemoveAxis: Dimension + Sealed {
 mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
+    use crate::dimension::IntoDimension;
 
     /// Compile-time check: verify `Dimension` trait bound is implementable.
     /// This function is never called but ensures the trait can be used as a
