@@ -18,10 +18,13 @@ impl Sealed for Ix4 {}
 impl Sealed for Ix5 {}
 impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
+
+impl Sealed for bool {}
+
 impl Sealed for i32 {}
 impl Sealed for i64 {}
-impl Sealed for bool {}
-impl Sealed for Complex<f32> {}
-impl Sealed for Complex<f64> {}
 impl Sealed for f32 {}
 impl Sealed for f64 {}
+
+impl Sealed for Complex<f32> {}
+impl Sealed for Complex<f64> {}
