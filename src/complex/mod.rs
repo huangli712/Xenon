@@ -8,7 +8,6 @@
 mod display;
 mod math;
 mod ops;
-
 mod types;
 
 pub use types::{Complex, ComplexFloat};
