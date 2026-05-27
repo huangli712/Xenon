@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use crate::dimension::{Axis, Dimension};
+use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse};
 use crate::error::InvalidShapeKind;
 use crate::error::XenonError;
 
@@ -133,7 +133,7 @@ impl Dimension for IxDyn {
     // `axis()` uses the trait default implementation; no override needed.
 }
 
-impl crate::dimension::Reverse for IxDyn {
+impl Reverse for IxDyn {
     fn reverse(self) -> Self {
         let mut dims = self.dims;
         dims.reverse();
@@ -141,7 +141,7 @@ impl crate::dimension::Reverse for IxDyn {
     }
 }
 
-impl crate::dimension::RemoveAxis for IxDyn {
+impl RemoveAxis for IxDyn {
     type Smaller = IxDyn;
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         if axis.0 >= self.ndim() {
