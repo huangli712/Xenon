@@ -260,6 +260,18 @@ mod tests {
         let _ = TypeId::of::<B>();
     }
 
+    /// Helper: compiles only if both directions yield identical `Output`.
+    fn assert_symmetric<A, B, O>()
+    where
+        A: BroadcastDim<B, Output = O>,
+        B: BroadcastDim<A, Output = O>,
+        O: Dimension + 'static,
+    {
+        assert_eq!(TypeId::of::<O>(), TypeId::of::<O>());
+        let _ = TypeId::of::<A>();
+        let _ = TypeId::of::<B>();
+    }
+
     /// Same-rank cases (7).
     #[test]
     fn test_broadcast_dim_same_rank() {
@@ -295,21 +307,11 @@ mod tests {
         assert_output::<IxDyn, IxDyn, IxDyn>();
     }
 
-    /// Symmetry guarantee: for every (D, E), the bidirectional
-    /// Output type must agree. We sample one case per rank-gap.
+    /// Verifies that `<A as BroadcastDim<B>>::Output` equals
+    /// `<B as BroadcastDim<A>>::Output` for each sample pair,
+    /// confirming the bidirectional symmetry of the broadcast type.
     #[test]
     fn test_broadcast_dim_symmetry() {
-        // Helper that compiles only if both directions yield identical Output.
-        fn assert_symmetric<A, B, O>()
-        where
-            A: BroadcastDim<B, Output = O>,
-            B: BroadcastDim<A, Output = O>,
-            O: Dimension + 'static,
-        {
-            assert_eq!(TypeId::of::<O>(), TypeId::of::<O>());
-            let _ = TypeId::of::<A>();
-            let _ = TypeId::of::<B>();
-        }
         assert_symmetric::<Ix0, Ix0, Ix0>();
         assert_symmetric::<Ix1, Ix1, Ix1>();
         assert_symmetric::<Ix0, Ix3, Ix3>();
