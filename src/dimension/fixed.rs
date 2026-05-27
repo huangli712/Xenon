@@ -778,64 +778,6 @@ pub struct Ix6(
     pub usize,
 );
 
-/// Compile-time layout assertions for unsafe pointer casts in `slice()`.
-///
-/// Verifies `size_of`, `align_of`, and field offsets of each `IxN` type
-/// against the corresponding `[usize; N]` array.  If any `#[repr(C)]`
-/// attribute is removed or field types are altered, these assertions fail
-/// at compile time instead of silently introducing UB.
-///
-/// See the layout assertion block above.
-const _: () = {
-    use core::mem::{align_of, offset_of, size_of};
-
-    // Ix0 is a ZST — no repr(C) / no pointer cast needed.
-    // Ix1
-    assert!(size_of::<Ix1>() == size_of::<[usize; 1]>());
-    assert!(align_of::<Ix1>() == align_of::<[usize; 1]>());
-    assert!(offset_of!(Ix1, 0) == 0);
-
-    // Ix2
-    assert!(size_of::<Ix2>() == size_of::<[usize; 2]>());
-    assert!(align_of::<Ix2>() == align_of::<[usize; 2]>());
-    assert!(offset_of!(Ix2, 0) == 0);
-    assert!(offset_of!(Ix2, 1) == size_of::<usize>());
-
-    // Ix3
-    assert!(size_of::<Ix3>() == size_of::<[usize; 3]>());
-    assert!(align_of::<Ix3>() == align_of::<[usize; 3]>());
-    assert!(offset_of!(Ix3, 0) == 0);
-    assert!(offset_of!(Ix3, 1) == size_of::<usize>());
-    assert!(offset_of!(Ix3, 2) == 2 * size_of::<usize>());
-
-    // Ix4
-    assert!(size_of::<Ix4>() == size_of::<[usize; 4]>());
-    assert!(align_of::<Ix4>() == align_of::<[usize; 4]>());
-    assert!(offset_of!(Ix4, 0) == 0);
-    assert!(offset_of!(Ix4, 1) == size_of::<usize>());
-    assert!(offset_of!(Ix4, 2) == 2 * size_of::<usize>());
-    assert!(offset_of!(Ix4, 3) == 3 * size_of::<usize>());
-
-    // Ix5
-    assert!(size_of::<Ix5>() == size_of::<[usize; 5]>());
-    assert!(align_of::<Ix5>() == align_of::<[usize; 5]>());
-    assert!(offset_of!(Ix5, 0) == 0);
-    assert!(offset_of!(Ix5, 1) == size_of::<usize>());
-    assert!(offset_of!(Ix5, 2) == 2 * size_of::<usize>());
-    assert!(offset_of!(Ix5, 3) == 3 * size_of::<usize>());
-    assert!(offset_of!(Ix5, 4) == 4 * size_of::<usize>());
-
-    // Ix6
-    assert!(size_of::<Ix6>() == size_of::<[usize; 6]>());
-    assert!(align_of::<Ix6>() == align_of::<[usize; 6]>());
-    assert!(offset_of!(Ix6, 0) == 0);
-    assert!(offset_of!(Ix6, 1) == size_of::<usize>());
-    assert!(offset_of!(Ix6, 2) == 2 * size_of::<usize>());
-    assert!(offset_of!(Ix6, 3) == 3 * size_of::<usize>());
-    assert!(offset_of!(Ix6, 4) == 4 * size_of::<usize>());
-    assert!(offset_of!(Ix6, 5) == 5 * size_of::<usize>());
-};
-
 impl Ix6 {
     /// Converts to dynamic dimension.
     #[inline]
@@ -953,6 +895,63 @@ impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
     }
 }
 
+/// Compile-time layout assertions for unsafe pointer casts in `slice()`.
+///
+/// Verifies `size_of`, `align_of`, and field offsets of each `IxN` type
+/// against the corresponding `[usize; N]` array.  If any `#[repr(C)]`
+/// attribute is removed or field types are altered, these assertions fail
+/// at compile time instead of silently introducing UB.
+///
+/// See the layout assertion block above.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+
+    // Ix0 is a ZST — no repr(C) / no pointer cast needed.
+    // Ix1
+    assert!(size_of::<Ix1>() == size_of::<[usize; 1]>());
+    assert!(align_of::<Ix1>() == align_of::<[usize; 1]>());
+    assert!(offset_of!(Ix1, 0) == 0);
+
+    // Ix2
+    assert!(size_of::<Ix2>() == size_of::<[usize; 2]>());
+    assert!(align_of::<Ix2>() == align_of::<[usize; 2]>());
+    assert!(offset_of!(Ix2, 0) == 0);
+    assert!(offset_of!(Ix2, 1) == size_of::<usize>());
+
+    // Ix3
+    assert!(size_of::<Ix3>() == size_of::<[usize; 3]>());
+    assert!(align_of::<Ix3>() == align_of::<[usize; 3]>());
+    assert!(offset_of!(Ix3, 0) == 0);
+    assert!(offset_of!(Ix3, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix3, 2) == 2 * size_of::<usize>());
+
+    // Ix4
+    assert!(size_of::<Ix4>() == size_of::<[usize; 4]>());
+    assert!(align_of::<Ix4>() == align_of::<[usize; 4]>());
+    assert!(offset_of!(Ix4, 0) == 0);
+    assert!(offset_of!(Ix4, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix4, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix4, 3) == 3 * size_of::<usize>());
+
+    // Ix5
+    assert!(size_of::<Ix5>() == size_of::<[usize; 5]>());
+    assert!(align_of::<Ix5>() == align_of::<[usize; 5]>());
+    assert!(offset_of!(Ix5, 0) == 0);
+    assert!(offset_of!(Ix5, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix5, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix5, 3) == 3 * size_of::<usize>());
+    assert!(offset_of!(Ix5, 4) == 4 * size_of::<usize>());
+
+    // Ix6
+    assert!(size_of::<Ix6>() == size_of::<[usize; 6]>());
+    assert!(align_of::<Ix6>() == align_of::<[usize; 6]>());
+    assert!(offset_of!(Ix6, 0) == 0);
+    assert!(offset_of!(Ix6, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix6, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 3) == 3 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 4) == 4 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 5) == 5 * size_of::<usize>());
+};
 
 #[cfg(test)]
 mod tests {
