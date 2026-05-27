@@ -115,6 +115,8 @@ impl RemoveAxis for Ix0 {
     }
 }
 
+// ----------------------------------- Ix1 -----------------------------------
+
 /// One-dimensional index.
 ///
 /// # Examples
@@ -236,6 +238,8 @@ impl Index<usize> for Ix1 {
         &self.0
     }
 }
+
+// ----------------------------------- Ix2 -----------------------------------
 
 /// Two-dimensional index.
 ///
@@ -382,6 +386,8 @@ impl Index<usize> for Ix2 {
     }
 }
 
+// ----------------------------------- Ix3 -----------------------------------
+
 /// Three-dimensional index.
 ///
 /// # Examples
@@ -508,6 +514,8 @@ impl From<(usize, usize, usize)> for Ix3 {
     }
 }
 
+// ----------------------------------- Ix4 -----------------------------------
+
 /// Four-dimensional index.
 ///
 /// # Examples
@@ -632,6 +640,8 @@ impl From<(usize, usize, usize, usize)> for Ix4 {
         Ix4(t.0, t.1, t.2, t.3)
     }
 }
+
+// ----------------------------------- Ix5 -----------------------------------
 
 /// Five-dimensional dimension.
 ///
@@ -765,6 +775,8 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
         Ix5(t.0, t.1, t.2, t.3, t.4)
     }
 }
+
+// ----------------------------------- Ix6 -----------------------------------
 
 /// Six-dimensional dimension.
 ///
