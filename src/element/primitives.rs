@@ -9,8 +9,6 @@ use crate::element::{
 };
 use crate::private::Sealed;
 
-impl Sealed for i32 {}
-
 impl Element for i32 {
     fn zero() -> Self {
         0

@@ -17,5 +17,6 @@ impl Sealed for Ix4 {}
 impl Sealed for Ix5 {}
 impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
+impl Sealed for i32 {}
 impl Sealed for f32 {}
 impl Sealed for f64 {}
