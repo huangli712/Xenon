@@ -7,6 +7,7 @@
 use core::fmt;
 use std::borrow::Cow;
 use std::boxed::Box;
+use std::error::Error;
 use std::vec::Vec;
 
 /// Helper for formatting `[usize]` shape/stride slices in error messages.
@@ -1026,16 +1027,16 @@ impl fmt::Display for XenonError {
     }
 }
 
-impl std::error::Error for XenonError {
+impl Error for XenonError {
     /// Returns the underlying cause for chained errors.
     ///
     /// `Ffi` and `Workspace` variants propagate their inner `cause` field
     /// via `source()`. All other variants are leaf errors and return `None`.
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Ffi { cause, .. } | Self::Workspace { cause, .. } => cause
                 .as_ref()
-                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
+                .map(|e| e.as_ref() as &(dyn Error + 'static)),
             _ => None,
         }
     }
@@ -1098,7 +1099,6 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 mod tests {
     use super::*;
     use std::borrow::Cow;
-    use std::error::Error;
 
     /// Helper for formatting optional values in error messages.
     ///
