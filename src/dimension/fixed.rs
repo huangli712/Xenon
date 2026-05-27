@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use crate::dimension::Dimension;
-use crate::dimension::dynamic::IxDyn;
+use crate::dimension::IxDyn;
 use crate::error::InvalidShapeKind;
 use crate::error::XenonError;
 

@@ -173,8 +173,6 @@ mod tests {
     #[test]
     fn test_dimension_submodules_reachable() {
         #[allow(unused_imports)]
-        use crate::dimension::dynamic;
-        #[allow(unused_imports)]
         use crate::dimension::fixed;
     }
 

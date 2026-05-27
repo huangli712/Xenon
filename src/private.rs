@@ -7,7 +7,7 @@
 pub trait Sealed {}
 
 use crate::dimension::fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
-use crate::dimension::dynamic::IxDyn;
+use crate::dimension::IxDyn;
 
 impl Sealed for Ix0 {}
 impl Sealed for Ix1 {}

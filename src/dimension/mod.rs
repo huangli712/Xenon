@@ -20,7 +20,7 @@
 
 mod axes;
 mod broadcast;
-pub mod dynamic;
+mod dynamic;
 pub mod fixed;
 mod into;
 
