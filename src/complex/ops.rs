@@ -3,10 +3,22 @@
 //! Each operator follows the sealed `ComplexFloat` bound so only
 //! `Complex<f32>` and `Complex<f64>` participate.
 
+use core::ops::{Add, Div, Mul, Neg, Sub};
+
 use super::{Complex, ComplexFloat};
 
+/// Component-wise negation: -(a+bj) = -a-bj.
+impl<T: ComplexFloat> Neg for Complex<T> {
+    type Output = Self;
+
+    #[inline]
+    fn neg(self) -> Self {
+        Self::new(-self.re, -self.im)
+    }
+}
+
 /// Component-wise addition: (a+bj) + (c+dj) = (a+c)+(b+d)j.
-impl<T: ComplexFloat> core::ops::Add for Complex<T> {
+impl<T: ComplexFloat> Add for Complex<T> {
     type Output = Self;
 
     #[inline]
@@ -16,7 +28,7 @@ impl<T: ComplexFloat> core::ops::Add for Complex<T> {
 }
 
 /// Component-wise subtraction: (a+bj) - (c+dj) = (a-c)+(b-d)j.
-impl<T: ComplexFloat> core::ops::Sub for Complex<T> {
+impl<T: ComplexFloat> Sub for Complex<T> {
     type Output = Self;
 
     #[inline]
@@ -26,7 +38,7 @@ impl<T: ComplexFloat> core::ops::Sub for Complex<T> {
 }
 
 /// Complex multiplication: (ac-bd)+(ad+bc)j.
-impl<T: ComplexFloat> core::ops::Mul for Complex<T> {
+impl<T: ComplexFloat> Mul for Complex<T> {
     type Output = Self;
 
     #[inline]
@@ -42,7 +54,7 @@ impl<T: ComplexFloat> core::ops::Mul for Complex<T> {
 ///
 /// The branch `|re| >= |im|` avoids forming `c² + d²` directly,
 /// preventing intermediate overflow.
-impl core::ops::Div for Complex<f64> {
+impl Div for Complex<f64> {
     type Output = Self;
 
     #[inline]
@@ -70,7 +82,7 @@ impl core::ops::Div for Complex<f64> {
 /// This is an independent implementation; it does **not** delegate to
 /// `Complex<f64>`. The branch `|re| >= |im|` avoids intermediate overflow
 /// within `f32` arithmetic.
-impl core::ops::Div for Complex<f32> {
+impl Div for Complex<f32> {
     type Output = Self;
 
     #[inline]
@@ -90,16 +102,6 @@ impl core::ops::Div for Complex<f32> {
                 (self.im * r - self.re) / denom,
             )
         }
-    }
-}
-
-/// Component-wise negation: -(a+bj) = -a-bj.
-impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
-    type Output = Self;
-
-    #[inline]
-    fn neg(self) -> Self {
-        Self::new(-self.re, -self.im)
     }
 }
 
