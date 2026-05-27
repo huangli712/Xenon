@@ -1,12 +1,11 @@
 //! Element trait implementations for the 7 closed element types.
 //!
 //! Implements `Sealed`, `Element`, `Numeric`, `RealScalar`, and
-//! `ComplexScalar` for the standard numeric types, plus marker trait
-//! impls (`BoolElement`).
+//! `ComplexScalar` for the standard numeric types.
 
 use crate::complex::Complex;
 use crate::element::{
-    BoolElement, ComplexScalar, Element, ElementType, Numeric, RealScalar,
+    ComplexScalar, Element, ElementType, Numeric, RealScalar,
 };
 use crate::private::Sealed;
 
@@ -231,11 +230,6 @@ impl ComplexScalar for Complex<f64> {
     }
 }
 
-// ── Marker trait impls ──
-
-
-
-impl BoolElement for bool {}
 
 #[cfg(test)]
 mod tests {

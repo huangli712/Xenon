@@ -189,6 +189,8 @@ impl CastElement for f64 {}
 impl CastElement for Complex<f32> {}
 impl CastElement for Complex<f64> {}
 
+impl BoolElement for bool {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
