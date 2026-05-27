@@ -10,8 +10,6 @@ pub use types::{
     Element, ElementType, OrderedCompareElement, element_type_name_of,
     element_type_of,
 };
-pub(crate) use types::BoolElement;
-
 mod numeric;
 pub use numeric::Numeric;
 

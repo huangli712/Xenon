@@ -27,6 +27,7 @@
 //! Concrete impls for primitive types are in `primitives.rs`.
 
 use crate::private::Sealed;
+use core::fmt::{Debug, Display, Formatter};
 
 /// Base trait for all tensor element types.
 ///
@@ -38,7 +39,7 @@ use crate::private::Sealed;
 ///
 /// Only types within Xenon's closed element set may implement `Element`.
 pub trait Element:
-    Copy + Clone + PartialEq + core::fmt::Debug + core::fmt::Display + Send + Sync + Sealed
+    Copy + Clone + PartialEq + Debug + Display + Send + Sync + Sealed
 {
     /// Additive identity.
     fn zero() -> Self;
@@ -101,8 +102,8 @@ impl ElementType {
     }
 }
 
-impl core::fmt::Display for ElementType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for ElementType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.name())
     }
 }
@@ -122,19 +123,10 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
 /// Only `i32`, `i64`, `f32`, `f64` implement this trait.
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
-/// Internal marker for the bool element type.
-///
-/// Constrains operations to bool tensors only. Not part of the public API;
-/// sealed via `crate::private::Sealed`.
-#[allow(dead_code)]
-pub(crate) trait BoolElement: Element + Sealed {}
-
 impl OrderedCompareElement for i32 {}
 impl OrderedCompareElement for i64 {}
 impl OrderedCompareElement for f32 {}
 impl OrderedCompareElement for f64 {}
-
-impl BoolElement for bool {}
 
 #[cfg(test)]
 mod tests {
@@ -189,8 +181,7 @@ mod tests {
         // _assert_element::<usize>();
     }
 
-    /// Verifies OrderedCompareElement and BoolElement trait
-    /// bounds for concrete types.
+    /// Verifies OrderedCompareElement trait bounds for concrete types.
     #[test]
     fn test_marker_trait_impls() {
         fn assert_ordered<T: OrderedCompareElement>() {}
@@ -198,9 +189,6 @@ mod tests {
         assert_ordered::<i64>();
         assert_ordered::<f32>();
         assert_ordered::<f64>();
-
-        fn assert_bool<T: BoolElement>() {}
-        assert_bool::<bool>();
     }
 
     #[test]
