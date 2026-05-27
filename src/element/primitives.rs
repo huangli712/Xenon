@@ -26,8 +26,6 @@ impl Numeric for i32 {
     }
 }
 
-impl Sealed for i64 {}
-
 impl Element for i64 {
     fn zero() -> Self {
         0
