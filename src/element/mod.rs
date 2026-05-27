@@ -7,12 +7,15 @@
 
 mod types;
 pub use types::{
-    ElementType, OrderedCompareElement, element_type_name_of,
+    ElementType, element_type_name_of,
     element_type_of,
 };
 
 mod primitives;
 pub use primitives::Element;
+
+mod order;
+pub use order::OrderedCompareElement;
 
 mod numeric;
 pub use numeric::Numeric;

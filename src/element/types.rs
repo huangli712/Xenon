@@ -27,7 +27,6 @@
 use core::fmt::{Display, Formatter};
 
 use crate::element::primitives::Element;
-use crate::private::Sealed;
 
 // ── ElementType ───────────────────────────────────────────────────────────
 
@@ -95,17 +94,6 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
     A::ELEMENT_TYPE_NAME
 }
 
-// ── OrderedCompareElement ─────────────────────────────────────────────────
-
-/// Marker trait for element types that support ordered comparison.
-///
-/// Only `i32`, `i64`, `f32`, `f64` implement this trait.
-pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
-
-impl OrderedCompareElement for i32 {}
-impl OrderedCompareElement for i64 {}
-impl OrderedCompareElement for f32 {}
-impl OrderedCompareElement for f64 {}
 
 #[cfg(test)]
 mod tests {
@@ -123,16 +111,6 @@ mod tests {
         assert_eq!(ElementType::F64.name(), "f64");
         assert_eq!(ElementType::Complex32.name(), "Complex<f32>");
         assert_eq!(ElementType::Complex64.name(), "Complex<f64>");
-    }
-
-    /// Verifies OrderedCompareElement trait bounds for concrete types.
-    #[test]
-    fn test_marker_trait_impls() {
-        fn assert_ordered<T: OrderedCompareElement>() {}
-        assert_ordered::<i32>();
-        assert_ordered::<i64>();
-        assert_ordered::<f32>();
-        assert_ordered::<f64>();
     }
 
     #[test]
