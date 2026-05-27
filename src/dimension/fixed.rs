@@ -2,6 +2,8 @@
 
 use std::borrow::Cow;
 
+use std::ops::Index;
+
 use crate::dimension::Dimension;
 use crate::dimension::IxDyn;
 use crate::error::InvalidShapeKind;
@@ -146,12 +148,17 @@ impl Dimension for Ix1 {
 /// # Panics
 ///
 /// Panics if `index != 0`, as `Ix1` has only one axis.
-impl std::ops::Index<usize> for Ix1 {
+impl Index<usize> for Ix1 {
     type Output = usize;
 
+    /// Returns the axis length at index 0.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index != 0`.
     #[inline]
     fn index(&self, index: usize) -> &usize {
-        assert_eq!(index, 0, "Ix1 index out of bounds: {index}");
+        assert_eq!(index, 0, "Ix1 index out of bounds");
         &self.0
     }
 }
@@ -259,9 +266,14 @@ impl Dimension for Ix2 {
 /// # Panics
 ///
 /// Panics if `index` is not 0 or 1, as `Ix2` has only two axes.
-impl std::ops::Index<usize> for Ix2 {
+impl Index<usize> for Ix2 {
     type Output = usize;
 
+    /// Returns the axis length at the given index (0 or 1).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is not 0 or 1.
     #[inline]
     fn index(&self, index: usize) -> &usize {
         match index {
@@ -366,6 +378,7 @@ impl Dimension for Ix3 {
 }
 
 impl From<(usize, usize, usize)> for Ix3 {
+    /// Converts a 3-tuple into Ix3.
     #[inline]
     fn from((a, b, c): (usize, usize, usize)) -> Self {
         Ix3(a, b, c)
@@ -464,6 +477,7 @@ impl Dimension for Ix4 {
 }
 
 impl From<(usize, usize, usize, usize)> for Ix4 {
+    /// Converts a 4-tuple into Ix4.
     #[inline]
     fn from(t: (usize, usize, usize, usize)) -> Self {
         Ix4(t.0, t.1, t.2, t.3)
@@ -569,6 +583,7 @@ impl Dimension for Ix5 {
 }
 
 impl From<(usize, usize, usize, usize, usize)> for Ix5 {
+    /// Converts a 5-tuple into Ix5.
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize)) -> Self {
         Ix5(t.0, t.1, t.2, t.3, t.4)
@@ -741,6 +756,7 @@ impl Dimension for Ix6 {
 }
 
 impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
+    /// Converts a 6-tuple into Ix6.
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize, usize)) -> Self {
         Ix6(t.0, t.1, t.2, t.3, t.4, t.5)
@@ -778,42 +794,49 @@ impl Ix6 {
 // ── Reverse implementations for all static dimensions ──
 
 impl crate::dimension::Reverse for Ix0 {
+    /// Identity: 0-dimensional.
     fn reverse(self) -> Self {
         self
     }
 }
 
 impl crate::dimension::Reverse for Ix1 {
+    /// Identity: single axis.
     fn reverse(self) -> Self {
         self
     }
 }
 
 impl crate::dimension::Reverse for Ix2 {
+    /// Reverses axis order: `(a, b) → (b, a)`.
     fn reverse(self) -> Self {
         Ix2(self.1, self.0)
     }
 }
 
 impl crate::dimension::Reverse for Ix3 {
+    /// Reverses axis order: `(a, b, c) → (c, b, a)`.
     fn reverse(self) -> Self {
         Ix3(self.2, self.1, self.0)
     }
 }
 
 impl crate::dimension::Reverse for Ix4 {
+    /// Reverses axis order.
     fn reverse(self) -> Self {
         Ix4(self.3, self.2, self.1, self.0)
     }
 }
 
 impl crate::dimension::Reverse for Ix5 {
+    /// Reverses axis order.
     fn reverse(self) -> Self {
         Ix5(self.4, self.3, self.2, self.1, self.0)
     }
 }
 
 impl crate::dimension::Reverse for Ix6 {
+    /// Reverses axis order.
     fn reverse(self) -> Self {
         Ix6(self.5, self.4, self.3, self.2, self.1, self.0)
     }
@@ -825,6 +848,7 @@ use crate::dimension::Axis;
 
 impl crate::dimension::RemoveAxis for Ix0 {
     type Smaller = Ix0;
+    /// Always errors (Ix0 has no axes).
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         Err(XenonError::InvalidAxis {
             operation: std::borrow::Cow::Borrowed("Ix0::remove_axis"),
@@ -837,6 +861,7 @@ impl crate::dimension::RemoveAxis for Ix0 {
 
 impl crate::dimension::RemoveAxis for Ix1 {
     type Smaller = Ix0;
+    /// Removes axis 0, returning Ix0 and the length.
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         if axis.0 != 0 {
             return Err(XenonError::InvalidAxis {
@@ -852,6 +877,7 @@ impl crate::dimension::RemoveAxis for Ix1 {
 
 impl crate::dimension::RemoveAxis for Ix2 {
     type Smaller = Ix1;
+    /// Removes the given axis, returning Ix1.
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix1(self.1), self.0)),
@@ -868,6 +894,7 @@ impl crate::dimension::RemoveAxis for Ix2 {
 
 impl crate::dimension::RemoveAxis for Ix3 {
     type Smaller = Ix2;
+    /// Removes the given axis, returning Ix2.
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix2(self.1, self.2), self.0)),
