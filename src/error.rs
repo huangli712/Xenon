@@ -4,7 +4,7 @@
 //! The crate uses `Result<T, XenonError>` (aliased as [`Result`]) for
 //! all fallible operations.
 
-use core::fmt;
+use core::fmt::{self, Debug, Display, Formatter};
 use std::borrow::Cow;
 use std::boxed::Box;
 use std::error::Error;
@@ -15,8 +15,8 @@ use std::vec::Vec;
 /// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — NumPy style.
 struct FmtShape<'a>(&'a [usize]);
 
-impl<'a> fmt::Display for FmtShape<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'a> Display for FmtShape<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         for (i, dim) in self.0.iter().enumerate() {
             if i > 0 {
@@ -98,8 +98,8 @@ pub enum FfiErrorCategory {
     },
 }
 
-impl fmt::Display for FfiErrorCategory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for FfiErrorCategory {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NullPointer { argument } => {
                 write!(f, "null pointer for argument {argument}")
@@ -141,8 +141,8 @@ pub enum FfiBackend {
     Blas,
 }
 
-impl fmt::Display for FfiBackend {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for FfiBackend {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::RawParts => write!(f, "raw parts"),
             Self::Blas => write!(f, "BLAS"),
@@ -198,8 +198,8 @@ pub enum AbiMismatchKind {
     },
 }
 
-impl fmt::Display for AbiMismatchKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for AbiMismatchKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ElementTypeMismatch { expected, actual } => {
                 write!(f, "element type mismatch: expected {expected}, got {actual}")
@@ -292,8 +292,8 @@ pub enum WorkspaceErrorCategory {
     },
 }
 
-impl fmt::Display for WorkspaceErrorCategory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for WorkspaceErrorCategory {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::AllocFailed { size, align } => {
                 write!(f, "allocation failed (size={size}, align={align})")
@@ -333,8 +333,8 @@ pub enum WorkspaceBorrowKind {
     Split,
 }
 
-impl fmt::Display for WorkspaceBorrowKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for WorkspaceBorrowKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Shared => f.write_str("shared"),
             Self::Exclusive => f.write_str("exclusive"),
@@ -362,8 +362,8 @@ pub enum WorkspaceBorrowState {
     },
 }
 
-impl fmt::Display for WorkspaceBorrowState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for WorkspaceBorrowState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::None => f.write_str("none"),
             Self::Shared => f.write_str("shared"),
@@ -403,8 +403,8 @@ pub enum TypedViewRejection {
     },
 }
 
-impl fmt::Display for TypedViewRejection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for TypedViewRejection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ZeroSizedType => write!(f, "zero-sized type"),
             Self::AlignmentMismatch { required, actual } => {
@@ -436,8 +436,8 @@ pub enum ConversionFailureReason {
     NonZeroImaginaryPart,
 }
 
-impl fmt::Display for ConversionFailureReason {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ConversionFailureReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::LossyIntegerNarrowing => write!(f, "lossy integer narrowing"),
             Self::LossyFloatNarrowing => write!(f, "lossy float narrowing"),
@@ -515,8 +515,8 @@ pub enum InvalidArgumentKind {
     },
 }
 
-impl fmt::Display for InvalidArgumentKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for InvalidArgumentKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::RangeOutOfBounds { axis, axis_len, start, end } => {
                 write!(f, "range [{start}..{end}] out of bounds for axis {axis} (len={axis_len})")
@@ -605,8 +605,8 @@ pub enum InvalidLayoutReason {
     OwnedRequiresCanonicalFOrder,
 }
 
-impl fmt::Display for InvalidLayoutReason {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for InvalidLayoutReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeProductOverflow => write!(f, "shape product overflow"),
             Self::StridesRankMismatch => write!(f, "strides rank mismatch"),
@@ -644,8 +644,8 @@ pub enum StorageKindTag {
     Shared,
 }
 
-impl fmt::Display for StorageKindTag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for StorageKindTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Owned => write!(f, "owned"),
             Self::View => write!(f, "view"),
@@ -675,8 +675,8 @@ pub enum StorageConversionKind {
     BroadcastTo,
 }
 
-impl fmt::Display for StorageConversionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for StorageConversionKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ToOwned => write!(f, "to owned"),
             Self::IntoOwned => write!(f, "into owned"),
@@ -724,8 +724,8 @@ pub enum InvalidShapeKind {
     },
 }
 
-impl fmt::Display for InvalidShapeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for InvalidShapeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ProductOverflow => write!(f, "product overflow"),
             Self::ElementCountMismatch { expected, actual } => {
@@ -931,8 +931,8 @@ pub enum XenonError {
     },
 }
 
-impl fmt::Display for XenonError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for XenonError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeMismatch { operation, left_shape, right_shape } => {
                 write!(f, "shape mismatch in `{operation}`: cannot operate on {} and {}",
@@ -1105,8 +1105,8 @@ mod tests {
     /// Displays `<any>` if `None`, otherwise formats the value via `Display`.
     struct OrAny<T>(Option<T>);
 
-    impl<T: fmt::Display> fmt::Display for OrAny<T> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    impl<T: Display> Display for OrAny<T> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             match &self.0 {
                 Some(v) => write!(f, "{v}"),
                 None => write!(f, "<any>"),
@@ -1186,7 +1186,7 @@ mod tests {
     /// Verify Debug formatting does not panic for any aux enum.
     #[test]
     fn test_aux_enums_debug_no_panic() {
-        let cases: &[&dyn fmt::Debug] = &[
+        let cases: &[&dyn Debug] = &[
             &FfiErrorCategory::IntegerOverflow {
                 value: usize::MAX,
                 target_width_bits: 32,
