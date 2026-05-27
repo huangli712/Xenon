@@ -1,8 +1,7 @@
-//! Checked arithmetic traits (§5.10).
+//! Checked arithmetic traits.
 //!
 //! Integer-only overflow-sensitive operations that return `Option`. Callers
-//! translate `None` to a panic per the project-wide integer overflow policy
-//! (see `26-error.md §6`). Float types use ordinary operators (NaN
+//! translate `None` to a panic. Float types use ordinary operators (NaN
 //! propagation handles the semantics) and are intentionally not covered
 //! here.
 
@@ -14,7 +13,6 @@ use crate::private::Sealed;
 /// Returns `None` on overflow instead of wrapping.
 /// Only implemented for integer types (`i32`, `i64`).
 /// Float types use ordinary `+` (NaN propagation handles the semantics).
-// TODO(W11/W18): remove when math/reduction/cast call sites land.
 #[allow(dead_code)]
 pub(crate) trait CheckedAdd: Numeric + Sealed {
     /// Returns `Some(self + rhs)` if no overflow, `None` otherwise.
@@ -36,7 +34,6 @@ impl CheckedAdd for i64 {
 }
 
 /// Checked subtraction for integer-only overflow-sensitive paths.
-// TODO(W11/W18): remove when math/reduction/cast call sites land.
 #[allow(dead_code)]
 pub(crate) trait CheckedSub: Numeric + Sealed {
     /// Returns `Some(self - rhs)` if no overflow, `None` otherwise.
@@ -58,7 +55,6 @@ impl CheckedSub for i64 {
 }
 
 /// Checked multiplication for integer-only overflow-sensitive paths.
-// TODO(W11/W18): remove when math/reduction/cast call sites land.
 #[allow(dead_code)]
 pub(crate) trait CheckedMul: Numeric + Sealed {
     /// Returns `Some(self * rhs)` if no overflow, `None` otherwise.
@@ -80,7 +76,6 @@ impl CheckedMul for i64 {
 }
 
 /// Checked negation for integer-only overflow-sensitive paths.
-// TODO(W11/W18): remove when math/reduction/cast call sites land.
 #[allow(dead_code)]
 pub(crate) trait CheckedNeg: Numeric + Sealed {
     /// Returns `Some(-self)` if no overflow, `None` otherwise.
@@ -104,9 +99,7 @@ impl CheckedNeg for i64 {
 /// Checked division for integer-only overflow-sensitive paths.
 ///
 /// Returns `None` for divisor zero or for the `MIN / -1` overflow case;
-/// callers translate `None` to a panic per the project-wide integer
-/// overflow policy (see `26-error.md §6`).
-// TODO(W11/W18): remove when math/reduction/cast call sites land.
+/// callers translate `None` to a panic.
 #[allow(dead_code)]
 pub(crate) trait CheckedDiv: Numeric + Sealed {
     /// Returns `Some(self / rhs)` if no overflow or zero-divisor, `None` otherwise.
@@ -131,6 +124,8 @@ impl CheckedDiv for i64 {
 mod tests {
     use super::*;
 
+    /// Verifies overflow detection for all five checked arithmetic traits
+    /// on i32 and i64.
     #[test]
     fn test_checked_arithmetic_traits() {
         assert_eq!(<i32 as CheckedAdd>::checked_add(1, 2), Some(3));

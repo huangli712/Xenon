@@ -1,4 +1,4 @@
-//! Numeric element trait (§5.2).
+//! Numeric element trait.
 //!
 //! `Numeric` extends [`Element`](crate::element::Element) with arithmetic
 //! operators and a unified conjugate entry point.

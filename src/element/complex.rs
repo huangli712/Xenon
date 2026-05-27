@@ -1,4 +1,4 @@
-//! Complex scalar trait (§5.4).
+//! Complex scalar trait.
 //!
 //! `ComplexScalar` extends [`Numeric`](crate::element::Numeric) with
 //! read-only accessors for complex number components.

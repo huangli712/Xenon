@@ -7,10 +7,7 @@
 //! do not break existing downstream user code, but they DO break any external
 //! types that `impl RealScalar for MyType` — however, the `Sealed` supertrait
 //! prevents any such external impls by design.
-//!
-//! For extended math functions (e.g., `cos`, `tan`, `log2`, `tanh`), use the
-//! crate-internal extension traits in `src/element/real_extended.rs` (if added
-//! in future waves). Do not expose those on the public `RealScalar` trait.
+
 
 use crate::element::Numeric;
 use crate::private::Sealed;

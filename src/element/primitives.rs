@@ -232,7 +232,7 @@ impl ComplexScalar for Complex<f64> {
     }
 }
 
-// ── Marker trait impls (§5.5, §5.6, §5.9.1) ──
+// ── Marker trait impls ──
 
 impl OrderedCompareElement for i32 {}
 impl OrderedCompareElement for i64 {}
@@ -252,6 +252,7 @@ impl BoolElement for bool {}
 mod tests {
     use super::*;
 
+    /// Exercises i32 Element::zero, Element::one, and Numeric::conjugate.
     #[test]
     fn test_i32_zero_one() {
         assert_eq!(i32::zero(), 0);
@@ -259,6 +260,7 @@ mod tests {
         assert_eq!(<i32 as Numeric>::conjugate(-7), -7);
     }
 
+    /// Verifies i32 arithmetic operators (add, sub, mul, div, neg).
     #[test]
     fn test_i32_arithmetic() {
         let a = 10i32;
@@ -270,6 +272,7 @@ mod tests {
         assert_eq!(-a, -10);
     }
 
+    /// Exercises i64 Element and Numeric trait methods.
     #[test]
     fn test_i64_zero_one() {
         assert_eq!(i64::zero(), 0);
@@ -281,6 +284,7 @@ mod tests {
         assert_eq!(<i64 as Numeric>::conjugate(7), 7);
     }
 
+    /// Exercises f32 and f64 Element and RealScalar trait methods.
     #[test]
     fn test_f32_f64_real_scalar() {
         assert_eq!(f32::zero(), 0.0);
@@ -289,29 +293,34 @@ mod tests {
         assert!(<f32 as RealScalar>::is_nan(f32::NAN));
     }
 
+    /// Verifies f32 Element::zero and Element::one.
     #[test]
     fn test_f32_zero_one() {
         assert_eq!(<f32 as Element>::zero(), 0.0_f32);
         assert_eq!(<f32 as Element>::one(), 1.0_f32);
     }
 
+    /// Verifies f64 Element::zero and Element::one.
     #[test]
     fn test_f64_zero_one() {
         assert_eq!(<f64 as Element>::zero(), 0.0_f64);
         assert_eq!(<f64 as Element>::one(), 1.0_f64);
     }
 
+    /// Verifies RealScalar::sqrt for f64.
     #[test]
     fn test_f64_sqrt() {
         assert_eq!(<f64 as RealScalar>::sqrt(4.0), 2.0);
         assert_eq!(<f64 as RealScalar>::sqrt(9.0), 3.0);
     }
 
+    /// Verifies RealScalar::sin for f64 at zero.
     #[test]
     fn test_f64_sin() {
         assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
     }
 
+    /// Verifies f32 IEEE-754 predicates: is_nan, is_infinite, is_finite.
     #[test]
     fn test_f32_nan_detection() {
         assert!(<f32 as RealScalar>::is_nan(f32::NAN));
@@ -320,6 +329,7 @@ mod tests {
         assert!(<f32 as RealScalar>::is_finite(1.0f32));
     }
 
+    /// Verifies exp(ln(x)) ≈ x (round-trip identity) for f64.
     #[test]
     fn test_f64_exp_ln_inverse() {
         let tolerance = 1e-12_f64;
@@ -335,6 +345,7 @@ mod tests {
         }
     }
 
+    /// Verifies bool Element impl: zero, one, and trait bound.
     #[test]
     fn test_bool_element_only() {
         fn assert_element<A: Element>() {}
@@ -343,6 +354,8 @@ mod tests {
         assert!(bool::one());
     }
 
+    /// Verifies Complex&lt;f64&gt; Numeric::conjugate, ComplexScalar::norm,
+    /// and Element::zero.
     #[test]
     fn test_complex_f64_conj_and_norm() {
         let value = Complex::new(3.0f64, 4.0f64);
@@ -354,38 +367,41 @@ mod tests {
         assert_eq!(Complex::<f64>::zero(), Complex::new(0.0, 0.0));
     }
 
+    /// Verifies Complex&lt;f64&gt; Element::zero and Element::one.
     #[test]
     fn test_complex_f64_zero_one() {
         assert_eq!(<Complex<f64> as Element>::zero(), Complex::new(0.0, 0.0));
         assert_eq!(<Complex<f64> as Element>::one(), Complex::new(1.0, 0.0));
     }
 
+    /// Verifies ComplexScalar::norm for Complex&lt;f32&gt;.
     #[test]
     fn test_complex_f32_norm() {
         let c = Complex::<f32>::new(3.0, 4.0);
         assert_eq!(<Complex<f32> as ComplexScalar>::norm(c), 5.0);
     }
 
-    // ───────── §8.2 additional unit tests — see test_bool_element_only above ─────────
-    // ───────── §8.3 boundary tests ─────────
-
+    /// Boundary: RealScalar::is_nan for f64 NaN.
     #[test]
     fn test_boundary_f64_nan_is_nan() {
         assert!(<f64 as RealScalar>::is_nan(f64::NAN));
         assert!(!<f64 as RealScalar>::is_nan(1.0_f64));
     }
 
+    /// Boundary: RealScalar::is_finite for f64 infinity.
     #[test]
     fn test_boundary_f64_infinity_is_not_finite() {
         assert!(!<f64 as RealScalar>::is_finite(f64::INFINITY));
         assert!(<f64 as RealScalar>::is_finite(1.0_f64));
     }
 
+    /// Boundary: RealScalar::sqrt of negative f64 returns NaN.
     #[test]
     fn test_boundary_f64_sqrt_neg_is_nan() {
         assert!(<f64 as RealScalar>::is_nan(<f64 as RealScalar>::sqrt(-1.0)));
     }
 
+    /// Boundary: RealScalar::ln(0.0) returns negative infinity.
     #[test]
     fn test_boundary_f64_ln_zero_is_neg_infinity() {
         let v = <f64 as RealScalar>::ln(0.0);
@@ -393,6 +409,7 @@ mod tests {
         assert!(v < 0.0);
     }
 
+    /// Boundary: ComplexScalar::norm with NaN component returns NaN.
     #[test]
     fn test_boundary_complex_nan_norm_is_nan() {
         let c = Complex::<f64>::new(f64::NAN, 0.0);
@@ -400,8 +417,7 @@ mod tests {
         assert!(<f64 as RealScalar>::is_nan(n));
     }
 
-    // ───────── §8.4 property invariants ─────────
-
+    /// Property: zero() + a == a for all element types.
     #[test]
     fn test_property_zero_additive_identity() {
         for a in [-7_i32, 0, 42] {
@@ -422,6 +438,7 @@ mod tests {
         }
     }
 
+    /// Property: one() * a == a for all element types.
     #[test]
     fn test_property_one_multiplicative_identity() {
         for a in [-7_i32, 0, 42] {
@@ -436,6 +453,7 @@ mod tests {
         }
     }
 
+    /// Property: sqrt(a)² ≈ a for f32 and f64.
     #[test]
     fn test_property_sqrt_square_inverse() {
         let tol64 = 1e-10_f64;
@@ -450,6 +468,7 @@ mod tests {
         }
     }
 
+    /// Property: ln(exp(a)) ≈ a for f32 and f64.
     #[test]
     fn test_property_exp_ln_inverse() {
         let tol64 = 1e-10_f64;
@@ -464,6 +483,7 @@ mod tests {
         }
     }
 
+    /// Property: exp(ln(x)) ≈ x for f32 and f64.
     #[test]
     fn test_property_ln_exp_inverse() {
         let tol64 = 1e-10_f64;
@@ -478,37 +498,40 @@ mod tests {
         }
     }
 
-    // ───────── §5.3 RealScalar f32 method coverage ─────────
-
+    /// Verifies RealScalar::abs for f32.
     #[test]
     fn test_f32_abs() {
         assert_eq!(<f32 as RealScalar>::abs(-3.5_f32), 3.5_f32);
     }
 
+    /// Verifies RealScalar::signum for f32.
     #[test]
     fn test_f32_signum() {
         assert_eq!(<f32 as RealScalar>::signum(5.0_f32), 1.0_f32);
         assert_eq!(<f32 as RealScalar>::signum(-3.0_f32), -1.0_f32);
     }
 
+    /// Verifies RealScalar::sin for f32 at zero.
     #[test]
     fn test_f32_sin() {
         let val = <f32 as RealScalar>::sin(0.0_f32);
         assert!((val - 0.0_f32).abs() < 1e-6_f32);
     }
 
+    /// Verifies RealScalar::floor for f32.
     #[test]
     fn test_f32_floor() {
         assert_eq!(<f32 as RealScalar>::floor(3.7_f32), 3.0_f32);
     }
 
+    /// Verifies RealScalar::ceil for f32.
     #[test]
     fn test_f32_ceil() {
         assert_eq!(<f32 as RealScalar>::ceil(2.3_f32), 3.0_f32);
     }
 
-    /// §5.3 RealScalar boundary: exercises key f64 math methods that match
-    /// their primitive counterparts for well-defined inputs.
+    /// Exercises key f64 math methods and verifies they match primitive
+    /// counterparts for well-defined inputs.
     #[test]
     fn test_real_scalar_boundary_methods() {
         let value = 4.0f64;
@@ -520,8 +543,8 @@ mod tests {
         assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
     }
 
-    // ───────── §8.7 compile-time trait bound tests ─────────
-
+    /// Compile-time: verifies Numeric, RealScalar, and ComplexScalar
+    /// trait bounds for all types.
     #[test]
     fn test_compile_positive_trait_bounds() {
         fn assert_numeric<A: Numeric>() {}

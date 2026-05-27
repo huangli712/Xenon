@@ -24,7 +24,7 @@
 //! * `Element` types require `zero()` and `one()` identities; `usize`
 //!   has no consistent negation semantics in this context.
 //!
-//! Concrete impls for primitive types are in `primitives.rs` (W4T5+).
+//! Concrete impls for primitive types are in `primitives.rs`.
 //!
 //! # `CastTo<T>` error semantics
 //!
@@ -36,10 +36,8 @@
 //! * NaN → integer (no finite representation)
 //! * Complex → real when imaginary part is non-zero
 //!
-//! The complete cast matrix and Tier classification is authoritative in
-//! `21-type.md §5`. Error payload layout is in `26-error.md §5.1`.
 //!
-//! `bool` is excluded from `CastTo<T>` as both source and target (§5.9).
+//! `bool` is excluded from `CastTo<T>` as both source and target.
 //! This exclusion is enforced at compile time via the absence of
 //! `impl CastElement for bool`.
 
@@ -138,7 +136,6 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
 /// Marker trait for element types that support ordered comparison.
 ///
 /// Only `i32`, `i64`, `f32`, `f64` implement this trait.
-/// Used by `11-math.md` `less()` / `greater()` comparison APIs.
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
 /// Type conversion trait for element types.
@@ -150,7 +147,6 @@ pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 /// # Sealed
 ///
 /// Only Xenon's closed element set may implement this trait.
-/// Concrete impls are provided by `21-type.md` (Type Conversion Wave).
 pub trait CastTo<T: Element>: Element {
     /// Attempts to convert `self` to type `T`.
     ///
@@ -163,9 +159,8 @@ pub trait CastTo<T: Element>: Element {
 
 /// Internal marker for the bool element type.
 ///
-/// Used by `11-math.md` `not()` to constrain its impl to bool tensors only.
-/// Not part of the public API; sealed via `crate::private::Sealed`.
-// TODO(W11): remove when math::not() call site lands.
+/// Constrains operations to bool tensors only. Not part of the public API;
+/// sealed via `crate::private::Sealed`.
 #[allow(dead_code)]
 pub(crate) trait BoolElement: Element + Sealed {}
 
@@ -205,6 +200,8 @@ mod tests {
         check::<Complex<f64>>();
     }
 
+    /// Verifies ElementType::name() returns the correct string for each
+    /// variant.
     #[test]
     fn test_element_type_name_round_trip() {
         assert_eq!(ElementType::Bool.name(), "bool");
@@ -231,6 +228,8 @@ mod tests {
         // _assert_element::<usize>();
     }
 
+    /// Verifies OrderedCompareElement, CastElement, and BoolElement trait
+    /// bounds for concrete types.
     #[test]
     fn test_marker_trait_impls() {
         fn assert_ordered<T: OrderedCompareElement>() {}
@@ -251,8 +250,6 @@ mod tests {
         assert_bool::<bool>();
     }
 
-    // ───────── §5.1.2 element type discriminants and free functions ─────────
-
     #[test]
     fn test_element_type_discriminants() {
         assert_eq!(ElementType::Bool as u8, 0);
@@ -264,6 +261,7 @@ mod tests {
         assert_eq!(ElementType::Complex64 as u8, 6);
     }
 
+    /// Verifies ElementType::of::&lt;A&gt;() resolves to the correct variant.
     #[test]
     fn test_element_type_of_dispatch() {
         assert_eq!(ElementType::of::<i32>(), ElementType::I32);
@@ -272,6 +270,8 @@ mod tests {
         assert_eq!(ElementType::of::<Complex<f64>>(), ElementType::Complex64);
     }
 
+    /// Verifies element_type_of() and element_type_name_of() free
+    /// functions.
     #[test]
     fn test_free_functions_dispatch() {
         assert_eq!(element_type_of::<f32>(), ElementType::F32);
@@ -279,6 +279,7 @@ mod tests {
         assert_eq!(element_type_name_of::<Complex<f32>>(), "Complex<f32>");
     }
 
+    /// Verifies Display impl for ElementType.
     #[test]
     fn test_element_type_display() {
         assert_eq!(format!("{}", ElementType::Bool), "bool");
@@ -287,6 +288,8 @@ mod tests {
         assert_eq!(format!("{}", ElementType::Complex64), "Complex<f64>");
     }
 
+    /// Verifies Element::ELEMENT_TYPE_NAME matches ElementType::name()
+    /// for each type.
     #[test]
     fn test_element_type_name_consistency() {
         assert_eq!(<i32 as Element>::ELEMENT_TYPE_NAME, ElementType::I32.name());
