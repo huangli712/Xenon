@@ -4,9 +4,6 @@
 
 /// Sealed supertrait that prevents external implementations of
 /// key library traits (e.g. `Dimension`, `Element`).
-///
-/// Individual `impl Sealed for T` blocks are added by the respective
-/// Wave's downstream tasks (W3T15 for `Dimension`).
 pub trait Sealed {}
 
 use crate::dimension::fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
