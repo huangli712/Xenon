@@ -19,7 +19,7 @@
 //! and slices is provided through `IntoDimension`.
 
 mod axes;
-pub mod broadcast;
+mod broadcast;
 pub mod dynamic;
 pub mod fixed;
 pub mod into;
