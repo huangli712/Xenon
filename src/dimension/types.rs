@@ -6,6 +6,9 @@ use super::axes::Axis;
 use crate::error::XenonError;
 use crate::private::Sealed;
 
+/// Maximum number of dimensions representable on this platform.
+pub const MAX_DIMENSION: usize = usize::MAX;
+
 /// Trait for array dimension types.
 ///
 /// This trait is sealed and cannot be implemented outside of this crate.
@@ -203,6 +206,3 @@ mod tests {
         assert_eq!(d3.slice(), &[2, 3, 4]);
     }
 }
-
-/// Maximum number of dimensions representable on this platform.
-pub const MAX_DIMENSION: usize = usize::MAX;
