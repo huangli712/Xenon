@@ -95,6 +95,26 @@ impl Dimension for Ix0 {
     // invalid).
 }
 
+impl Reverse for Ix0 {
+    /// Identity: 0-dimensional.
+    fn reverse(self) -> Self {
+        self
+    }
+}
+
+impl RemoveAxis for Ix0 {
+    type Smaller = Ix0;
+    /// Always errors (Ix0 has no axes).
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        Err(XenonError::InvalidAxis {
+            operation: std::borrow::Cow::Borrowed("Ix0::remove_axis"),
+            axis: axis.0,
+            ndim: 0,
+            shape: vec![],
+        })
+    }
+}
+
 /// One-dimensional index.
 ///
 /// # Examples
@@ -191,6 +211,29 @@ impl Index<usize> for Ix1 {
     fn index(&self, index: usize) -> &usize {
         assert_eq!(index, 0, "Ix1 index out of bounds");
         &self.0
+    }
+}
+
+impl Reverse for Ix1 {
+    /// Identity: single axis.
+    fn reverse(self) -> Self {
+        self
+    }
+}
+
+impl RemoveAxis for Ix1 {
+    type Smaller = Ix0;
+    /// Removes axis 0, returning Ix0 and the length.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        if axis.0 != 0 {
+            return Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix1::remove_axis"),
+                axis: axis.0,
+                ndim: 1,
+                shape: self.slice().to_vec(),
+            });
+        }
+        Ok((Ix0, self.0))
     }
 }
 
@@ -315,6 +358,30 @@ impl Index<usize> for Ix2 {
     }
 }
 
+impl Reverse for Ix2 {
+    /// Reverses axis order: `(a, b) → (b, a)`.
+    fn reverse(self) -> Self {
+        Ix2(self.1, self.0)
+    }
+}
+
+impl RemoveAxis for Ix2 {
+    type Smaller = Ix1;
+    /// Removes the given axis, returning Ix1.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix1(self.1), self.0)),
+            1 => Ok((Ix1(self.0), self.1)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix2::remove_axis"),
+                axis: axis.0,
+                ndim: 2,
+                shape: self.slice().to_vec(),
+            }),
+        }
+    }
+}
+
 /// Three-dimensional index.
 ///
 /// # Examples
@@ -416,6 +483,31 @@ impl From<(usize, usize, usize)> for Ix3 {
     }
 }
 
+impl Reverse for Ix3 {
+    /// Reverses axis order: `(a, b, c) → (c, b, a)`.
+    fn reverse(self) -> Self {
+        Ix3(self.2, self.1, self.0)
+    }
+}
+
+impl RemoveAxis for Ix3 {
+    type Smaller = Ix2;
+    /// Removes the given axis, returning Ix2.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix2(self.1, self.2), self.0)),
+            1 => Ok((Ix2(self.0, self.2), self.1)),
+            2 => Ok((Ix2(self.0, self.1), self.2)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix3::remove_axis"),
+                axis: axis.0,
+                ndim: 3,
+                shape: self.slice().to_vec(),
+            }),
+        }
+    }
+}
+
 /// Four-dimensional index.
 ///
 /// # Examples
@@ -512,6 +604,32 @@ impl From<(usize, usize, usize, usize)> for Ix4 {
     #[inline]
     fn from(t: (usize, usize, usize, usize)) -> Self {
         Ix4(t.0, t.1, t.2, t.3)
+    }
+}
+
+impl Reverse for Ix4 {
+    /// Reverses axis order.
+    fn reverse(self) -> Self {
+        Ix4(self.3, self.2, self.1, self.0)
+    }
+}
+
+impl RemoveAxis for Ix4 {
+    type Smaller = Ix3;
+    /// Removes the given axis, returning Ix3.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix3(self.1, self.2, self.3), self.0)),
+            1 => Ok((Ix3(self.0, self.2, self.3), self.1)),
+            2 => Ok((Ix3(self.0, self.1, self.3), self.2)),
+            3 => Ok((Ix3(self.0, self.1, self.2), self.3)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix4::remove_axis"),
+                axis: axis.0,
+                ndim: 4,
+                shape: self.slice().to_vec(),
+            }),
+        }
     }
 }
 
@@ -618,6 +736,33 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize)) -> Self {
         Ix5(t.0, t.1, t.2, t.3, t.4)
+    }
+}
+
+impl Reverse for Ix5 {
+    /// Reverses axis order.
+    fn reverse(self) -> Self {
+        Ix5(self.4, self.3, self.2, self.1, self.0)
+    }
+}
+
+impl RemoveAxis for Ix5 {
+    type Smaller = Ix4;
+    /// Removes the given axis, returning Ix4.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix4(self.1, self.2, self.3, self.4), self.0)),
+            1 => Ok((Ix4(self.0, self.2, self.3, self.4), self.1)),
+            2 => Ok((Ix4(self.0, self.1, self.3, self.4), self.2)),
+            3 => Ok((Ix4(self.0, self.1, self.2, self.4), self.3)),
+            4 => Ok((Ix4(self.0, self.1, self.2, self.3), self.4)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix5::remove_axis"),
+                axis: axis.0,
+                ndim: 5,
+                shape: self.slice().to_vec(),
+            }),
+        }
     }
 }
 
@@ -794,159 +939,10 @@ impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
     }
 }
 
-// ── Reverse implementations for all static dimensions ──
-
-impl Reverse for Ix0 {
-    /// Identity: 0-dimensional.
-    fn reverse(self) -> Self {
-        self
-    }
-}
-
-impl Reverse for Ix1 {
-    /// Identity: single axis.
-    fn reverse(self) -> Self {
-        self
-    }
-}
-
-impl Reverse for Ix2 {
-    /// Reverses axis order: `(a, b) → (b, a)`.
-    fn reverse(self) -> Self {
-        Ix2(self.1, self.0)
-    }
-}
-
-impl Reverse for Ix3 {
-    /// Reverses axis order: `(a, b, c) → (c, b, a)`.
-    fn reverse(self) -> Self {
-        Ix3(self.2, self.1, self.0)
-    }
-}
-
-impl Reverse for Ix4 {
-    /// Reverses axis order.
-    fn reverse(self) -> Self {
-        Ix4(self.3, self.2, self.1, self.0)
-    }
-}
-
-impl Reverse for Ix5 {
-    /// Reverses axis order.
-    fn reverse(self) -> Self {
-        Ix5(self.4, self.3, self.2, self.1, self.0)
-    }
-}
-
 impl Reverse for Ix6 {
     /// Reverses axis order.
     fn reverse(self) -> Self {
         Ix6(self.5, self.4, self.3, self.2, self.1, self.0)
-    }
-}
-
-// ── RemoveAxis implementations for all static dimensions ──
-
-impl RemoveAxis for Ix0 {
-    type Smaller = Ix0;
-    /// Always errors (Ix0 has no axes).
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
-        Err(XenonError::InvalidAxis {
-            operation: std::borrow::Cow::Borrowed("Ix0::remove_axis"),
-            axis: axis.0,
-            ndim: 0,
-            shape: vec![],
-        })
-    }
-}
-
-impl RemoveAxis for Ix1 {
-    type Smaller = Ix0;
-    /// Removes axis 0, returning Ix0 and the length.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
-        if axis.0 != 0 {
-            return Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix1::remove_axis"),
-                axis: axis.0,
-                ndim: 1,
-                shape: self.slice().to_vec(),
-            });
-        }
-        Ok((Ix0, self.0))
-    }
-}
-
-impl RemoveAxis for Ix2 {
-    type Smaller = Ix1;
-    /// Removes the given axis, returning Ix1.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
-        match axis.0 {
-            0 => Ok((Ix1(self.1), self.0)),
-            1 => Ok((Ix1(self.0), self.1)),
-            _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix2::remove_axis"),
-                axis: axis.0,
-                ndim: 2,
-                shape: self.slice().to_vec(),
-            }),
-        }
-    }
-}
-
-impl RemoveAxis for Ix3 {
-    type Smaller = Ix2;
-    /// Removes the given axis, returning Ix2.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
-        match axis.0 {
-            0 => Ok((Ix2(self.1, self.2), self.0)),
-            1 => Ok((Ix2(self.0, self.2), self.1)),
-            2 => Ok((Ix2(self.0, self.1), self.2)),
-            _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix3::remove_axis"),
-                axis: axis.0,
-                ndim: 3,
-                shape: self.slice().to_vec(),
-            }),
-        }
-    }
-}
-
-impl RemoveAxis for Ix4 {
-    type Smaller = Ix3;
-    /// Removes the given axis, returning Ix3.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
-        match axis.0 {
-            0 => Ok((Ix3(self.1, self.2, self.3), self.0)),
-            1 => Ok((Ix3(self.0, self.2, self.3), self.1)),
-            2 => Ok((Ix3(self.0, self.1, self.3), self.2)),
-            3 => Ok((Ix3(self.0, self.1, self.2), self.3)),
-            _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix4::remove_axis"),
-                axis: axis.0,
-                ndim: 4,
-                shape: self.slice().to_vec(),
-            }),
-        }
-    }
-}
-
-impl RemoveAxis for Ix5 {
-    type Smaller = Ix4;
-    /// Removes the given axis, returning Ix4.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
-        match axis.0 {
-            0 => Ok((Ix4(self.1, self.2, self.3, self.4), self.0)),
-            1 => Ok((Ix4(self.0, self.2, self.3, self.4), self.1)),
-            2 => Ok((Ix4(self.0, self.1, self.3, self.4), self.2)),
-            3 => Ok((Ix4(self.0, self.1, self.2, self.4), self.3)),
-            4 => Ok((Ix4(self.0, self.1, self.2, self.3), self.4)),
-            _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix5::remove_axis"),
-                axis: axis.0,
-                ndim: 5,
-                shape: self.slice().to_vec(),
-            }),
-        }
     }
 }
 
@@ -970,6 +966,7 @@ impl RemoveAxis for Ix6 {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
