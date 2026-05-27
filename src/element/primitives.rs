@@ -149,8 +149,6 @@ impl RealScalar for f64 {
     }
 }
 
-impl Sealed for bool {}
-
 impl Element for bool {
     fn zero() -> Self {
         false
