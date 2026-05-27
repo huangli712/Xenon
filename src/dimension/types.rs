@@ -158,4 +158,52 @@ mod tests {
         assert_dimension(Ix6(1, 2, 3, 4, 5, 6));
         assert_dimension(IxDyn::from_slice(&[1, 2]));
     }
+
+    /// `MAX_DIMENSION` equals `usize::MAX`.
+    #[test]
+    fn test_max_dimension_is_usize_max() {
+        assert_eq!(MAX_DIMENSION, usize::MAX);
+    }
+
+    /// Compile-time path check: ensure all submodules are reachable.
+    #[test]
+    fn test_dimension_submodules_reachable() {
+        #[allow(unused_imports)]
+        use crate::dimension::axes;
+        #[allow(unused_imports)]
+        use crate::dimension::dynamic;
+        #[allow(unused_imports)]
+        use crate::dimension::fixed;
+        #[allow(unused_imports)]
+        use crate::dimension::into;
+    }
+
+    /// Public re-exports are reachable via `crate::dimension::*`.
+    #[test]
+    fn test_public_exports_reachable() {
+        let _: Ix0 = Ix0;
+        let _: Ix1 = Ix1(1);
+        let _: IxDyn = IxDyn::new();
+        let _: Axis = Axis::new(0);
+        let _: Ix3 = (1, 2, 3).into_dimension();
+    }
+
+    /// Canonical doc examples on Ix2 / Axis / IntoDimension.
+    #[test]
+    fn test_public_doc_examples_execute() {
+        let dim = Ix2(10, 20);
+        assert_eq!(dim.ndim(), 2);
+        assert_eq!(dim.slice(), &[10, 20]);
+        assert_eq!(dim.checked_size(), Ok(200));
+        assert_eq!(dim[0], 10);
+
+        let ax = Axis::new(0);
+        assert!(ax.is_first());
+
+        let d3: Ix3 = (2, 3, 4).into_dimension();
+        assert_eq!(d3.slice(), &[2, 3, 4]);
+    }
 }
+
+/// Maximum number of dimensions representable on this platform.
+pub const MAX_DIMENSION: usize = usize::MAX;
