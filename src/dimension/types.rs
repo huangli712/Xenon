@@ -3,8 +3,8 @@
 use std::fmt::Debug;
 
 use super::axes::Axis;
-use crate::error::XenonError;
 use crate::private::Sealed;
+use crate::error::XenonError;
 
 /// Maximum number of dimensions representable on this platform.
 pub const MAX_DIMENSION: usize = usize::MAX;
@@ -140,12 +140,6 @@ mod tests {
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
     use crate::dimension::IntoDimension;
 
-    /// Compile-time check: verify `Dimension` trait bound is implementable.
-    /// This function is never called but ensures the trait can be used as a
-    /// generic bound.
-    #[allow(dead_code)]
-    fn assert_dimension_bounds<D: Dimension>() {}
-
     /// All 8 dimension types satisfy the `Dimension` trait bound
     /// (which requires `Sealed`). Compile-time check.
     #[test]
@@ -166,7 +160,6 @@ mod tests {
     fn test_max_dimension_is_usize_max() {
         assert_eq!(MAX_DIMENSION, usize::MAX);
     }
-
 
     /// Public re-exports are reachable via `crate::dimension::*`.
     #[test]
