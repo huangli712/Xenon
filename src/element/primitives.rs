@@ -5,6 +5,17 @@
 use crate::complex::Complex;
 use crate::element::{Element, ElementType};
 
+impl Element for bool {
+    fn zero() -> Self {
+        false
+    }
+    fn one() -> Self {
+        true
+    }
+    const ELEMENT_TYPE: ElementType = ElementType::Bool;
+    const ELEMENT_TYPE_NAME: &'static str = "bool";
+}
+
 impl Element for i32 {
     fn zero() -> Self {
         0
@@ -15,7 +26,6 @@ impl Element for i32 {
     const ELEMENT_TYPE: ElementType = ElementType::I32;
     const ELEMENT_TYPE_NAME: &'static str = "i32";
 }
-
 
 impl Element for i64 {
     fn zero() -> Self {
@@ -28,7 +38,6 @@ impl Element for i64 {
     const ELEMENT_TYPE_NAME: &'static str = "i64";
 }
 
-
 impl Element for f32 {
     fn zero() -> Self {
         0.0
@@ -40,7 +49,6 @@ impl Element for f32 {
     const ELEMENT_TYPE_NAME: &'static str = "f32";
 }
 
-
 impl Element for f64 {
     fn zero() -> Self {
         0.0
@@ -50,17 +58,6 @@ impl Element for f64 {
     }
     const ELEMENT_TYPE: ElementType = ElementType::F64;
     const ELEMENT_TYPE_NAME: &'static str = "f64";
-}
-
-impl Element for bool {
-    fn zero() -> Self {
-        false
-    }
-    fn one() -> Self {
-        true
-    }
-    const ELEMENT_TYPE: ElementType = ElementType::Bool;
-    const ELEMENT_TYPE_NAME: &'static str = "bool";
 }
 
 impl Element for Complex<f32> {
@@ -84,7 +81,6 @@ impl Element for Complex<f64> {
     const ELEMENT_TYPE: ElementType = ElementType::Complex64;
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f64>";
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -112,7 +108,6 @@ mod tests {
         assert!(!bool::zero());
         assert!(bool::one());
     }
-
 
     /// Verifies Complex&lt;f64&gt; Element::zero and Element::one.
     #[test]
