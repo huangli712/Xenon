@@ -44,6 +44,8 @@
 use crate::error::XenonError;
 use crate::private::Sealed;
 
+use crate::complex::Complex;
+
 /// Base trait for all tensor element types.
 ///
 /// `Element` provides identity values (`zero`/`one`), a compile-time type
@@ -179,6 +181,13 @@ impl OrderedCompareElement for i32 {}
 impl OrderedCompareElement for i64 {}
 impl OrderedCompareElement for f32 {}
 impl OrderedCompareElement for f64 {}
+
+impl CastElement for i32 {}
+impl CastElement for i64 {}
+impl CastElement for f32 {}
+impl CastElement for f64 {}
+impl CastElement for Complex<f32> {}
+impl CastElement for Complex<f64> {}
 
 #[cfg(test)]
 mod tests {
