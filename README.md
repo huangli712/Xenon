@@ -4,13 +4,13 @@ Rust N-dimensional tensor library for scientific computing.
 
 ## Features
 
-- N-dimensional arrays with static (0-6D) and dynamic dimensions (`IxDyn` for
-  runtime-rank tensors)
-- Column-major (F-order) default, with helper APIs and compatibility checks
-  for upstream BLAS/LAPACK integration when the layout preconditions are
-  satisfied
-- Custom FFI-friendly complex number type
-- Optional SIMD (pulp) and parallel (rayon) acceleration
+- N-dimensional arrays with static (0-6D) and dynamic (IxDyn) dimension types
+- Column-major (F-order) contiguous storage with BLAS/LAPACK-compatible layout
+- Custom FFI-friendly complex number type (`Complex`)
+- Type-level broadcasting via `BroadcastDim` trait
+- Optional SIMD acceleration via `pulp` crate
+- Optional parallel computing support via `rayon` crate
+- Convenient dimension creation from tuples, arrays, and slices
 
 ## Quick Start
 
