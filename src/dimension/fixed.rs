@@ -521,8 +521,8 @@ impl Ix4 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 4, actual }` when
-    /// `dyn_dim.ndim() != 4`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 4`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 4 {
@@ -582,9 +582,6 @@ impl Dimension for Ix4 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically.
 }
 
 impl Reverse for Ix4 {
