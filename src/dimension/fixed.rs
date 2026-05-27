@@ -99,7 +99,7 @@ impl RemoveAxis for Ix0 {
     /// Always errors (Ix0 has no axes).
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         Err(XenonError::InvalidAxis {
-            operation: std::borrow::Cow::Borrowed("Ix0::remove_axis"),
+            operation: Cow::Borrowed("Ix0::remove_axis"),
             axis: axis.0,
             ndim: 0,
             shape: vec![],
@@ -198,7 +198,7 @@ impl RemoveAxis for Ix1 {
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         if axis.0 != 0 {
             return Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix1::remove_axis"),
+                operation: Cow::Borrowed("Ix1::remove_axis"),
                 axis: axis.0,
                 ndim: 1,
                 shape: self.slice().to_vec(),
@@ -337,7 +337,7 @@ impl RemoveAxis for Ix2 {
             0 => Ok((Ix1(self.1), self.0)),
             1 => Ok((Ix1(self.0), self.1)),
             _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix2::remove_axis"),
+                operation: Cow::Borrowed("Ix2::remove_axis"),
                 axis: axis.0,
                 ndim: 2,
                 shape: self.slice().to_vec(),
@@ -480,7 +480,7 @@ impl RemoveAxis for Ix3 {
             1 => Ok((Ix2(self.0, self.2), self.1)),
             2 => Ok((Ix2(self.0, self.1), self.2)),
             _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix3::remove_axis"),
+                operation: Cow::Borrowed("Ix3::remove_axis"),
                 axis: axis.0,
                 ndim: 3,
                 shape: self.slice().to_vec(),
@@ -607,7 +607,7 @@ impl RemoveAxis for Ix4 {
             2 => Ok((Ix3(self.0, self.1, self.3), self.2)),
             3 => Ok((Ix3(self.0, self.1, self.2), self.3)),
             _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix4::remove_axis"),
+                operation: Cow::Borrowed("Ix4::remove_axis"),
                 axis: axis.0,
                 ndim: 4,
                 shape: self.slice().to_vec(),
@@ -742,7 +742,7 @@ impl RemoveAxis for Ix5 {
             3 => Ok((Ix4(self.0, self.1, self.2, self.4), self.3)),
             4 => Ok((Ix4(self.0, self.1, self.2, self.3), self.4)),
             _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix5::remove_axis"),
+                operation: Cow::Borrowed("Ix5::remove_axis"),
                 axis: axis.0,
                 ndim: 5,
                 shape: self.slice().to_vec(),
@@ -945,7 +945,7 @@ impl RemoveAxis for Ix6 {
             4 => Ok((Ix5(self.0, self.1, self.2, self.3, self.5), self.4)),
             5 => Ok((Ix5(self.0, self.1, self.2, self.3, self.4), self.5)),
             _ => Err(XenonError::InvalidAxis {
-                operation: std::borrow::Cow::Borrowed("Ix6::remove_axis"),
+                operation: Cow::Borrowed("Ix6::remove_axis"),
                 axis: axis.0,
                 ndim: 6,
                 shape: self.slice().to_vec(),
