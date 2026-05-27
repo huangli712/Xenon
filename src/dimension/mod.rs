@@ -18,7 +18,7 @@
 //! Conversion from tuples (`(usize,)`, etc.), arrays (`[usize; N]`),
 //! and slices is provided through `IntoDimension`.
 
-pub mod axes;
+mod axes;
 pub mod broadcast;
 pub mod dynamic;
 pub mod fixed;

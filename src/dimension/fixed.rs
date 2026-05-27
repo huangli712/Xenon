@@ -1165,7 +1165,7 @@ mod tests {
     /// error).
     #[test]
     fn test_ix0_axis_returns_invalid_axis() {
-        use crate::dimension::axes::Axis;
+        use crate::dimension::Axis;
         use crate::error::XenonError;
         assert!(matches!(
             Ix0.axis(Axis::new(0)),
