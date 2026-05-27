@@ -27,6 +27,33 @@ use crate::error::XenonError;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix0;
 
+impl Ix0 {
+    /// Converts to dynamic dimension. Always succeeds. Returns a 0-rank IxDyn.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::new()
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 0, actual }` when
+    /// `dyn_dim.ndim() != 0`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 0 {
+            Ok(Ix0)
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix0::try_from_dyn"),
+                expected: 0,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
+
 impl Dimension for Ix0 {
     const NDIM: Option<usize> = Some(0);
 
@@ -68,33 +95,6 @@ impl Dimension for Ix0 {
     // invalid).
 }
 
-impl Ix0 {
-    /// Converts to dynamic dimension. Always succeeds. Returns a 0-rank IxDyn.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::new()
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { expected: 0, actual }` when
-    /// `dyn_dim.ndim() != 0`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 0 {
-            Ok(Ix0)
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix0::try_from_dyn"),
-                expected: 0,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
-
 /// One-dimensional index.
 ///
 /// # Examples
@@ -110,6 +110,34 @@ impl Ix0 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix1(pub usize);
+
+impl Ix1 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { expected: 1, actual }` when
+    /// `dyn_dim.ndim() != 1`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 1 {
+            let s = dyn_dim.slice();
+            Ok(Ix1(s[0]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix1::try_from_dyn"),
+                expected: 1,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
 
 impl Dimension for Ix1 {
     const NDIM: Option<usize> = Some(1);
@@ -163,34 +191,6 @@ impl Index<usize> for Ix1 {
     fn index(&self, index: usize) -> &usize {
         assert_eq!(index, 0, "Ix1 index out of bounds");
         &self.0
-    }
-}
-
-impl Ix1 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { expected: 1, actual }` when
-    /// `dyn_dim.ndim() != 1`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 1 {
-            let s = dyn_dim.slice();
-            Ok(Ix1(s[0]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix1::try_from_dyn"),
-                expected: 1,
-                actual: dyn_dim.ndim(),
-            })
-        }
     }
 }
 
