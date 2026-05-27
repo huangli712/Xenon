@@ -650,8 +650,8 @@ impl Ix5 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 5, actual }` when
-    /// `dyn_dim.ndim() != 5`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 5`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 5 {
@@ -713,9 +713,6 @@ impl Dimension for Ix5 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically.
 }
 
 impl Reverse for Ix5 {
