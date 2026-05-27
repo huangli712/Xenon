@@ -7,9 +7,13 @@
 
 mod types;
 pub use types::{
-    Element, ElementType, OrderedCompareElement, element_type_name_of,
+    ElementType, OrderedCompareElement, element_type_name_of,
     element_type_of,
 };
+
+mod primitives;
+pub use primitives::Element;
+
 mod numeric;
 pub use numeric::Numeric;
 
@@ -20,7 +24,5 @@ mod complex;
 pub use complex::ComplexScalar;
 
 /// Element trait implementations for standard numeric types.
-pub mod primitives;
-
 mod checked;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};

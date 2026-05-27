@@ -1,4 +1,4 @@
-//! Element type hierarchy: base traits and type discriminants.
+//! Element type discriminants, free functions, and marker traits.
 //!
 //! # Supported element types
 //!
@@ -23,36 +23,13 @@
 //!   it from forming the algebraic structure required by `Element`.
 //! * `Element` types require `zero()` and `one()` identities; `usize`
 //!   has no consistent negation semantics in this context.
-//!
-//! Concrete impls for primitive types are in `primitives.rs`.
 
+use core::fmt::{Display, Formatter};
+
+use crate::element::primitives::Element;
 use crate::private::Sealed;
-use core::fmt::{Debug, Display, Formatter};
 
-/// Base trait for all tensor element types.
-///
-/// `Element` provides identity values (`zero`/`one`), a compile-time type
-/// discriminant (`ELEMENT_TYPE`), and a canonical name (`ELEMENT_TYPE_NAME`)
-/// for use in error messages and FFI mapping.
-///
-/// # Sealed
-///
-/// Only types within Xenon's closed element set may implement `Element`.
-pub trait Element:
-    Copy + Clone + PartialEq + Debug + Display + Send + Sync + Sealed
-{
-    /// Additive identity.
-    fn zero() -> Self;
-
-    /// Multiplicative identity.
-    fn one() -> Self;
-
-    /// Compile-time discriminant for this element type.
-    const ELEMENT_TYPE: ElementType;
-
-    /// Canonical, stable name for this element type.
-    const ELEMENT_TYPE_NAME: &'static str;
-}
+// ── ElementType ───────────────────────────────────────────────────────────
 
 /// Compile-time enumerated discriminant for every supported element type.
 ///
@@ -118,6 +95,8 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
     A::ELEMENT_TYPE_NAME
 }
 
+// ── OrderedCompareElement ─────────────────────────────────────────────────
+
 /// Marker trait for element types that support ordered comparison.
 ///
 /// Only `i32`, `i64`, `f32`, `f64` implement this trait.
@@ -133,26 +112,6 @@ mod tests {
     use super::*;
     use crate::complex::Complex;
 
-    /// Verifies that the `Element` API surface (`zero`, `one`, `ELEMENT_TYPE`,
-    /// `ELEMENT_TYPE_NAME`) is well-formed and reachable through a generic
-    /// `A: Element` bound. Exercises all 7 closed element types.
-    #[test]
-    fn test_element_contract() {
-        fn check<A: Element>() {
-            let _ = A::zero();
-            let _ = A::one();
-            let _ = A::ELEMENT_TYPE;
-            let _ = A::ELEMENT_TYPE_NAME;
-        }
-        check::<i32>();
-        check::<i64>();
-        check::<f32>();
-        check::<f64>();
-        check::<bool>();
-        check::<Complex<f32>>();
-        check::<Complex<f64>>();
-    }
-
     /// Verifies ElementType::name() returns the correct string for each
     /// variant.
     #[test]
@@ -164,21 +123,6 @@ mod tests {
         assert_eq!(ElementType::F64.name(), "f64");
         assert_eq!(ElementType::Complex32.name(), "Complex<f32>");
         assert_eq!(ElementType::Complex64.name(), "Complex<f64>");
-    }
-
-    /// Compile-time verification: `usize` must NOT implement `Element`.
-    /// This test will FAIL TO COMPILE if someone accidentally adds
-    /// an `Element` impl for `usize`.
-    #[test]
-    fn test_usize_does_not_implement_element() {
-        fn _assert_element<T: Element>() {
-            let _ = T::zero();
-        }
-        _assert_element::<i32>();
-        _assert_element::<i64>();
-        _assert_element::<f64>();
-        // Negative bound: uncommenting the line below MUST cause a compile error.
-        // _assert_element::<usize>();
     }
 
     /// Verifies OrderedCompareElement trait bounds for concrete types.
@@ -227,27 +171,5 @@ mod tests {
         assert_eq!(format!("{}", ElementType::I32), "i32");
         assert_eq!(format!("{}", ElementType::F64), "f64");
         assert_eq!(format!("{}", ElementType::Complex64), "Complex<f64>");
-    }
-
-    /// Verifies Element::ELEMENT_TYPE_NAME matches ElementType::name()
-    /// for each type.
-    #[test]
-    fn test_element_type_name_consistency() {
-        assert_eq!(<i32 as Element>::ELEMENT_TYPE_NAME, ElementType::I32.name());
-        assert_eq!(<i64 as Element>::ELEMENT_TYPE_NAME, ElementType::I64.name());
-        assert_eq!(<f32 as Element>::ELEMENT_TYPE_NAME, ElementType::F32.name());
-        assert_eq!(<f64 as Element>::ELEMENT_TYPE_NAME, ElementType::F64.name());
-        assert_eq!(
-            <bool as Element>::ELEMENT_TYPE_NAME,
-            ElementType::Bool.name()
-        );
-        assert_eq!(
-            <Complex<f32> as Element>::ELEMENT_TYPE_NAME,
-            ElementType::Complex32.name(),
-        );
-        assert_eq!(
-            <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
-            ElementType::Complex64.name(),
-        );
     }
 }
