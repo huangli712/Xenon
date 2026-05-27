@@ -769,14 +769,7 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
 /// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
-pub struct Ix6(
-    pub usize,
-    pub usize,
-    pub usize,
-    pub usize,
-    pub usize,
-    pub usize,
-);
+pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 
 impl Ix6 {
     /// Converts to dynamic dimension.
@@ -789,8 +782,8 @@ impl Ix6 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 6, actual }` when
-    /// `dyn_dim.ndim() != 6`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 6`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 6 {
@@ -854,9 +847,6 @@ impl Dimension for Ix6 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically (axes 0..=5 valid, 6+ invalid).
 }
 
 impl Reverse for Ix6 {
