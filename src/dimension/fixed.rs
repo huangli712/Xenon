@@ -1,16 +1,10 @@
 //! Fixed-size dimension types.
 
 use std::borrow::Cow;
-
 use std::ops::Index;
 
-use crate::dimension::Axis;
-use crate::dimension::Dimension;
-use crate::dimension::IxDyn;
-use crate::dimension::RemoveAxis;
-use crate::dimension::Reverse;
-use crate::error::InvalidShapeKind;
-use crate::error::XenonError;
+use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse, IxDyn};
+use crate::error::{XenonError, InvalidShapeKind};
 
 /// Zero-dimensional index (scalar). Always has rank 0, size 1.
 /// This type is a ZST (Zero-Sized Type); `size_of::<Ix0>() == 0`.
