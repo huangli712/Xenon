@@ -1253,4 +1253,90 @@ mod tests {
             Err(XenonError::InvalidAxis { .. })
         ));
     }
+
+    // ── Reverse tests ──
+
+    /// `reverse()` for Ix0 and Ix1 is identity.
+    #[test]
+    fn test_reverse_identity() {
+        assert_eq!(Ix0.reverse(), Ix0);
+        assert_eq!(Ix1(5).reverse(), Ix1(5));
+    }
+
+    /// `reverse()` swaps axis order correctly.
+    #[test]
+    fn test_reverse_swaps() {
+        assert_eq!(Ix2(3, 4).reverse(), Ix2(4, 3));
+        assert_eq!(Ix3(2, 3, 4).reverse(), Ix3(4, 3, 2));
+        assert_eq!(Ix4(1, 2, 3, 4).reverse(), Ix4(4, 3, 2, 1));
+        assert_eq!(Ix5(1, 2, 3, 4, 5).reverse(), Ix5(5, 4, 3, 2, 1));
+        assert_eq!(Ix6(1, 2, 3, 4, 5, 6).reverse(), Ix6(6, 5, 4, 3, 2, 1));
+    }
+
+    /// `reverse().reverse()` is identity.
+    #[test]
+    fn test_reverse_roundtrip() {
+        let dim = Ix4(2, 4, 6, 8);
+        assert_eq!(dim.reverse().reverse(), dim);
+    }
+
+    // ── RemoveAxis tests ──
+
+    /// Ix0 has no axes, so `remove_axis` always errors.
+    #[test]
+    fn test_remove_axis_ix0_errors() {
+        assert!(matches!(
+            Ix0.remove_axis(Axis::new(0)),
+            Err(XenonError::InvalidAxis { .. })
+        ));
+    }
+
+    /// `remove_axis` for Ix1: only axis 0 is valid.
+    #[test]
+    fn test_remove_axis_ix1() {
+        let dim = Ix1(5);
+        assert_eq!(dim.remove_axis(Axis::new(0)), Ok((Ix0, 5)));
+        assert!(dim.remove_axis(Axis::new(1)).is_err());
+    }
+
+    /// `remove_axis` for Ix2.
+    #[test]
+    fn test_remove_axis_ix2() {
+        let dim = Ix2(3, 4);
+        assert_eq!(dim.remove_axis(Axis::new(0)), Ok((Ix1(4), 3)));
+        assert_eq!(dim.remove_axis(Axis::new(1)), Ok((Ix1(3), 4)));
+        assert!(dim.remove_axis(Axis::new(2)).is_err());
+    }
+
+    /// `remove_axis` for Ix3.
+    #[test]
+    fn test_remove_axis_ix3() {
+        let dim = Ix3(2, 3, 4);
+        assert_eq!(dim.remove_axis(Axis::new(0)), Ok((Ix2(3, 4), 2)));
+        assert_eq!(dim.remove_axis(Axis::new(1)), Ok((Ix2(2, 4), 3)));
+        assert_eq!(dim.remove_axis(Axis::new(2)), Ok((Ix2(2, 3), 4)));
+        assert!(dim.remove_axis(Axis::new(3)).is_err());
+    }
+
+    /// `remove_axis` for Ix4: spot-check first and last, plus OOB.
+    #[test]
+    fn test_remove_axis_ix4() {
+        let dim = Ix4(2, 3, 4, 5);
+        assert_eq!(dim.remove_axis(Axis::new(0)), Ok((Ix3(3, 4, 5), 2)));
+        assert_eq!(dim.remove_axis(Axis::new(3)), Ok((Ix3(2, 3, 4), 5)));
+        assert!(dim.remove_axis(Axis::new(4)).is_err());
+    }
+
+    /// `remove_axis` for Ix5 and Ix6: spot-check.
+    #[test]
+    fn test_remove_axis_ix5_ix6() {
+        let dim5 = Ix5(1, 2, 3, 4, 5);
+        assert_eq!(dim5.remove_axis(Axis::new(2)), Ok((Ix4(1, 2, 4, 5), 3)));
+        assert!(dim5.remove_axis(Axis::new(5)).is_err());
+
+        let dim6 = Ix6(1, 2, 3, 4, 5, 6);
+        assert_eq!(dim6.remove_axis(Axis::new(0)), Ok((Ix5(2, 3, 4, 5, 6), 1)));
+        assert_eq!(dim6.remove_axis(Axis::new(5)), Ok((Ix5(1, 2, 3, 4, 5), 6)));
+        assert!(dim6.remove_axis(Axis::new(6)).is_err());
+    }
 }
