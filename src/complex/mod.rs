@@ -1,9 +1,9 @@
 //! Complex number type `Complex<T>` with a sealed component bound.
 //!
-//! W5T1 provides the minimal skeleton: the `Complex<T>` struct, its `new()`
-//! constructor, and the `ComplexFloat` sealed trait with `Sealed + Copy +
-//! Default` supertraits. Subsequent Wave-5 tasks extend `ComplexFloat` and
-//! add arithmetic, formatting, conversion, and math methods.
+//! The module provides the `Complex<T>` struct, its constructors and
+//! accessors, and the `ComplexFloat` sealed trait exclusive to `f32`
+//! and `f64`. Arithmetic operations, formatting, and math methods
+//! are implemented in sub-modules.
 
 mod display;
 mod math;
