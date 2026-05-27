@@ -175,6 +175,11 @@ pub(crate) trait BoolElement: Element + Sealed {}
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait CastElement: Element {}
 
+impl OrderedCompareElement for i32 {}
+impl OrderedCompareElement for i64 {}
+impl OrderedCompareElement for f32 {}
+impl OrderedCompareElement for f64 {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

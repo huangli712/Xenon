@@ -2,12 +2,11 @@
 //!
 //! Implements `Sealed`, `Element`, `Numeric`, `RealScalar`, and
 //! `ComplexScalar` for the standard numeric types, plus marker trait
-//! impls (`OrderedCompareElement`, `CastElement`, `BoolElement`).
+//! impls (`CastElement`, `BoolElement`).
 
 use crate::complex::Complex;
 use crate::element::{
-    BoolElement, CastElement, ComplexScalar, Element, ElementType, Numeric, OrderedCompareElement,
-    RealScalar,
+    BoolElement, CastElement, ComplexScalar, Element, ElementType, Numeric, RealScalar,
 };
 use crate::private::Sealed;
 
@@ -234,10 +233,6 @@ impl ComplexScalar for Complex<f64> {
 
 // ── Marker trait impls ──
 
-impl OrderedCompareElement for i32 {}
-impl OrderedCompareElement for i64 {}
-impl OrderedCompareElement for f32 {}
-impl OrderedCompareElement for f64 {}
 
 impl CastElement for i32 {}
 impl CastElement for i64 {}
