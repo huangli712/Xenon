@@ -6,26 +6,17 @@
 //! and concrete primitive implementations are provided by sub-modules.
 
 mod types;
-pub use types::{
-    ElementType, element_type_name_of,
-    element_type_of,
-};
-
 mod primitives;
-pub use primitives::Element;
-
-mod order;
-pub use order::OrderedCompareElement;
-
 mod numeric;
-pub use numeric::Numeric;
-
 mod real;
-pub use real::RealScalar;
-
 mod complex;
-pub use complex::ComplexScalar;
-
-/// Element trait implementations for standard numeric types.
+mod order;
 mod checked;
+
+pub use types::{ElementType, element_type_name_of, element_type_of};
+pub use primitives::Element;
+pub use numeric::Numeric;
+pub use real::RealScalar;
+pub use complex::ComplexScalar;
+pub use order::OrderedCompareElement;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
