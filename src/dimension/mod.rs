@@ -18,21 +18,18 @@
 //! Conversion from tuples (`(usize,)`, etc.), arrays (`[usize; N]`),
 //! and slices is provided through `IntoDimension`.
 
+mod types;
 mod axes;
 mod broadcast;
 mod dynamic;
 mod fixed;
 mod into;
 
-// Public re-exports — the canonical access path for dimension types.
+pub use types::MAX_DIMENSION;
+
+pub use types::{Dimension, Reverse, RemoveAxis};
 pub use axes::Axis;
 pub use broadcast::BroadcastDim;
 pub use dynamic::IxDyn;
 pub use fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 pub use into::IntoDimension;
-
-mod types;
-
-pub use types::{Dimension, Reverse, RemoveAxis};
-pub use types::MAX_DIMENSION;
-
