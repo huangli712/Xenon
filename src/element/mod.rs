@@ -7,7 +7,7 @@
 
 mod types;
 pub use types::{
-    CastElement, CastTo, Element, ElementType, OrderedCompareElement, element_type_name_of,
+    Element, ElementType, OrderedCompareElement, element_type_name_of,
     element_type_of,
 };
 pub(crate) use types::BoolElement;

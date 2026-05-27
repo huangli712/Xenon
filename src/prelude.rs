@@ -12,13 +12,13 @@
 
 // ── Public re-exports ────────────────────────────────────────────────
 
+pub use crate::convert::{CastElement, CastTo};
+
 // Complex number type
 pub use crate::complex::Complex;
 
 // Element traits
 pub use crate::element::{
-    CastElement,
-    CastTo,
     Element,
     Numeric,
     RealScalar,

@@ -25,26 +25,8 @@
 //!   has no consistent negation semantics in this context.
 //!
 //! Concrete impls for primitive types are in `primitives.rs`.
-//!
-//! # `CastTo<T>` error semantics
-//!
-//! `CastTo<T>::cast_to()` returns `Err(XenonError::TypeConversion)` for
-//! lossy conversions. Lossy cases include:
-//!
-//! * Float → integer with truncation (e.g., `1.5f64.cast_to::<i32>()`)
-//! * Overflow (e.g., `i64::MAX.cast_to::<i32>()`)
-//! * NaN → integer (no finite representation)
-//! * Complex → real when imaginary part is non-zero
-//!
-//!
-//! `bool` is excluded from `CastTo<T>` as both source and target.
-//! This exclusion is enforced at compile time via the absence of
-//! `impl CastElement for bool`.
 
-use crate::error::XenonError;
 use crate::private::Sealed;
-
-use crate::complex::Complex;
 
 /// Base trait for all tensor element types.
 ///
@@ -140,25 +122,6 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
 /// Only `i32`, `i64`, `f32`, `f64` implement this trait.
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
-/// Type conversion trait for element types.
-///
-/// Defines fallible conversion between element types. Lossy conversions
-/// (e.g., `f64` → `i32` truncation, overflow) return
-/// `Err(XenonError::TypeConversion)`.
-///
-/// # Sealed
-///
-/// Only Xenon's closed element set may implement this trait.
-pub trait CastTo<T: Element>: Element {
-    /// Attempts to convert `self` to type `T`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::TypeConversion` if the conversion is lossy or
-    /// the value cannot be represented in the target type.
-    fn cast_to(self) -> Result<T, XenonError>;
-}
-
 /// Internal marker for the bool element type.
 ///
 /// Constrains operations to bool tensors only. Not part of the public API;
@@ -166,28 +129,10 @@ pub trait CastTo<T: Element>: Element {
 #[allow(dead_code)]
 pub(crate) trait BoolElement: Element + Sealed {}
 
-/// Public sealed marker for element types in the cast matrix.
-///
-/// `cast()` public signature `where A: CastElement, T: CastElement` uses this
-/// trait to exclude `bool` from conversion at compile time and narrow the
-/// element set to the 6 numeric types.
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub trait CastElement: Element {}
-
 impl OrderedCompareElement for i32 {}
 impl OrderedCompareElement for i64 {}
 impl OrderedCompareElement for f32 {}
 impl OrderedCompareElement for f64 {}
-
-impl CastElement for i32 {}
-impl CastElement for i64 {}
-impl CastElement for f32 {}
-impl CastElement for f64 {}
-impl CastElement for Complex<f32> {}
-impl CastElement for Complex<f64> {}
 
 impl BoolElement for bool {}
 
@@ -244,7 +189,7 @@ mod tests {
         // _assert_element::<usize>();
     }
 
-    /// Verifies OrderedCompareElement, CastElement, and BoolElement trait
+    /// Verifies OrderedCompareElement and BoolElement trait
     /// bounds for concrete types.
     #[test]
     fn test_marker_trait_impls() {
@@ -253,14 +198,6 @@ mod tests {
         assert_ordered::<i64>();
         assert_ordered::<f32>();
         assert_ordered::<f64>();
-
-        fn assert_castable<T: CastElement>() {}
-        assert_castable::<i32>();
-        assert_castable::<i64>();
-        assert_castable::<f32>();
-        assert_castable::<f64>();
-        assert_castable::<Complex<f32>>();
-        assert_castable::<Complex<f64>>();
 
         fn assert_bool<T: BoolElement>() {}
         assert_bool::<bool>();

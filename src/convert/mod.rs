@@ -5,6 +5,7 @@
 //!   / `into_owned()` methods on `TensorBase`.
 
 mod cast;
+pub use cast::{CastElement, CastTo};
 
 #[cfg(test)]
 mod tests {

@@ -1,18 +1,55 @@
-//! Type conversion implementation.
+//! Type conversion: `CastTo` and `CastElement` traits with tier-based impls.
 //!
-//! The public `CastTo` and `CastElement` traits are owned by `crate::element`;
-//! this module only provides tensor-level conversion dispatch and the
-//! crate-private `ConvertTo` shim.
+//! Defines the public `CastTo` and `CastElement` traits, the crate-private
+//! `ConvertTo` dispatch shim, and provides tensor-level `cast()`, `to_owned()`,
+//! and `into_owned()` methods on `TensorBase`.
 
 use std::borrow::Cow;
 
 use crate::complex::Complex;
 use crate::dimension::Dimension;
-use crate::element::{CastElement, CastTo, Element};
+use crate::element::Element;
 use crate::error::{ConversionFailureReason, Result, XenonError};
 use crate::layout::{compute_f_strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, Storage, StorageIntoOwned};
 use crate::tensor::{Tensor, TensorBase};
+
+/// Type conversion trait for element types.
+///
+/// Defines fallible conversion between element types. Lossy conversions
+/// (e.g., `f64` → `i32` truncation, overflow) return
+/// `Err(XenonError::TypeConversion)`.
+///
+/// # Sealed
+///
+/// Only Xenon's closed element set may implement this trait.
+pub trait CastTo<T: Element>: Element {
+    /// Attempts to convert `self` to type `T`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::TypeConversion` if the conversion is lossy or
+    /// the value cannot be represented in the target type.
+    fn cast_to(self) -> std::result::Result<T, XenonError>;
+}
+
+/// Public sealed marker for element types in the cast matrix.
+///
+/// `cast()` public signature `where A: CastElement, T: CastElement` uses this
+/// trait to exclude `bool` from conversion at compile time and narrow the
+/// element set to the 6 numeric types.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
+pub trait CastElement: Element {}
+
+impl CastElement for i32 {}
+impl CastElement for i64 {}
+impl CastElement for f32 {}
+impl CastElement for f64 {}
+impl CastElement for Complex<f32> {}
+impl CastElement for Complex<f64> {}
 
 /// Crate-private sealed conversion dispatch trait.
 ///
@@ -796,7 +833,11 @@ mod tests {
     fn test_convert_to_trait_signature_accepts_cast_elements() {
         fn require_cast_element<A: CastElement>() {}
         require_cast_element::<i32>();
+        require_cast_element::<i64>();
+        require_cast_element::<f32>();
         require_cast_element::<f64>();
+        require_cast_element::<Complex<f32>>();
+        require_cast_element::<Complex<f64>>();
     }
 
     #[test]
