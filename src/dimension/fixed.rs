@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use std::ops::Index;
 
+use crate::dimension::Axis;
 use crate::dimension::Dimension;
 use crate::dimension::IxDyn;
 use crate::dimension::RemoveAxis;
@@ -845,8 +846,6 @@ impl Reverse for Ix6 {
 }
 
 // ── RemoveAxis implementations for all static dimensions ──
-
-use crate::dimension::Axis;
 
 impl RemoveAxis for Ix0 {
     type Smaller = Ix0;
