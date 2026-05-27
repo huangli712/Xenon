@@ -8,6 +8,7 @@ pub trait Sealed {}
 
 use crate::dimension::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 use crate::dimension::IxDyn;
+use crate::complex::Complex;
 
 impl Sealed for Ix0 {}
 impl Sealed for Ix1 {}
@@ -20,5 +21,7 @@ impl Sealed for IxDyn {}
 impl Sealed for i32 {}
 impl Sealed for i64 {}
 impl Sealed for bool {}
+impl Sealed for Complex<f32> {}
+impl Sealed for Complex<f64> {}
 impl Sealed for f32 {}
 impl Sealed for f64 {}

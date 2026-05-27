@@ -1,13 +1,12 @@
 //! Element trait implementations for the 7 closed element types.
 //!
-//! Implements `Sealed`, `Element`, `Numeric`, `RealScalar`, and
+//! Implements `Element`, `Numeric`, `RealScalar`, and
 //! `ComplexScalar` for the standard numeric types.
 
 use crate::complex::Complex;
 use crate::element::{
     ComplexScalar, Element, ElementType, Numeric, RealScalar,
 };
-use crate::private::Sealed;
 
 impl Element for i32 {
     fn zero() -> Self {
@@ -160,8 +159,6 @@ impl Element for bool {
     const ELEMENT_TYPE_NAME: &'static str = "bool";
 }
 
-impl Sealed for Complex<f32> {}
-
 impl Element for Complex<f32> {
     fn zero() -> Self {
         Complex::new(0.0, 0.0)
@@ -191,8 +188,6 @@ impl ComplexScalar for Complex<f32> {
         self.norm()
     }
 }
-
-impl Sealed for Complex<f64> {}
 
 impl Element for Complex<f64> {
     fn zero() -> Self {
