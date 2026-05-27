@@ -396,8 +396,8 @@ impl Ix3 {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::DimensionMismatch { expected: 3, actual }` when
-    /// `dyn_dim.ndim() != 3`.
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 3`.
     #[inline]
     pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 3 {
@@ -459,9 +459,6 @@ impl Dimension for Ix3 {
             })
         }
     }
-
-    // `axis()` uses the trait default implementation; out-of-range returns
-    // `XenonError::InvalidAxis` automatically.
 }
 
 impl Reverse for Ix3 {
