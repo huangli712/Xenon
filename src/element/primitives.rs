@@ -1,10 +1,10 @@
 //! Element trait implementations for the 7 closed element types.
 //!
-//! Implements `Element` and `ComplexScalar` for the standard numeric types.
+//! Implements `Element` for the standard numeric types.
 
 use crate::complex::Complex;
 use crate::element::{
-    ComplexScalar, Element, ElementType,
+    Element, ElementType,
 };
 
 impl Element for i32 {
@@ -76,20 +76,6 @@ impl Element for Complex<f32> {
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f32>";
 }
 
-
-impl ComplexScalar for Complex<f32> {
-    type Real = f32;
-    fn re(self) -> f32 {
-        self.re
-    }
-    fn im(self) -> f32 {
-        self.im
-    }
-    fn norm(self) -> f32 {
-        self.norm()
-    }
-}
-
 impl Element for Complex<f64> {
     fn zero() -> Self {
         Complex::new(0.0, 0.0)
@@ -102,26 +88,9 @@ impl Element for Complex<f64> {
 }
 
 
-impl ComplexScalar for Complex<f64> {
-    type Real = f64;
-    fn re(self) -> f64 {
-        self.re
-    }
-    fn im(self) -> f64 {
-        self.im
-    }
-    fn norm(self) -> f64 {
-        self.norm()
-    }
-}
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-
-
 
     /// Verifies f32 Element::zero and Element::one.
     #[test]
@@ -152,21 +121,6 @@ mod tests {
     fn test_complex_f64_zero_one() {
         assert_eq!(<Complex<f64> as Element>::zero(), Complex::new(0.0, 0.0));
         assert_eq!(<Complex<f64> as Element>::one(), Complex::new(1.0, 0.0));
-    }
-
-    /// Verifies ComplexScalar::norm for Complex&lt;f32&gt;.
-    #[test]
-    fn test_complex_f32_norm() {
-        let c = Complex::<f32>::new(3.0, 4.0);
-        assert_eq!(<Complex<f32> as ComplexScalar>::norm(c), 5.0);
-    }
-
-    /// Boundary: ComplexScalar::norm with NaN component returns NaN.
-    #[test]
-    fn test_boundary_complex_nan_norm_is_nan() {
-        let c = Complex::<f64>::new(f64::NAN, 0.0);
-        let n = <Complex<f64> as ComplexScalar>::norm(c);
-        assert!(f64::is_nan(n));
     }
 
     /// Property: zero() + a == a for all element types.
@@ -203,13 +157,5 @@ mod tests {
         for a in [Complex::<f64>::new(1.0, 2.0), Complex::new(-3.0, 4.0)] {
             assert_eq!(co * a, a);
         }
-    }
-
-    /// Compile-time: verifies ComplexScalar trait bounds.
-    #[test]
-    fn test_compile_positive_trait_bounds() {
-        fn assert_complex<A: ComplexScalar>() {}
-        assert_complex::<Complex<f32>>();
-        assert_complex::<Complex<f64>>();
     }
 }
