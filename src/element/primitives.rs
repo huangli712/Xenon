@@ -1,11 +1,11 @@
 //! Element trait implementations for the 7 closed element types.
 //!
-//! Implements `Element`, `Numeric`, `RealScalar`, and
+//! Implements `Element`, `RealScalar`, and
 //! `ComplexScalar` for the standard numeric types.
 
 use crate::complex::Complex;
 use crate::element::{
-    ComplexScalar, Element, ElementType, Numeric, RealScalar,
+    ComplexScalar, Element, ElementType, RealScalar,
 };
 
 impl Element for i32 {
@@ -19,11 +19,6 @@ impl Element for i32 {
     const ELEMENT_TYPE_NAME: &'static str = "i32";
 }
 
-impl Numeric for i32 {
-    fn conjugate(self) -> Self {
-        self
-    }
-}
 
 impl Element for i64 {
     fn zero() -> Self {
@@ -36,11 +31,6 @@ impl Element for i64 {
     const ELEMENT_TYPE_NAME: &'static str = "i64";
 }
 
-impl Numeric for i64 {
-    fn conjugate(self) -> Self {
-        self
-    }
-}
 
 impl Element for f32 {
     fn zero() -> Self {
@@ -53,11 +43,6 @@ impl Element for f32 {
     const ELEMENT_TYPE_NAME: &'static str = "f32";
 }
 
-impl Numeric for f32 {
-    fn conjugate(self) -> Self {
-        self
-    }
-}
 
 impl RealScalar for f32 {
     fn abs(self) -> Self {
@@ -106,11 +91,6 @@ impl Element for f64 {
     const ELEMENT_TYPE_NAME: &'static str = "f64";
 }
 
-impl Numeric for f64 {
-    fn conjugate(self) -> Self {
-        self
-    }
-}
 
 impl RealScalar for f64 {
     fn abs(self) -> Self {
@@ -170,11 +150,6 @@ impl Element for Complex<f32> {
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f32>";
 }
 
-impl Numeric for Complex<f32> {
-    fn conjugate(self) -> Self {
-        self.conj()
-    }
-}
 
 impl ComplexScalar for Complex<f32> {
     type Real = f32;
@@ -200,11 +175,6 @@ impl Element for Complex<f64> {
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f64>";
 }
 
-impl Numeric for Complex<f64> {
-    fn conjugate(self) -> Self {
-        self.conj()
-    }
-}
 
 impl ComplexScalar for Complex<f64> {
     type Real = f64;
@@ -224,37 +194,8 @@ impl ComplexScalar for Complex<f64> {
 mod tests {
     use super::*;
 
-    /// Exercises i32 Element::zero, Element::one, and Numeric::conjugate.
-    #[test]
-    fn test_i32_zero_one() {
-        assert_eq!(i32::zero(), 0);
-        assert_eq!(i32::one(), 1);
-        assert_eq!(<i32 as Numeric>::conjugate(-7), -7);
-    }
 
-    /// Verifies i32 arithmetic operators (add, sub, mul, div, neg).
-    #[test]
-    fn test_i32_arithmetic() {
-        let a = 10i32;
-        let b = 3i32;
-        assert_eq!(a + b, 13);
-        assert_eq!(a - b, 7);
-        assert_eq!(a * b, 30);
-        assert_eq!(a / b, 3);
-        assert_eq!(-a, -10);
-    }
 
-    /// Exercises i64 Element and Numeric trait methods.
-    #[test]
-    fn test_i64_zero_one() {
-        assert_eq!(i64::zero(), 0);
-        assert_eq!(i64::one(), 1);
-        assert_eq!(40i64 + 2, 42);
-        assert_eq!(<i64 as Element>::zero(), 0);
-        assert_eq!(<i64 as Element>::one(), 1);
-        assert_eq!(<i64 as Numeric>::conjugate(-7), -7);
-        assert_eq!(<i64 as Numeric>::conjugate(7), 7);
-    }
 
     /// Exercises f32 and f64 Element and RealScalar trait methods.
     #[test]
@@ -326,18 +267,6 @@ mod tests {
         assert!(bool::one());
     }
 
-    /// Verifies Complex&lt;f64&gt; Numeric::conjugate, ComplexScalar::norm,
-    /// and Element::zero.
-    #[test]
-    fn test_complex_f64_conj_and_norm() {
-        let value = Complex::new(3.0f64, 4.0f64);
-        assert_eq!(
-            <Complex<f64> as Numeric>::conjugate(value),
-            Complex::new(3.0, -4.0)
-        );
-        assert_eq!(<Complex<f64> as ComplexScalar>::norm(value), 5.0);
-        assert_eq!(Complex::<f64>::zero(), Complex::new(0.0, 0.0));
-    }
 
     /// Verifies Complex&lt;f64&gt; Element::zero and Element::one.
     #[test]
@@ -515,15 +444,12 @@ mod tests {
         assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
     }
 
-    /// Compile-time: verifies Numeric, RealScalar, and ComplexScalar
+    /// Compile-time: verifies RealScalar and ComplexScalar
     /// trait bounds for all types.
     #[test]
     fn test_compile_positive_trait_bounds() {
-        fn assert_numeric<A: Numeric>() {}
         fn assert_real<A: RealScalar>() {}
         fn assert_complex<A: ComplexScalar>() {}
-        assert_numeric::<i32>();
-        assert_numeric::<i64>();
         assert_real::<f32>();
         assert_real::<f64>();
         assert_complex::<Complex<f32>>();
