@@ -3,9 +3,7 @@
 //! Implements `Element` for the standard numeric types.
 
 use crate::complex::Complex;
-use crate::element::{
-    Element, ElementType,
-};
+use crate::element::{Element, ElementType};
 
 impl Element for i32 {
     fn zero() -> Self {
