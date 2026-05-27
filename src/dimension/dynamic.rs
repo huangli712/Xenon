@@ -2,9 +2,9 @@
 
 use std::borrow::Cow;
 
-use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse};
 use crate::error::InvalidShapeKind;
 use crate::error::XenonError;
+use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse};
 
 /// Dynamic dimension type. Dimension count determined at runtime.
 /// Dynamic rank is bounded only by `usize` representability and
@@ -92,18 +92,22 @@ impl IxDyn {
 }
 
 impl Dimension for IxDyn {
+    /// Maximum number of static dimensions: `None` for dynamic dimension.
     const NDIM: Option<usize> = None;
 
+    /// Returns the number of axes (rank).
     #[inline]
     fn ndim(&self) -> usize {
         self.dims.len()
     }
 
+    /// Returns the axis lengths as a slice.
     #[inline]
     fn slice(&self) -> &[usize] {
         &self.dims
     }
 
+    /// Computes the total element count, checking for overflow.
     fn checked_size(&self) -> Result<usize, XenonError> {
         let mut acc = 1usize;
         for (axis, &dim) in self.dims.iter().enumerate() {
@@ -119,21 +123,21 @@ impl Dimension for IxDyn {
         Ok(acc)
     }
 
+    /// Validates without consuming the element count.
     #[inline]
     fn checked(&self) -> Result<(), XenonError> {
         self.checked_size().map(|_| ())
     }
 
+    /// Builds from a slice; any rank is accepted.
     #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
-        // IxDyn accepts any rank — no rank check needed.
         Ok(IxDyn::from_slice(slice))
     }
-
-    // `axis()` uses the trait default implementation; no override needed.
 }
 
 impl Reverse for IxDyn {
+    /// Reverses the axis order in-place.
     fn reverse(self) -> Self {
         let mut dims = self.dims;
         dims.reverse();
@@ -142,7 +146,11 @@ impl Reverse for IxDyn {
 }
 
 impl RemoveAxis for IxDyn {
+    /// The reduced-rank dimension type.
     type Smaller = IxDyn;
+
+    /// Removes one axis at the given index, returning the smaller
+    /// dimension and the removed axis length.
     fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
         if axis.0 >= self.ndim() {
             return Err(XenonError::InvalidAxis {
@@ -184,8 +192,7 @@ mod tests {
         assert_eq!(IxDyn::from_slice(&[3, 0, 5]).checked_size(), Ok(0));
     }
 
-    /// Constructor coverage: from_vec / from_element / ones / zeros /
-    /// into_vec.
+    /// Constructor coverage: from_vec / from_element / ones / zeros / into_vec.
     #[test]
     fn test_ixdyn_constructors() {
         assert_eq!(IxDyn::from_vec(vec![1, 2, 3]).slice(), &[1, 2, 3]);
