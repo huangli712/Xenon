@@ -1,19 +1,9 @@
-//! Element type hierarchy: base traits, type discriminants, and arithmetic
-//! contracts for Xenon's closed set of 7 element types.
+//! Element type hierarchy — closed set of 7 types with sealed traits.
 //!
-//! # Organisation
-//!
-//! | Submodule | Contents |
-//! |-----------|----------|
-//! | [`types`] | `Element`, `ElementType`, `CastTo`, `CastElement`, `OrderedCompareElement`, `BoolElement` |
-//! | [`numeric`](numeric) | `Numeric` — arithmetic operators + `conjugate()` |
-//! | [`real`](real) | `RealScalar` — IEEE‑754 math functions (`abs`, `sqrt`, `sin`, …) |
-//! | [`complex`](complex) | `ComplexScalar` — complex component accessors |
-//! | [`checked`](checked) | `CheckedAdd` / `CheckedSub` / … — integer overflow‑safe arithmetic |
-//! | [`primitives`] | Concrete impls of all element traits for `i32`, `i64`, `f32`, `f64`, `bool`, `Complex<f32>`, `Complex<f64>` |
-//!
-//! See [`types`] for the detailed rationale: why `usize` is excluded, the cast
-//! error semantics, and the `bool` exclusion from `CastTo<T>`.
+//! The module defines the `Element` base trait, `ElementType` discriminant,
+//! and specialised sub-traits (`Numeric`, `RealScalar`, `ComplexScalar`,
+//! `CastTo`, `CheckedAdd`, etc.). Arithmetic contracts, type conversion,
+//! and concrete primitive implementations are provided by sub-modules.
 
 mod types;
 pub use types::{
