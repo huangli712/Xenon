@@ -911,6 +911,66 @@ impl RemoveAxis for Ix3 {
     }
 }
 
+impl RemoveAxis for Ix4 {
+    type Smaller = Ix3;
+    /// Removes the given axis, returning Ix3.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix3(self.1, self.2, self.3), self.0)),
+            1 => Ok((Ix3(self.0, self.2, self.3), self.1)),
+            2 => Ok((Ix3(self.0, self.1, self.3), self.2)),
+            3 => Ok((Ix3(self.0, self.1, self.2), self.3)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix4::remove_axis"),
+                axis: axis.0,
+                ndim: 4,
+                shape: self.slice().to_vec(),
+            }),
+        }
+    }
+}
+
+impl RemoveAxis for Ix5 {
+    type Smaller = Ix4;
+    /// Removes the given axis, returning Ix4.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix4(self.1, self.2, self.3, self.4), self.0)),
+            1 => Ok((Ix4(self.0, self.2, self.3, self.4), self.1)),
+            2 => Ok((Ix4(self.0, self.1, self.3, self.4), self.2)),
+            3 => Ok((Ix4(self.0, self.1, self.2, self.4), self.3)),
+            4 => Ok((Ix4(self.0, self.1, self.2, self.3), self.4)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix5::remove_axis"),
+                axis: axis.0,
+                ndim: 5,
+                shape: self.slice().to_vec(),
+            }),
+        }
+    }
+}
+
+impl RemoveAxis for Ix6 {
+    type Smaller = Ix5;
+    /// Removes the given axis, returning Ix5.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        match axis.0 {
+            0 => Ok((Ix5(self.1, self.2, self.3, self.4, self.5), self.0)),
+            1 => Ok((Ix5(self.0, self.2, self.3, self.4, self.5), self.1)),
+            2 => Ok((Ix5(self.0, self.1, self.3, self.4, self.5), self.2)),
+            3 => Ok((Ix5(self.0, self.1, self.2, self.4, self.5), self.3)),
+            4 => Ok((Ix5(self.0, self.1, self.2, self.3, self.5), self.4)),
+            5 => Ok((Ix5(self.0, self.1, self.2, self.3, self.4), self.5)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: std::borrow::Cow::Borrowed("Ix6::remove_axis"),
+                axis: axis.0,
+                ndim: 6,
+                shape: self.slice().to_vec(),
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
