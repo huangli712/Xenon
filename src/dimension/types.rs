@@ -19,9 +19,7 @@ pub const MAX_DIMENSION: usize = usize::MAX;
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
 /// External crates may name it in `where` clauses or trait bounds, but
-/// adding new implementations is intentionally not supported. The
-/// implementor set is closed: see the design document for the complete
-/// list and the rationale.
+/// adding new implementations is intentionally not supported.
 ///
 /// # Examples
 ///

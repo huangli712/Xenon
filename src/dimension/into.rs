@@ -170,8 +170,7 @@ impl IntoDimension for Vec<usize> {
 mod tests {
     use super::*;
 
-    /// §8.2: test_tuple_into_dimension — tuples preserve static
-    /// dimensionality.
+    /// Tuples preserve static dimensionality.
     #[test]
     fn test_tuple_into_dimension() {
         let d0: Ix0 = ().into_dimension();
@@ -207,7 +206,7 @@ mod tests {
         assert_eq!(d6, Ix6(1, 2, 3, 4, 5, 6));
     }
 
-    /// §8.2: test_slice_to_ixdyn — &[usize] becomes IxDyn.
+    /// `&[usize]` becomes `IxDyn`.
     #[test]
     fn test_slice_to_ixdyn() {
         let dyn_dim: IxDyn = (&[5, 6, 7][..]).into_dimension();

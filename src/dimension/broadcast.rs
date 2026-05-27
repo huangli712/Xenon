@@ -1,21 +1,17 @@
 //! Compile-time broadcast dimension inference.
 //!
-//! See `02-dimension.md §5.10`. This trait is the type-level half of the
-//! broadcasting story: it derives the result *type* (rank / static vs IxDyn)
-//! at compile time, with no statement about per-axis length compatibility.
-//! Runtime length checks live in `15-broadcast.md` (`broadcast_shape` /
-//! `broadcast_strides`).
+//! This module provides the type-level half of the broadcasting system:
+//! it derives the result *type* (rank / static vs IxDyn) at compile time,
+//! with no statement about per-axis length compatibility. Runtime
+//! length checks live in the broadcast shape/strides logic.
 
 use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
 use crate::private::Sealed;
 
 /// Trait for computing the output dimension type when broadcasting two arrays.
 ///
-/// Per `02-dimension.md §5.10`:
-/// - Same static dimension broadcasts to itself: `IxN BroadcastDim IxN → IxN`.
-/// - Cross static dimensions: higher-rank wins (`IxM BroadcastDim IxN → IxK`,
-///   `K = max(M, N)`).
-/// - Any IxDyn mixed: `IxDyn`.
+/// Same static dimension broadcasts to itself: `IxN BroadcastDim IxN → IxN`.
+/// Cross static dimensions: higher-rank wins. Any IxDyn mixed: `IxDyn`.
 ///
 /// Sealed: closed to `Ix0..Ix6` and `IxDyn` only.
 pub trait BroadcastDim<Other: Dimension>: Dimension + Sealed {
@@ -289,7 +285,7 @@ mod tests {
         assert_output::<IxDyn, IxDyn, IxDyn>();
     }
 
-    /// §5.10 line 703 symmetry guarantee: for every (D, E), the bidirectional
+    /// Symmetry guarantee: for every (D, E), the bidirectional
     /// Output type must agree. We sample one case per rank-gap.
     #[test]
     fn test_broadcast_dim_symmetry() {

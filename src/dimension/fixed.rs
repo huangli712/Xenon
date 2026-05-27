@@ -636,7 +636,7 @@ pub struct Ix6(
 /// attribute is removed or field types are altered, these assertions fail
 /// at compile time instead of silently introducing UB.
 ///
-/// See `02-dimension.md` §5.2.
+/// See the layout assertion block above.
 const _: () = {
     use core::mem::{align_of, offset_of, size_of};
 
@@ -888,13 +888,13 @@ mod tests {
     use super::*;
     use std::mem::size_of;
 
-    /// §8.2: Ix0 is a Zero-Sized Type.
+    /// Ix0 is a Zero-Sized Type.
     #[test]
     fn test_ix0_is_zst() {
         assert_eq!(size_of::<Ix0>(), 0);
     }
 
-    /// §8.2: Ix0 has rank 0.
+    /// Ix0 has rank 0.
     #[test]
     fn test_ix0_ndim_is_zero() {
         let dim = Ix0;
@@ -902,14 +902,14 @@ mod tests {
         assert_eq!(dim.slice(), &[] as &[usize]);
     }
 
-    /// §8.2: scalar has exactly one element.
+    /// Scalar has exactly one element.
     #[test]
     fn test_ix0_size_is_one() {
         assert_eq!(Ix0.checked_size(), Ok(1));
         assert_eq!(Ix0.checked(), Ok(()));
     }
 
-    /// §8.2: Ix1 shape/rank/Index verification.
+    /// Ix1 shape/rank/Index verification.
     #[test]
     fn test_ix1_slice() {
         assert_eq!(Ix1(7).ndim(), 1);
@@ -918,7 +918,7 @@ mod tests {
         assert_eq!(Ix1(7)[0], 7);
     }
 
-    /// §8.2: Ix2(3, 4).slice() == &[3, 4]
+    /// Ix2(3, 4).slice() == &[3, 4]
     #[test]
     fn test_ix2_slice() {
         let dim = Ix2(3, 4);
@@ -929,7 +929,7 @@ mod tests {
         assert_eq!(dim[1], 4);
     }
 
-    /// §8.2: overflow returns Err with offending_dim
+    /// Overflow returns Err with offending_dim.
     #[test]
     fn test_ix2_size_overflow() {
         let dim = Ix2(usize::MAX, 2);
@@ -943,7 +943,7 @@ mod tests {
         }
     }
 
-    /// §8.2: Ix3(2, 3, 4).slice() == &[2, 3, 4]
+    /// Ix3(2, 3, 4).slice() == &[2, 3, 4]
     #[test]
     fn test_ix3_slice() {
         let dim = Ix3(2, 3, 4);
@@ -952,7 +952,7 @@ mod tests {
         assert!(dim.checked().is_ok());
     }
 
-    /// §8.2: Ix3(2, 3, 4).checked_size() == Ok(24)
+    /// Ix3(2, 3, 4).checked_size() == Ok(24)
     #[test]
     fn test_ix3_size_calculation() {
         let dim = Ix3::from((2, 3, 4));
@@ -975,7 +975,7 @@ mod tests {
         }
     }
 
-    /// §8.2: Ix4 slice, rank, and size calculation.
+    /// Ix4 slice, rank, and size calculation.
     #[test]
     fn test_ix4_basic() {
         let dim = Ix4(2, 3, 4, 5);
@@ -984,14 +984,14 @@ mod tests {
         assert_eq!(dim.checked_size(), Ok(120));
     }
 
-    /// §8.2: Ix4 tuple conversion.
+    /// Ix4 tuple conversion.
     #[test]
     fn test_ix4_from_tuple() {
         let dim = Ix4::from((2, 3, 4, 5));
         assert_eq!(dim, Ix4(2, 3, 4, 5));
     }
 
-    /// §8.2: overflow reports offending dimension.
+    /// Overflow reports offending dimension.
     #[test]
     fn test_ix4_overflow_offending_dim() {
         let large = Ix4(usize::MAX, 2, 3, 4);
@@ -1005,7 +1005,7 @@ mod tests {
         }
     }
 
-    /// §5.4: Ix5 slice and size calculation.
+    /// Ix5 slice and size calculation.
     #[test]
     fn test_ix5_basic() {
         let dim = Ix5(2, 3, 4, 5, 6);
@@ -1014,7 +1014,7 @@ mod tests {
         assert_eq!(Ix5::from((2, 3, 4, 5, 6)), dim);
     }
 
-    /// §8.3 / §5.4: overflow reports offending_dim.
+    /// Overflow reports offending_dim.
     #[test]
     fn test_ix5_overflow() {
         let big = Ix5(usize::MAX, 2, 1, 1, 1);
@@ -1026,7 +1026,7 @@ mod tests {
         }
     }
 
-    /// §8.2: Ix6 tuple construction yields correct fields.
+    /// Ix6 tuple construction yields correct fields.
     #[test]
     fn test_ix6_from_tuple() {
         let dim = Ix6::from((1, 2, 3, 4, 5, 6));
@@ -1034,7 +1034,7 @@ mod tests {
         assert_eq!(dim.ndim(), 6);
     }
 
-    /// §8.2: Ix6 with moderate dimensions computes size correctly.
+    /// Ix6 with moderate dimensions computes size correctly.
     #[test]
     fn test_ix6_max_dimensions() {
         let dim = Ix6(10, 10, 10, 10, 10, 10);
@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(dim.checked(), Ok(()));
     }
 
-    /// §8.2: overflow in checked_size reports offending axis.
+    /// Overflow in checked_size reports offending axis.
     #[test]
     fn test_ix6_overflow_offending_dim() {
         let large = usize::MAX / 2 + 1;
@@ -1056,7 +1056,7 @@ mod tests {
             _ => panic!("expected ProductOverflow at axis 1, got {err:?}"),
         }
     }
-    /// §8.2: test_static_to_dyn — into_dyn for each static rank.
+    /// `into_dyn` for each static rank.
     #[test]
     fn test_static_to_dyn() {
         assert_eq!(Ix0.into_dyn().slice(), &[] as &[usize]);
@@ -1071,8 +1071,7 @@ mod tests {
         );
     }
 
-    /// §8.2: test_dyn_to_static_success — try_from_dyn succeeds
-    /// when rank matches.
+    /// `try_from_dyn` succeeds when rank matches.
     #[test]
     fn test_dyn_to_static_success() {
         assert_eq!(Ix0::try_from_dyn(IxDyn::new()), Ok(Ix0));
@@ -1082,8 +1081,7 @@ mod tests {
         );
     }
 
-    /// §8.2: test_dyn_to_static_failure — try_from_dyn returns
-    /// DimensionMismatch on rank mismatch.
+    /// `try_from_dyn` returns `DimensionMismatch` on rank mismatch.
     #[test]
     fn test_dyn_to_static_failure() {
         match Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5])) {
@@ -1118,22 +1116,21 @@ mod tests {
         assert_eq!(IxDyn::try_from_dyn(d.clone()), Ok(d));
     }
 
-    /// §8.2 / §5.3: Ix1 Index out of bounds panics.
+    /// Ix1 Index out of bounds panics.
     #[test]
     #[should_panic(expected = "Ix1 index out of bounds")]
     fn test_ix1_index_oob_panics() {
         let _ = Ix1(5)[1];
     }
 
-    /// §8.2 / §5.3: Ix2 Index out of bounds panics.
+    /// Ix2 Index out of bounds panics.
     #[test]
     #[should_panic(expected = "Ix2 index out of bounds")]
     fn test_ix2_index_oob_panics() {
         let _ = Ix2(3, 4)[2];
     }
 
-    /// §8.3 line 1105: zero-length axis case — size is `Ok(0)`, not an
-    /// error.
+    /// Zero-length axis case — size is `Ok(0)`, not an error.
     #[test]
     fn test_zero_length_axis_yields_zero_size() {
         let dim = Ix2(0, 5);
@@ -1143,11 +1140,8 @@ mod tests {
         assert_eq!(dim.checked_size(), Ok(0));
     }
 
-    /// §8.7 line 1139 / §5.2: test_static_ix_layout_assertions_compile —
-    /// verify that the `const _` layout assertion block in §5.2
-    /// compiles for Ix1-Ix6. This positive test ensures the assertion
-    /// block exists at compile time by referencing its values at
-    /// runtime.
+    /// Verify that the `const _` layout assertion block compiles
+    /// for Ix1-Ix6.
     #[test]
     fn test_static_ix_layout_assertions_compile() {
         use std::mem::{align_of, size_of};
@@ -1161,8 +1155,7 @@ mod tests {
         assert_eq!(align_of::<Ix6>(), align_of::<[usize; 6]>());
     }
 
-    /// §8.7 line 1137: zero-dim axis ops return InvalidAxis (recoverable
-    /// error).
+    /// Zero-dim axis ops return InvalidAxis (recoverable error).
     #[test]
     fn test_ix0_axis_returns_invalid_axis() {
         use crate::dimension::Axis;

@@ -64,7 +64,7 @@ impl Axis {
 mod tests {
     use super::*;
 
-    /// §8.2: test_axis_next_prev — normal next/prev navigation.
+    /// Normal next/prev navigation.
     #[test]
     fn test_axis_next_prev() {
         let axis = Axis::new(2);
@@ -74,7 +74,7 @@ mod tests {
         assert_eq!(Axis::new(0).prev(), None);
     }
 
-    /// §8.2: test_axis_checked_next — checked_next overflow returns None.
+    /// `checked_next` overflow returns `None`; `next` shares the same contract.
     #[test]
     fn test_axis_checked_next() {
         assert_eq!(
@@ -89,8 +89,7 @@ mod tests {
         assert_eq!(Axis::new(usize::MAX).next(), None);
     }
 
-    /// §8.2: test_axis_is_first_last — boundary semantics.
-    /// Per §5.7 line 543: `is_last(_, ndim=0)` must return `false`.
+    /// Boundary semantics: `is_first`, `is_last`, and the `ndim == 0` edge case.
     #[test]
     fn test_axis_is_first_last() {
         assert!(Axis::new(0).is_first());

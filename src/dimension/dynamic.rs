@@ -163,18 +163,17 @@ impl crate::dimension::RemoveAxis for IxDyn {
 mod tests {
     use super::*;
 
-    /// §8.2: test_ixdyn_from_slice — basic construction from slice.
+    /// Basic construction from slice.
     #[test]
     fn test_ixdyn_from_slice() {
         let dim = IxDyn::from_slice(&[2, 3, 4]);
         assert_eq!(dim.ndim(), 3);
         assert_eq!(dim.slice(), &[2, 3, 4]);
-        // Empty slice → 0-dimensional IxDyn (size 1 per §5.3 semantics).
+        // Empty slice → 0-dimensional IxDyn (size 1).
         assert_eq!(IxDyn::from_slice(&[]).slice(), &[]);
     }
 
-    /// §8.2: test_ixdyn_size — checked_size returns Result<usize,
-    /// XenonError>.
+    /// `checked_size` returns `Result<usize, XenonError>`.
     #[test]
     fn test_ixdyn_size() {
         let dim = IxDyn::from_slice(&[2, 3, 4]);
@@ -208,8 +207,7 @@ mod tests {
         }
     }
 
-    /// §8.3 line 1107: IxDyn::ones(0) — zero-rank dynamic dimension is
-    /// valid.
+    /// `IxDyn::ones(0)` — zero-rank dynamic dimension is valid.
     #[test]
     fn test_ixdyn_ones_zero_rank() {
         let dim = IxDyn::ones(0);
@@ -218,7 +216,7 @@ mod tests {
         assert_eq!(dim.checked_size(), Ok(1));
     }
 
-    /// §8.3 line 1106: large dynamic dim with overflow.
+    /// Large dynamic dim with overflow.
     #[test]
     fn test_ixdyn_large_dim_overflow() {
         let dim = IxDyn::from_slice(&[usize::MAX, 2, 2]);
