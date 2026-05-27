@@ -21,7 +21,7 @@
 mod axes;
 mod broadcast;
 mod dynamic;
-pub mod fixed;
+mod fixed;
 mod into;
 
 // Public re-exports — the canonical access path for dimension types.

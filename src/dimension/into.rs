@@ -2,7 +2,7 @@
 
 use crate::dimension::Dimension;
 use crate::dimension::IxDyn;
-use crate::dimension::fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
+use crate::dimension::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 
 /// Trait for types that can be converted into a dimension.
 ///

@@ -169,12 +169,6 @@ mod tests {
         assert_eq!(MAX_DIMENSION, usize::MAX);
     }
 
-    /// Compile-time path check: ensure all submodules are reachable.
-    #[test]
-    fn test_dimension_submodules_reachable() {
-        #[allow(unused_imports)]
-        use crate::dimension::fixed;
-    }
 
     /// Public re-exports are reachable via `crate::dimension::*`.
     #[test]
