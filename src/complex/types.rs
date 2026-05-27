@@ -3,8 +3,8 @@
 /// Public bound for `Complex<T>` — sealed to `f32` and `f64`.
 ///
 /// The supertrait set captures every algebraic / ordering capability used by
-/// the complex arithmetic and Display impls (W5T5+/W5T7+). `f32` and `f64`
-/// from the standard library naturally satisfy every supertrait listed below.
+/// the complex arithmetic and `Display` impls. `f32` and `f64` from the
+/// standard library naturally satisfy every supertrait listed below.
 ///
 /// # Sealed boundary
 ///
@@ -14,8 +14,8 @@
 ///
 /// ```compile_fail
 /// use xenon::complex::Complex;
-/// // i32 does not implement ComplexFloat (Sealed); this declaration must
-/// // fail at compile time.
+/// // i32 does not implement ComplexFloat (Sealed); 
+/// // this declaration must fail at compile time.
 /// let _: Complex<i32>;
 /// ```
 pub trait ComplexFloat:
@@ -62,48 +62,63 @@ impl ComplexFloat for f64 {}
 /// explicit promotion. The following blocks must all fail to compile.
 ///
 /// ## `Complex + T` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = c + 3.0_f64;
 /// ```
+///
 /// ## `T + Complex` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = 3.0_f64 + c;
 /// ```
+///
 /// ## `Complex - T` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = c - 3.0_f64;
 /// ```
+///
 /// ## `T - Complex` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = 3.0_f64 - c;
 /// ```
+///
 /// ## `Complex * T` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = c * 3.0_f64;
 /// ```
+///
 /// ## `T * Complex` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = 3.0_f64 * c;
 /// ```
+///
 /// ## `Complex / T` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
 /// let _ = c / 3.0_f64;
 /// ```
+///
 /// ## `T / Complex` is rejected
+///
 /// ```compile_fail
 /// use xenon::complex::Complex;
 /// let c = Complex::new(1.0_f64, 2.0);
@@ -114,6 +129,7 @@ impl ComplexFloat for f64 {}
 pub struct Complex<T: ComplexFloat> {
     /// Real part.
     pub re: T,
+
     /// Imaginary part.
     pub im: T,
 }
@@ -196,14 +212,17 @@ impl<T: ComplexFloat> Complex<T> {
     }
 }
 
-// Compile-time layout verification.  Protects the #[repr(C)] contract
-// so that Complex<f32>/Complex<f64> remain layout-compatible with
-// two-field C structs { T re; T im; }.
+// Compile-time layout verification.
+//
+// Protects the #[repr(C)] contract so that Complex<f32>/Complex<f64> remain
+// layout-compatible with two-field C structs { T re; T im; }.
 const _: () = {
-    assert!(core::mem::size_of::<Complex<f32>>() == 2 * core::mem::size_of::<f32>());
-    assert!(core::mem::align_of::<Complex<f32>>() == core::mem::align_of::<f32>());
-    assert!(core::mem::size_of::<Complex<f64>>() == 2 * core::mem::size_of::<f64>());
-    assert!(core::mem::align_of::<Complex<f64>>() == core::mem::align_of::<f64>());
+    use core::mem::{align_of, size_of};
+
+    assert!(size_of::<Complex<f32>>() == 2 * size_of::<f32>());
+    assert!(align_of::<Complex<f32>>() == align_of::<f32>());
+    assert!(size_of::<Complex<f64>>() == 2 * size_of::<f64>());
+    assert!(align_of::<Complex<f64>>() == align_of::<f64>());
 };
 
 // ── From<T>: explicit real-to-complex construction ──
@@ -228,19 +247,20 @@ impl<T: ComplexFloat> From<T> for Complex<T> {
 // ── PartialEq: component-wise IEEE-754 equality ──
 
 impl<T: ComplexFloat> PartialEq for Complex<T> {
-    /// Component-wise IEEE-754 equality.  `NaN != NaN` is preserved.
+    /// Component-wise IEEE-754 equality. `NaN != NaN` is preserved.
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.re == other.re && self.im == other.im
     }
 }
-// Intentionally NOT implementing Eq (NaN violates reflexivity)
-// nor PartialOrd / Ord (complex numbers have no natural total order).
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ── Construction ──
+
+    /// `new()` sets both fields and they can be read back directly.
     #[test]
     fn test_complex_new() {
         let z = Complex::new(3.0_f64, 4.0);
@@ -248,6 +268,9 @@ mod tests {
         assert_eq!(z.im, 4.0);
     }
 
+    // ── Trait sealing ──
+
+    /// `ComplexFloat` accepts `f32` and `f64`, rejects all other types.
     #[test]
     fn test_complex_float_accepts_f32_f64() {
         fn accepts_complex_float<T: ComplexFloat>(_value: Complex<T>) {}
@@ -255,6 +278,9 @@ mod tests {
         accepts_complex_float(Complex::new(1.0_f64, 2.0));
     }
 
+    // ── Layout (size + alignment) ──
+
+    /// `Complex<f64>` is 16 bytes with alignment matching `f64`.
     #[test]
     fn test_complex_layout_f64() {
         assert_eq!(core::mem::size_of::<Complex<f64>>(), 16);
@@ -264,6 +290,7 @@ mod tests {
         );
     }
 
+    /// `Complex<f32>` is 8 bytes with alignment matching `f32`.
     #[test]
     fn test_complex_layout_f32() {
         assert_eq!(core::mem::size_of::<Complex<f32>>(), 8);
@@ -273,6 +300,9 @@ mod tests {
         );
     }
 
+    // ── Field offsets ──
+
+    /// `re` is at offset 0 and `im` immediately follows `re`.
     #[test]
     fn test_complex_field_offsets_f64() {
         let z = Complex::<f64>::new(0.0, 0.0);
@@ -283,6 +313,7 @@ mod tests {
         assert_eq!(im_addr - base, core::mem::size_of::<f64>());
     }
 
+    /// Same offset layout for `f32`.
     #[test]
     fn test_complex_field_offsets_f32() {
         let z = Complex::<f32>::new(0.0, 0.0);
@@ -293,6 +324,9 @@ mod tests {
         assert_eq!(im_addr - base, core::mem::size_of::<f32>());
     }
 
+    // ── Accessors ──
+
+    /// `re()` and `im()` return the same values as the public fields.
     #[test]
     fn test_complex_accessors() {
         let z = Complex::new(3.0_f64, 4.0);
@@ -300,6 +334,9 @@ mod tests {
         assert_eq!(z.im(), 4.0);
     }
 
+    // ── Predicates ──
+
+    /// `is_real` / `is_imaginary` correctly classify pure real, pure imaginary, and mixed cases.
     #[test]
     fn test_is_real_imaginary() {
         assert!(Complex::new(3.0_f64, 0.0).is_real());
@@ -311,18 +348,23 @@ mod tests {
 
     // ── PartialEq tests ──
 
+    /// `NaN` is never equal to itself (IEEE-754 semantics).
     #[test]
     fn test_eq_nan() {
         let nan = Complex::new(f64::NAN, 0.0);
         assert_ne!(nan, nan);
     }
 
+    /// Component-wise equality: equal re+im → equal, any mismatch → not equal.
     #[test]
     fn test_eq_componentwise() {
         assert_eq!(Complex::new(1.0_f64, 2.0), Complex::new(1.0, 2.0));
         assert_ne!(Complex::new(1.0_f64, 2.0), Complex::new(1.0, 3.0));
     }
 
+    // ── From / conj ──
+
+    /// `from_imag` puts value in the imaginary slot; `conj` negates the imaginary part.
     #[test]
     fn test_from_imag_and_conj() {
         let z = Complex::from_imag(4.0_f64);
@@ -330,29 +372,37 @@ mod tests {
         assert_eq!(z.conj(), Complex::new(0.0, -4.0));
     }
 
+    /// `From<T>` promotes a real scalar to `Complex<T, 0>`.
     #[test]
     fn test_from_real() {
         assert_eq!(Complex::from(5.0_f64), Complex::new(5.0, 0.0));
         assert_eq!(Complex::from(-1.0_f64), Complex::new(-1.0, 0.0));
     }
 
+    // ── Edge cases ──
+
+    /// `is_real` returns true even when the imaginary part is `-0.0`.
     #[test]
     fn test_is_real_neg_zero_imag() {
         assert!(Complex::new(3.0_f64, -0.0).is_real());
     }
 
+    /// `Default` produces `Complex(0, 0)`.
     #[test]
     fn test_complex_default() {
         assert_eq!(Complex::<f64>::default(), Complex::new(0.0, 0.0));
     }
 
+    /// `is_imaginary` returns true even when the real part is `-0.0`.
     #[test]
     fn test_is_imaginary_neg_zero_real() {
         assert!(Complex::new(-0.0_f64, 5.0).is_imaginary());
     }
 
-    /// Mirrors the doc example in the `Complex<T>` struct comment to
-    /// guarantee the public usage stays compilable after W5T15.
+    // ── Integration ──
+
+    /// Verifies the doc example in the `Complex<T>` struct comment
+    /// remains compilable.
     #[test]
     fn test_complex_docs_compile_example() {
         let z = Complex::new(3.0_f64, 4.0);
