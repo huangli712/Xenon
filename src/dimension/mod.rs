@@ -22,7 +22,7 @@ mod axes;
 mod broadcast;
 pub mod dynamic;
 pub mod fixed;
-pub mod into;
+mod into;
 
 // Public re-exports — the canonical access path for dimension types.
 pub use axes::Axis;

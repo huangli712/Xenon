@@ -176,8 +176,6 @@ mod tests {
         use crate::dimension::dynamic;
         #[allow(unused_imports)]
         use crate::dimension::fixed;
-        #[allow(unused_imports)]
-        use crate::dimension::into;
     }
 
     /// Public re-exports are reachable via `crate::dimension::*`.
