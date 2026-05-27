@@ -12,7 +12,11 @@
 
 // ── Public re-exports ────────────────────────────────────────────────
 
-pub use crate::convert::{CastElement, CastTo};
+// Conversion traits
+pub use crate::convert::{
+    CastElement,
+    CastTo,
+};
 
 // Complex number type
 pub use crate::complex::Complex;
@@ -210,6 +214,8 @@ pub use crate::parallel::reduce::{
 mod tests {
     use crate::prelude::*;
 
+    /// Verifies that `XenonError` and its variants (e.g., `InvalidLayout`)
+    /// are importable and constructible from the prelude.
     #[test]
     fn test_prelude_error_imports() {
         let e: XenonError = XenonError::InvalidLayout {
@@ -224,11 +230,13 @@ mod tests {
         let _ = format!("{}", e);
     }
 
+    /// Verifies that `Result<T>` alias resolves correctly from the prelude.
     #[test]
     fn test_prelude_result_alias() {
         let _ok: Result<i32> = Ok(42);
     }
 
+    /// Verifies that `XenonError` implements `Debug` and `Display`.
     #[test]
     fn test_error_is_debug_and_display() {
         let e = XenonError::DimensionMismatch {
@@ -240,6 +248,8 @@ mod tests {
         let _display = format!("{}", e);
     }
 
+    /// Verifies that auxiliary error-related enums (`FfiErrorCategory`,
+    /// `InvalidShapeKind`, etc.) are importable from the prelude.
     #[test]
     fn test_prelude_auxiliary_enums_importable() {
         let _cat = FfiErrorCategory::NullPointer {
@@ -251,6 +261,8 @@ mod tests {
         let _tag = StorageKindTag::Shared;
     }
 
+    /// Verifies that `XenonError` is also re-exported directly at the
+    /// crate root (`crate::XenonError`).
     #[test]
     fn test_xenon_error_direct_reexport_at_crate_root() {
         let _e: crate::XenonError = XenonError::DimensionMismatch {
@@ -260,6 +272,8 @@ mod tests {
         };
     }
 
+    /// Verifies that `Tensor`, `TensorView`, `ArcTensor`, and typed
+    /// aliases (`Tensor1`, `Tensor2`) are importable from the prelude.
     #[test]
     fn test_prelude_tensor_imports() {
         let _: Option<Tensor<f64, Ix2>> = None;
@@ -269,12 +283,16 @@ mod tests {
         let _: Option<Tensor2<f64>> = None;
     }
 
+    /// Verifies that dimension types (`Ix2`, `Axis`) are importable
+    /// from the prelude.
     #[test]
     fn test_prelude_dimension_imports() {
         let _dim: Ix2 = Ix2(2, 3);
         let _axis: Axis = Axis(0);
     }
 
+    /// Verifies that element trait bounds (`Element`, `Numeric`,
+    /// `RealScalar`) are checked through the prelude.
     #[test]
     fn test_prelude_element_trait_imports() {
         fn _check_element<T: Element>() {}
@@ -285,11 +303,14 @@ mod tests {
         _check_real::<f64>();
     }
 
+    /// Verifies that `Complex` type is importable from the prelude.
     #[test]
     fn test_prelude_complex_imports() {
         let _: Complex<f64> = Complex::new(1.0, 2.0);
     }
 
+    /// Verifies that tensor constructors (`zeros`, `ones`, `eye`,
+    /// `from_scalar`) are available from the prelude.
     #[test]
     fn test_prelude_construct_imports() {
         let _ = Tensor1::<f64>::zeros([3]);
@@ -298,11 +319,15 @@ mod tests {
         let _ = Tensor0::from_scalar(42.0_f64);
     }
 
+    /// Verifies that storage types (`StorageKindTag`) are importable
+    /// from the prelude.
     #[test]
     fn test_prelude_storage_imports() {
         let _tag: StorageKindTag = StorageKindTag::Owned;
     }
 
+    /// Verifies that `SliceInfoElem` and its variants are importable
+    /// from the prelude.
     #[test]
     fn test_prelude_sliceinfo_imports() {
         let _elem: SliceInfoElem = SliceInfoElem::Range { start: 0, end: 1 };
