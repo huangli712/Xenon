@@ -2,11 +2,11 @@
 //!
 //! This module provides the type-level half of the broadcasting system:
 //! it derives the result *type* (rank / static vs IxDyn) at compile time,
-//! with no statement about per-axis length compatibility. Runtime
-//! length checks live in the broadcast shape/strides logic.
+//! with no statement about per-axis length compatibility. Runtime length
+//! checks live in the broadcast shape/strides logic.
 
-use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
 use crate::private::Sealed;
+use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
 
 /// Trait for computing the output dimension type when broadcasting two arrays.
 ///
@@ -20,6 +20,7 @@ pub trait BroadcastDim<Other: Dimension>: Dimension + Sealed {
 }
 
 // --- Same static dimension: IxN BroadcastDim IxN → IxN (7 impls) ---
+
 impl BroadcastDim<Ix0> for Ix0 {
     type Output = Ix0;
 }
@@ -43,7 +44,9 @@ impl BroadcastDim<Ix6> for Ix6 {
 }
 
 // --- Cross static rank: take higher rank (42 impls, all bidirectional pairs) ---
+
 // Ix0 × {Ix1..Ix6}: 12 impls (6 each direction).
+
 impl BroadcastDim<Ix0> for Ix1 {
     type Output = Ix1;
 }
@@ -82,6 +85,7 @@ impl BroadcastDim<Ix6> for Ix0 {
 }
 
 // Ix1 × {Ix2..Ix6}: 10 impls.
+
 impl BroadcastDim<Ix1> for Ix2 {
     type Output = Ix2;
 }
@@ -114,6 +118,7 @@ impl BroadcastDim<Ix6> for Ix1 {
 }
 
 // Ix2 × {Ix3..Ix6}: 8 impls.
+
 impl BroadcastDim<Ix2> for Ix3 {
     type Output = Ix3;
 }
@@ -140,6 +145,7 @@ impl BroadcastDim<Ix6> for Ix2 {
 }
 
 // Ix3 × {Ix4..Ix6}: 6 impls.
+
 impl BroadcastDim<Ix3> for Ix4 {
     type Output = Ix4;
 }
@@ -160,6 +166,7 @@ impl BroadcastDim<Ix6> for Ix3 {
 }
 
 // Ix4 × {Ix5..Ix6}: 4 impls.
+
 impl BroadcastDim<Ix4> for Ix5 {
     type Output = Ix5;
 }
@@ -174,6 +181,7 @@ impl BroadcastDim<Ix6> for Ix4 {
 }
 
 // Ix5 × Ix6: 2 impls.
+
 impl BroadcastDim<Ix5> for Ix6 {
     type Output = Ix6;
 }
@@ -182,6 +190,7 @@ impl BroadcastDim<Ix6> for Ix5 {
 }
 
 // --- Static × IxDyn: always IxDyn (14 impls, 7 bidirectional pairs) ---
+
 impl BroadcastDim<IxDyn> for Ix0 {
     type Output = IxDyn;
 }
@@ -226,6 +235,7 @@ impl BroadcastDim<Ix6> for IxDyn {
 }
 
 // --- IxDyn × IxDyn: 1 impl ---
+
 impl BroadcastDim<IxDyn> for IxDyn {
     type Output = IxDyn;
 }
@@ -243,8 +253,8 @@ mod tests {
         B: Dimension,
         O: Dimension + 'static,
     {
-        // Runtime sanity: TypeId of O matches itself. The real assertion is the
-        // compile-time bound `Output = O`.
+        // Runtime sanity: TypeId of O matches itself. The real assertion is
+        // the compile-time bound `Output = O`.
         assert_eq!(TypeId::of::<O>(), TypeId::of::<O>());
         let _ = TypeId::of::<A>();
         let _ = TypeId::of::<B>();
