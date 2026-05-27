@@ -18,6 +18,7 @@ use crate::dimension::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 pub trait IntoDimension {
     /// The resulting dimension type.
     type Dim: Dimension;
+
     /// Convert into a dimension.
     fn into_dimension(self) -> Self::Dim;
 }
