@@ -204,6 +204,8 @@ mod tests {
     use crate::dimension::{Ix0, Ix2, Ix3};
     use super::Strides;
 
+    // --- LayoutFlags bitfield ---------------------------------------------------
+
     /// Default LayoutFlags has all bits cleared.
     #[test]
     fn test_flags_default_empty() {
@@ -244,6 +246,8 @@ mod tests {
         assert!(flags.has_zero_stride());
     }
 
+    // --- LayoutFlags::classify --------------------------------------------------
+
     /// BroadcastView takes priority over FContiguous in classify().
     #[test]
     fn test_classify_broadcast_view_priority() {
@@ -267,12 +271,12 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
     }
 
-    // --- flags_for_f_layout ----------------------------------------------------
+    // --- flags_for_f_layout -------------------------------------------------
 
     /// Construction path: known F-order + aligned + no broadcast.
     #[test]
     fn test_flags_for_f_layout_aligned_no_broadcast() {
-        let flags = LayoutFlags::flags_for_f_layout(/*aligned=*/ true, /*broadcast=*/ false);
+        let flags = LayoutFlags::flags_for_f_layout(true, false);
         assert!(flags.is_f_contiguous());
         assert!(flags.is_aligned());
         assert!(!flags.has_zero_stride());
@@ -288,7 +292,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::BroadcastView);
     }
 
-    // --- compute_layout_flags --------------------------------------------------
+    // --- compute_layout_flags -----------------------------------------------
 
     fn dangling_u8() -> *const u8 {
         core::ptr::NonNull::<u8>::dangling().as_ptr()
