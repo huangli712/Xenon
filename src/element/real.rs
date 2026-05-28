@@ -1,23 +1,21 @@
-//! Real-valued scalar trait.
+//! Real-valued scalar trait and primitive implementations.
 //!
-//! The `RealScalar` trait exposes a deliberately minimal set of 11 real-valued
-//! math functions (`abs`, `signum`, `sqrt`, `sin`, `exp`, `ln`, `floor`, `ceil`,
-//! `is_nan`, `is_infinite`, `is_finite`). Adding new methods in future
-//! versions constitutes a semi-breaking change (SemVer minor bump): new methods
-//! do not break existing downstream user code, but they DO break any external
-//! types that `impl RealScalar for MyType` — however, the `Sealed` supertrait
-//! prevents any such external impls by design.
+//! `RealScalar` exposes 11 IEEE‑754 math functions and predicates,
+//! sealed to `f32` and `f64` only.
 
-
-use crate::element::Numeric;
+use super::Numeric;
 use crate::private::Sealed;
 
 /// Real-valued scalar trait.
 ///
-/// `RealScalar` extends [`Numeric`] with IEEE-754 math functions
-/// (`abs`, `sqrt`, `sin`, `exp`, `ln`, `floor`, `ceil`), a `signum`
-/// discriminant, and predicates for detecting NaN, infinity, and
-/// finiteness. Only `f32` and `f64` implement this trait.
+/// `RealScalar` extends [`Numeric`] with IEEE‑754 math functions
+/// (`abs`, `signum`, `sqrt`, `sin`, `exp`, `ln`, `floor`, `ceil`)
+/// and predicates for detecting NaN, infinity, and finiteness.
+///
+/// Only `f32` and `f64` implement this trait. Integer types do not
+/// satisfy `PartialOrd` as a supertrait (they use `Ord` instead,
+/// constrained via [`OrderedCompareElement`](super::OrderedCompareElement)
+/// in comparison paths), and complex types are excluded by design.
 ///
 /// # Sealed
 ///
@@ -30,22 +28,22 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     /// `NaN` for NaN. Follows `f32` / `f64` semantics.
     fn signum(self) -> Self;
 
-    /// Square root.
+    /// Square root. Returns NaN for negative inputs.
     fn sqrt(self) -> Self;
 
     /// Sine (radians).
     fn sin(self) -> Self;
 
-    /// Natural exponential function e^x.
+    /// Natural exponential function eˣ.
     fn exp(self) -> Self;
 
-    /// Natural logarithm ln(x).
+    /// Natural logarithm ln(x). Returns -infinity for 0, NaN for negative.
     fn ln(self) -> Self;
 
-    /// Largest integer less than or equal to `self`.
+    /// Largest integer ≤ `self`.
     fn floor(self) -> Self;
 
-    /// Smallest integer greater than or equal to `self`.
+    /// Smallest integer ≥ `self`.
     fn ceil(self) -> Self;
 
     /// Returns `true` if `self` is NaN.
@@ -57,6 +55,8 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     /// Returns `true` if `self` is finite (not NaN and not infinite).
     fn is_finite(self) -> bool;
 }
+
+// ── RealScalar impls ──────────────────────────────────────────────────────
 
 impl RealScalar for f32 {
     fn abs(self) -> Self {
@@ -157,7 +157,8 @@ mod tests {
         check(1.0f64);
     }
 
-    /// Exercises f32 and f64 Element and RealScalar trait methods.
+    /// Quick smoke test exercising `Element` and `RealScalar` methods
+    /// together.
     #[test]
     fn test_f32_f64_real_scalar() {
         assert_eq!(f32::zero(), 0.0);
@@ -166,20 +167,20 @@ mod tests {
         assert!(<f32 as RealScalar>::is_nan(f32::NAN));
     }
 
-    /// Verifies RealScalar::sqrt for f64.
+    /// Verifies `RealScalar::sqrt` for `f64`.
     #[test]
     fn test_f64_sqrt() {
         assert_eq!(<f64 as RealScalar>::sqrt(4.0), 2.0);
         assert_eq!(<f64 as RealScalar>::sqrt(9.0), 3.0);
     }
 
-    /// Verifies RealScalar::sin for f64 at zero.
+    /// Verifies `RealScalar::sin` for `f64` at zero.
     #[test]
     fn test_f64_sin() {
         assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
     }
 
-    /// Verifies f32 IEEE-754 predicates: is_nan, is_infinite, is_finite.
+    /// Verifies `f32` IEEE‑754 predicates: is_nan, is_infinite, is_finite.
     #[test]
     fn test_f32_nan_detection() {
         assert!(<f32 as RealScalar>::is_nan(f32::NAN));
@@ -188,7 +189,7 @@ mod tests {
         assert!(<f32 as RealScalar>::is_finite(1.0f32));
     }
 
-    /// Verifies exp(ln(x)) ≈ x (round-trip identity) for f64.
+    /// Verifies exp(ln(x)) ≈ x (round‑trip identity) for `f64`.
     #[test]
     fn test_f64_exp_ln_inverse() {
         let tolerance = 1e-12_f64;
@@ -204,27 +205,27 @@ mod tests {
         }
     }
 
-    /// Boundary: RealScalar::is_nan for f64 NaN.
+    /// Boundary: `is_nan` is `true` for NaN, `false` otherwise.
     #[test]
     fn test_boundary_f64_nan_is_nan() {
         assert!(<f64 as RealScalar>::is_nan(f64::NAN));
         assert!(!<f64 as RealScalar>::is_nan(1.0_f64));
     }
 
-    /// Boundary: RealScalar::is_finite for f64 infinity.
+    /// Boundary: `is_finite` is `false` for infinity.
     #[test]
     fn test_boundary_f64_infinity_is_not_finite() {
         assert!(!<f64 as RealScalar>::is_finite(f64::INFINITY));
         assert!(<f64 as RealScalar>::is_finite(1.0_f64));
     }
 
-    /// Boundary: RealScalar::sqrt of negative f64 returns NaN.
+    /// Boundary: `sqrt` of a negative number returns NaN.
     #[test]
     fn test_boundary_f64_sqrt_neg_is_nan() {
         assert!(<f64 as RealScalar>::is_nan(<f64 as RealScalar>::sqrt(-1.0)));
     }
 
-    /// Boundary: RealScalar::ln(0.0) returns negative infinity.
+    /// Boundary: `ln(0.0)` returns negative infinity.
     #[test]
     fn test_boundary_f64_ln_zero_is_neg_infinity() {
         let v = <f64 as RealScalar>::ln(0.0);
@@ -232,7 +233,7 @@ mod tests {
         assert!(v < 0.0);
     }
 
-    /// Property: sqrt(a)² ≈ a for f32 and f64.
+    /// Property: sqrt(a)² ≈ a for `f32` and `f64`.
     #[test]
     fn test_property_sqrt_square_inverse() {
         let tol64 = 1e-10_f64;
@@ -247,7 +248,7 @@ mod tests {
         }
     }
 
-    /// Property: ln(exp(a)) ≈ a for f32 and f64.
+    /// Property: ln(exp(a)) ≈ a for `f32` and `f64`.
     #[test]
     fn test_property_exp_ln_inverse() {
         let tol64 = 1e-10_f64;
@@ -262,7 +263,7 @@ mod tests {
         }
     }
 
-    /// Property: exp(ln(x)) ≈ x for f32 and f64.
+    /// Property: exp(ln(x)) ≈ x for `f32` and `f64`.
     #[test]
     fn test_property_ln_exp_inverse() {
         let tol64 = 1e-10_f64;
@@ -277,40 +278,39 @@ mod tests {
         }
     }
 
-    /// Verifies RealScalar::abs for f32.
+    /// Verifies `RealScalar::abs` for `f32`.
     #[test]
     fn test_f32_abs() {
         assert_eq!(<f32 as RealScalar>::abs(-3.5_f32), 3.5_f32);
     }
 
-    /// Verifies RealScalar::signum for f32.
+    /// Verifies `RealScalar::signum` for `f32`.
     #[test]
     fn test_f32_signum() {
         assert_eq!(<f32 as RealScalar>::signum(5.0_f32), 1.0_f32);
         assert_eq!(<f32 as RealScalar>::signum(-3.0_f32), -1.0_f32);
     }
 
-    /// Verifies RealScalar::sin for f32 at zero.
+    /// Verifies `RealScalar::sin` for `f32` at zero.
     #[test]
     fn test_f32_sin() {
         let val = <f32 as RealScalar>::sin(0.0_f32);
         assert!((val - 0.0_f32).abs() < 1e-6_f32);
     }
 
-    /// Verifies RealScalar::floor for f32.
+    /// Verifies `RealScalar::floor` for `f32`.
     #[test]
     fn test_f32_floor() {
         assert_eq!(<f32 as RealScalar>::floor(3.7_f32), 3.0_f32);
     }
 
-    /// Verifies RealScalar::ceil for f32.
+    /// Verifies `RealScalar::ceil` for `f32`.
     #[test]
     fn test_f32_ceil() {
         assert_eq!(<f32 as RealScalar>::ceil(2.3_f32), 3.0_f32);
     }
 
-    /// Exercises key f64 math methods and verifies they match primitive
-    /// counterparts for well-defined inputs.
+    /// Exercises several `f64` math methods on a well‑defined input.
     #[test]
     fn test_real_scalar_boundary_methods() {
         let value = 4.0f64;
@@ -322,7 +322,8 @@ mod tests {
         assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
     }
 
-    /// Compile-time: verifies RealScalar trait bounds for f32 and f64.
+    /// Compile‑time: verifies `RealScalar` trait bounds for both
+    /// `f32` and `f64`.
     #[test]
     fn test_compile_positive_real_bounds() {
         fn assert_real<A: RealScalar>() {}
