@@ -3,7 +3,6 @@
 
 use xenon::dimension::{Ix1, Ix2};
 use xenon::error::{FfiErrorCategory, XenonError};
-use xenon::ffi::ElementType;
 use xenon::layout::Strides;
 use xenon::tensor::{Tensor, TensorView, TensorViewMut};
 
@@ -94,7 +93,7 @@ fn test_export_roundtrip() {
 
     assert_eq!(raw.ndim, 1);
     assert_eq!(raw.storage_len, 3);
-    assert_eq!(raw.element_type, ElementType::F64);
+    assert_eq!(raw.element_type, 4u8); // ElementType::F64
     assert_eq!(raw.offset, 0);
 
     // `data` must equal the storage base pointer (not logical first).
@@ -227,7 +226,7 @@ fn test_cbindgen_header_exports_only_raw_descriptors() {
     let _: xenon::ffi::TensorExportRaw;
     let _: xenon::ffi::TensorExportMutRaw;
     let _: xenon::ffi::BlasInfo<f64>;
-    let _: xenon::ffi::ElementType;
+    let _: u8;
     let _: xenon::ffi::FfiBackend;
     let _: xenon::ffi::FfiErrorCategory;
 
@@ -237,7 +236,7 @@ fn test_cbindgen_header_exports_only_raw_descriptors() {
     assert!(
         size_of::<xenon::ffi::TensorExportRaw>()
             >= size_of::<*const std::ffi::c_void>()
-                + size_of::<ElementType>()
+                + size_of::<u8>()
                 + 5 * size_of::<usize>()
     );
 

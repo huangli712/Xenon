@@ -6,7 +6,7 @@
 use core::ffi::c_void;
 use std::borrow::Cow;
 
-pub use crate::element::ElementType;
+use crate::element::ElementType;
 pub use crate::error::{FfiBackend, FfiErrorCategory};
 
 use crate::error::XenonError;
@@ -25,7 +25,7 @@ pub struct TensorExportRaw {
     /// Storage base pointer, type-erased to `*const c_void`.
     pub data: *const c_void,
     /// Element type discriminator for C-side pointer cast.
-    pub element_type: ElementType,
+    pub element_type: u8,
     /// Number of dimensions.
     pub ndim: usize,
     /// Shape array (length = `ndim`).
@@ -45,7 +45,7 @@ pub struct TensorExportMutRaw {
     /// Writable storage base pointer, type-erased to `*mut c_void`.
     pub data: *mut c_void,
     /// Element type discriminator for C-side pointer cast.
-    pub element_type: ElementType,
+    pub element_type: u8,
     /// Number of dimensions.
     pub ndim: usize,
     /// Shape array (length = `ndim`).
@@ -164,7 +164,7 @@ mod tests {
         // Size lower bound check
         assert!(
             size_of::<TensorExportRaw>()
-                >= size_of::<*const c_void>() + size_of::<ElementType>() + 5 * size_of::<usize>()
+                >= size_of::<*const c_void>() + size_of::<u8>() + 5 * size_of::<usize>()
         );
 
         // Alignment checks
@@ -180,7 +180,7 @@ mod tests {
         // ndim follows element_type; exact offset depends on ElementType size + padding
         assert!(
             offset_of!(TensorExportRaw, ndim)
-                >= offset_of!(TensorExportRaw, element_type) + size_of::<ElementType>()
+                >= offset_of!(TensorExportRaw, element_type) + size_of::<u8>()
         );
         // Remaining fields follow in order: shape, strides, storage_len, offset
         assert!(offset_of!(TensorExportRaw, shape) > offset_of!(TensorExportRaw, ndim));

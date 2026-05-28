@@ -71,7 +71,7 @@ mod types;
 // protocol defined by W1T3.
 pub use ptr::{OwnedRawParts, TensorBase};
 pub use types::{
-    BlasInfo, ElementType, FfiBackend, FfiErrorCategory, TensorExportMutRaw, TensorExportRaw,
+    BlasInfo, FfiBackend, FfiErrorCategory, TensorExportMutRaw, TensorExportRaw,
 };
 
 #[cfg(test)]

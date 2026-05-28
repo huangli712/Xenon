@@ -170,9 +170,8 @@ pub use crate::workspace::Workspace;
 // FFI types
 pub use crate::ffi::{
     BlasInfo,
-    ElementType,
+    TensorExportRaw,
     TensorExportMutRaw,
-    TensorExportRaw
 };
 
 // ── Test-only re-exports ────────────────────────────────────────────
