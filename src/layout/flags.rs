@@ -307,16 +307,21 @@ mod tests {
 
     #[test]
     fn test_compute_layout_flags_construction_f_order() {
+        // §5.6/§5.7 symmetry: compute_f_strides ⇒ is_f_contiguous == true.
         let shape = Ix3(2, 3, 4);
         let strides = compute_f_strides(&shape).expect("valid test shape");
+        assert_eq!(strides.as_slice(), &[1, 2, 6]);
+        assert!(is_f_contiguous(&shape, &strides));
+
         let flags = compute_layout_flags::<u8, Ix3>(&shape, &strides, dangling_u8());
         assert!(flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
+        assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
     #[test]
     fn test_compute_layout_flags_broadcast_view() {
-        let shape = Ix2(3, 4);
+        let shape = Ix2(5, 4);
         let strides = Strides::new(Ix2(1, 0));
         let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling_u8());
         assert!(flags.has_zero_stride());
@@ -329,9 +334,15 @@ mod tests {
         let shape = Ix2(0, 3);
         let strides = Strides::new(Ix2(1, 0));
         let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling_u8());
-        assert!(!flags.has_zero_stride());
+        assert!(
+            !flags.has_zero_stride(),
+            "empty array degenerate zero stride must NOT set HAS_ZERO_STRIDE"
+        );
+        assert!(
+            flags.is_f_contiguous(),
+            "empty F-order metadata should remain F_CONTIGUOUS (§5.11)"
+        );
         assert!(flags.is_aligned());
-        assert!(flags.is_f_contiguous());
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
@@ -361,6 +372,7 @@ mod tests {
         let flags = compute_layout_flags::<u8, Ix0>(&shape, &strides, dangling_u8());
         assert!(flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
+        assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
     #[test]
@@ -379,91 +391,5 @@ mod tests {
         unsafe {
             dealloc(ptr, layout);
         }
-    }
-}
-
-#[cfg(test)]
-mod integration_tests {
-    use super::*;
-    use crate::dimension::{Ix0, Ix2, Ix3};
-    use crate::layout::compute_f_strides;
-
-    fn dangling_u8() -> *const u8 {
-        core::ptr::NonNull::<u8>::dangling().as_ptr()
-    }
-
-    #[test]
-    fn test_layout_integration_construction_f_order() {
-        let shape = Ix3(2, 3, 4);
-        let strides = compute_f_strides(&shape).expect("valid test shape");
-        assert_eq!(strides.as_slice(), &[1, 2, 6]);
-        assert!(is_f_contiguous(&shape, &strides));
-
-        let dangling = dangling_u8();
-        let flags = compute_layout_flags::<u8, Ix3>(&shape, &strides, dangling);
-        assert!(flags.is_f_contiguous());
-        assert!(!flags.has_zero_stride());
-        assert_eq!(flags.classify(), LayoutState::FContiguous);
-    }
-
-    #[test]
-    fn test_layout_integration_broadcast_view() {
-        let shape = Ix2(5, 4);
-        let strides = Strides::new(Ix2(1, 0));
-        let dangling = dangling_u8();
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling);
-        assert!(flags.has_zero_stride());
-        assert!(!flags.is_f_contiguous());
-        assert_eq!(flags.classify(), LayoutState::BroadcastView);
-    }
-
-    #[test]
-    fn test_layout_integration_empty_degenerate_zero_stride() {
-        let shape = Ix2(0, 3);
-        let strides = Strides::new(Ix2(1, 0));
-        let dangling = dangling_u8();
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling);
-        assert!(
-            !flags.has_zero_stride(),
-            "empty array degenerate zero stride must NOT set HAS_ZERO_STRIDE"
-        );
-        assert!(
-            flags.is_f_contiguous(),
-            "empty F-order metadata should remain F_CONTIGUOUS (§5.11)"
-        );
-        assert!(flags.is_aligned());
-        assert_eq!(flags.classify(), LayoutState::FContiguous);
-    }
-
-    #[test]
-    fn test_layout_integration_transpose_non_contiguous() {
-        let shape = Ix2(3, 2);
-        let strides = Strides::new(Ix2(2, 1));
-        let dangling = dangling_u8();
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling);
-        assert!(!flags.is_f_contiguous());
-        assert!(!flags.has_zero_stride());
-        assert_eq!(flags.classify(), LayoutState::NonContiguous);
-    }
-
-    #[test]
-    fn test_layout_integration_slice_size1_axis() {
-        let shape = Ix3(5, 1, 4);
-        let strides = Strides::new(Ix3(1, 999, 5));
-        let dangling = dangling_u8();
-        let flags = compute_layout_flags::<u8, Ix3>(&shape, &strides, dangling);
-        assert!(flags.is_f_contiguous());
-        assert!(!flags.has_zero_stride());
-    }
-
-    #[test]
-    fn test_layout_integration_scalar() {
-        let shape = Ix0;
-        let strides = Strides::new(Ix0);
-        let dangling = dangling_u8();
-        let flags = compute_layout_flags::<u8, Ix0>(&shape, &strides, dangling);
-        assert!(flags.is_f_contiguous());
-        assert!(!flags.has_zero_stride());
-        assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 }
