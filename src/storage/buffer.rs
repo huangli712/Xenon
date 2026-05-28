@@ -326,7 +326,7 @@ mod tests {
 
     /// Alignment is clamped to at least the element type's alignment.
     #[test]
-    fn test_aligned_buf_with_capacity_clamps_alignment_to_element_requirement() {
+    fn test_aligned_buf_alignment_clamped() {
         let buf = AlignedBuf::<u128>::with_capacity_aligned(4, 1)
             .expect("AlignedBuf::with_capacity_aligned should honor element alignment");
         assert_eq!((buf.as_ptr() as usize) % align_of::<u128>(), 0);
