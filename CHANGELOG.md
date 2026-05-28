@@ -10,16 +10,22 @@ All notable changes to this project are documented in this file.
 - Module-level doc with submodule table in `layout/mod.rs`.
 - `///` doc comments to all layout test functions.
 
+### Removed
+
+- Stale design-doc cross-references from all layout submodules.
+- Standalone `compute_f_strides` function (inlined into `Strides::f_contiguous`).
+
 ### Changed
 
 - Colocated `flags_for_f_layout` into `LayoutFlags` impl block; `compute_layout_flags` and all tests into `flags.rs`.
 - Moved `has_zero_stride`/`should_set_zero_stride_flag` into `Strides` methods.
 - Moved `is_aligned`/`is_aligned_to` from `strides.rs` to `flags.rs`, then to dedicated `aligned.rs`.
-- Inlined `compute_f_strides` into `Strides::f_contiguous`; removed standalone function.
 - Switched all callers from `compute_f_strides` to `Strides::f_contiguous()`.
-- Removed stale design-doc cross-references from all layout submodules.
 - Replaced fully-qualified paths with local imports throughout element module.
-- Fixed intra-doc links for `pub(crate)` items.
+
+### Fixed
+
+- Intra-doc links for `pub(crate)` items.
 
 ## [v0.0.11] — 2026-05-28
 
