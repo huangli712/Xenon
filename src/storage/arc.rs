@@ -19,7 +19,7 @@ use super::{StorageIntoOwned, RawStorage, Storage, StorageShared};
 
 /// Shared read-only storage with atomic reference counting.
 ///
-/// `ArcRepr` wraps an [`AlignedBuf`] inside `Arc<SharedBuf<A>>`. Cloning is
+/// `ArcRepr` wraps an `AlignedBuf` inside `Arc<SharedBuf<A>>`. Cloning is
 /// O(1) via an atomic reference-count bump, and all clones share the same
 /// underlying data. The public API is read-only — mutable access requires
 /// converting to [`Owned`] via [`StorageIntoOwned::into_owned_storage`].
