@@ -341,4 +341,18 @@ mod tests {
         let buf = AlignedBuf::<()>::zst(1000);
         assert_eq!(buf.len(), 1000);
     }
+
+    /// Rejects allocation requests whose layout exceeds `isize::MAX`.
+    #[test]
+    fn test_aligned_buf_overflow() {
+        let err = AlignedBuf::<u8>::with_capacity_aligned(isize::MAX as usize, 64)
+            .expect_err("overflow layout should be rejected");
+        match err {
+            XenonError::InvalidShape {
+                kind: InvalidShapeKind::ProductOverflow,
+                ..
+            } => {},
+            other => panic!("expected ProductOverflow, got {other:?}"),
+        }
+    }
 }
