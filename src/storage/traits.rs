@@ -11,7 +11,7 @@
 
 use core::ptr::NonNull;
 
-use Sealed;
+use crate::private::Sealed;
 
 // ---------------------------------------------------------------------------
 // W7T6: Marker traits (IsOwned, IsView, IsViewMut, IsShared)
