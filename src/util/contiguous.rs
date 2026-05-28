@@ -5,7 +5,7 @@
 
 use crate::dimension::Dimension;
 use crate::element::Element;
-use crate::layout::{compute_f_strides, compute_layout_flags};
+use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{RawStorage, Storage, StorageIntoOwned};
 use crate::tensor::{StorageKind, StorageSemantics, Tensor, TensorBase};
 
@@ -62,7 +62,7 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if `compute_f_strides(&dim)` fails. This cannot happen on the
+    /// Panics if `Strides::f_contiguous(&dim)` fails. This cannot happen on the
     /// reuse path because `is_canonical_f_contiguous_owned` already
     /// established `is_f_contiguous()`, which implies the shape's element
     /// count fits `usize` (a construction-time invariant of `TensorBase`).
@@ -80,7 +80,7 @@ where
             // `is_f_contiguous()`, so shape.checked_size() must succeed
             // (construction-time invariant). Re-derive F-order strides.
             let strides =
-                compute_f_strides(&dim).expect("canonical predicate implies shape is valid");
+                Strides::f_contiguous(&dim).expect("canonical predicate implies shape is valid");
             // Move storage out (StorageIntoOwned, W7T19).
             let owned = self.storage.into_owned_storage();
             // Re-derive layout flags via the canonical entry point

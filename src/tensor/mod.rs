@@ -96,7 +96,7 @@ pub use impls::{AccessSemantics, DataLocation, StorageKind};
 mod tests {
     use super::TensorBase;
     use crate::dimension::Ix2;
-    use crate::layout::{LayoutFlags, compute_f_strides};
+    use crate::layout::{LayoutFlags, Strides};
     use crate::storage::Owned;
 
     /// Verify the tensor module skeleton compiles and all three sub-modules
@@ -116,7 +116,7 @@ mod tests {
     fn test_tensorbase_struct_fields() {
         let data = vec![0.0_f64, 1.0, 2.0, 3.0, 4.0, 5.0];
         let shape = Ix2(2, 3);
-        let strides = compute_f_strides(&shape).expect("valid shape");
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
         let storage = Owned::from_vec(data).expect("valid vec");
 
         let tensor = TensorBase {

@@ -10,7 +10,7 @@ use crate::complex::Complex;
 use crate::dimension::Dimension;
 use crate::element::Element;
 use crate::error::{ConversionFailureReason, Result, XenonError};
-use crate::layout::{compute_f_strides, compute_layout_flags};
+use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, Storage, StorageIntoOwned};
 use crate::tensor::{Tensor, TensorBase};
 
@@ -171,7 +171,7 @@ where
 ///
 /// # Panics
 ///
-/// Panics if `compute_f_strides` fails on `dim`. This cannot happen because
+/// Panics if `Strides::f_contiguous` fails on `dim`. This cannot happen because
 /// `dim` originates from a valid `TensorBase` whose shape was already validated.
 #[inline]
 pub(crate) fn into_owned_from_owned_storage<A, D>(owned_storage: Owned<A>, dim: D) -> Tensor<A, D>
@@ -179,7 +179,7 @@ where
     A: Element,
     D: Dimension,
 {
-    let strides = compute_f_strides(&dim).expect("validated dim from TensorBase");
+    let strides = Strides::f_contiguous(&dim).expect("validated dim from TensorBase");
     let flags = compute_layout_flags(&dim, &strides, owned_storage.as_ptr());
     // SAFETY: `into_owned_storage()` guarantees `owned_storage.len() == product(dim)`;
     // `dim` originated from a valid `TensorBase`; canonical F-order strides

@@ -37,7 +37,7 @@ where
                 offending_dim: None,
             });
         }
-        let strides = layout::compute_f_strides(&dim)?;
+        let strides = layout::Strides::f_contiguous(&dim)?;
         let storage = Owned::from_vec_aligned(data)?;
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         // SAFETY: `dim` validated by `IntoDimension` + `checked_size`; `data.len()

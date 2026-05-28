@@ -537,7 +537,7 @@ where
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix1, Ix2};
-    use crate::layout::{LayoutFlags, LayoutState, compute_f_strides};
+    use crate::layout::{LayoutFlags, LayoutState, Strides};
     use crate::storage::Owned;
 
     fn make_owned(
@@ -547,7 +547,7 @@ mod tests {
         derived: bool,
         offset: usize,
     ) -> TensorBase<Owned<f64>, Ix2> {
-        let strides = compute_f_strides(&shape).expect("valid shape");
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
         let storage = Owned::from_vec(data).expect("valid vec");
         TensorBase {
             storage,
@@ -560,7 +560,7 @@ mod tests {
     }
 
     fn f_contig(data: Vec<i32>, shape: Ix2, offset: usize) -> TensorBase<Owned<i32>, Ix2> {
-        let strides = compute_f_strides(&shape).expect("valid shape");
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
         let storage = Owned::from_vec(data).expect("valid vec");
         TensorBase {
             storage,
@@ -592,7 +592,7 @@ mod tests {
     }
     #[test]
     fn test_tensor_offset_and_flags() {
-        let strides = compute_f_strides(&Ix1(5)).expect("valid");
+        let strides = Strides::f_contiguous(&Ix1(5)).expect("valid");
         let storage = Owned::from_vec(vec![1_i32; 5]).expect("valid");
         let t = TensorBase::<Owned<i32>, Ix1> {
             storage,
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn test_as_slice_non_contiguous() {
         let shape = Ix2(2, 2);
-        let strides = compute_f_strides(&shape).expect("valid");
+        let strides = Strides::f_contiguous(&shape).expect("valid");
         let storage = Owned::from_vec(vec![1_i32, 2, 3, 4]).expect("valid");
         let t: TensorBase<Owned<i32>, Ix2> = TensorBase {
             storage,

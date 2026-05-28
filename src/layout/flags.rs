@@ -131,7 +131,7 @@ impl LayoutFlags {
     ///
     /// Fast path: use only when the caller has already established that
     /// the layout is F-order (e.g., immediately after a successful
-    /// `compute_f_strides()`). For the general case, use
+    /// `Strides::f_contiguous()`). For the general case, use
     /// `compute_layout_flags(shape, strides, ptr)`.
     ///
     /// # Arguments
@@ -167,7 +167,7 @@ impl LayoutFlags {
 ///
 /// `product(shape)` must be representable in `usize`; fallible shape
 /// validation belongs to the caller (e.g., `Dimension::checked_size` or
-/// `compute_f_strides`). This function does NOT return `Result`.
+/// `Strides::f_contiguous`). This function does NOT return `Result`.
 ///
 /// # Pointer safety
 ///
@@ -209,7 +209,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix2, Ix3};
-    use crate::layout::compute_f_strides;
+    use crate::layout::Strides;
 
     /// Default LayoutFlags has all bits cleared.
     #[test]
@@ -304,9 +304,9 @@ mod tests {
 
     #[test]
     fn test_compute_layout_flags_construction_f_order() {
-        // compute_f_strides ⇒ is_f_contiguous == true.
+        // Strides::f_contiguous ⇒ is_f_contiguous == true.
         let shape = Ix3(2, 3, 4);
-        let strides = compute_f_strides(&shape).expect("valid test shape");
+        let strides = Strides::f_contiguous(&shape).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
         assert!(is_f_contiguous(&shape, &strides));
 
@@ -384,7 +384,7 @@ mod tests {
         let ptr = unsafe { alloc(layout) };
         assert!(!ptr.is_null(), "allocator returned null");
         let shape = Ix2(4, 8);
-        let strides = compute_f_strides(&shape).expect("valid test shape");
+        let strides = Strides::f_contiguous(&shape).expect("valid test shape");
         let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, ptr);
         assert!(flags.is_f_contiguous());
         assert!(flags.is_aligned());

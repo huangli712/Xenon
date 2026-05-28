@@ -23,7 +23,7 @@ where
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
-        let strides = layout::compute_f_strides(&dim)?;
+        let strides = layout::Strides::f_contiguous(&dim)?;
         let storage = <Owned<A> as StorageOwned>::from_elem(len, A::zero());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         // SAFETY: shape validated by checked_size; strides from compute_f_strides;
@@ -45,7 +45,7 @@ where
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
-        let strides = layout::compute_f_strides(&dim)?;
+        let strides = layout::Strides::f_contiguous(&dim)?;
         let storage = <Owned<A> as StorageOwned>::from_elem(len, A::one());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         // SAFETY: shape validated by checked_size; strides from compute_f_strides;

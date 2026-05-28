@@ -1,6 +1,6 @@
 //! Stride storage, F-order computation, and zero-stride detection.
 //!
-//! [`Strides`] carrier, `compute_f_strides` algorithm, and the
+//! [`Strides`] carrier, `Strides::f_contiguous` algorithm, and the
 //! `has_zero_stride` / `should_set_zero_stride_flag` helpers are
 //! implemented here.
 
@@ -40,15 +40,33 @@ impl<D: Dimension> Strides<D> {
     }
 
     /// Compute default F-contiguous strides for the given shape.
-    /// Convenience alias for `compute_f_strides`.
+    ///
+    /// Algorithm:
+    /// ```text
+    /// strides[0] = 1;
+    /// for i in 1..N: strides[i] = strides[i-1].checked_mul(shape[i-1])?
+    /// ```
     ///
     /// # Errors
     ///
-    /// Forwards `compute_f_strides` errors: returns
-    /// `XenonError::InvalidShape { kind: ProductOverflow, .. }` if the cumulative
-    /// stride product overflows `usize`.
+    /// Returns `XenonError::InvalidShape { kind: ProductOverflow, .. }` if
+    /// the cumulative product overflows `usize`.
     pub fn f_contiguous(shape: &D) -> Result<Self, XenonError> {
-        compute_f_strides(shape)
+        let axes = shape.slice();
+        let mut values = vec![0_usize; axes.len()];
+        let mut cumulative: usize = 1;
+        for (axis_idx, &extent) in axes.iter().enumerate() {
+            values[axis_idx] = cumulative;
+            cumulative = cumulative
+                .checked_mul(extent)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Strides::f_contiguous"),
+                    shape: axes.to_vec(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(axis_idx),
+                })?;
+        }
+        Strides::from_slice(&values)
     }
 
     /// Returns the stride for dimension `axis`.
@@ -98,37 +116,6 @@ impl<D: Dimension> Strides<D> {
     }
 }
 
-/// Compute strides for an F-order contiguous layout from the given shape.
-///
-/// Algorithm:
-/// ```text
-/// strides[0] = 1;
-/// for i in 1..N: strides[i] = strides[i-1].checked_mul(shape[i-1])?
-/// ```
-///
-/// # Errors
-///
-/// Returns `XenonError::InvalidShape { kind: ProductOverflow, .. }` if the
-/// cumulative product overflows `usize`. The error is recoverable; this
-/// function MUST NOT panic.
-pub(crate) fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonError> {
-    let axes = shape.slice();
-    let mut values = vec![0_usize; axes.len()];
-    let mut cumulative: usize = 1;
-    for (axis_idx, &extent) in axes.iter().enumerate() {
-        values[axis_idx] = cumulative;
-        cumulative = cumulative
-            .checked_mul(extent)
-            .ok_or_else(|| XenonError::InvalidShape {
-                operation: Cow::Borrowed("layout::compute_f_strides"),
-                shape: axes.to_vec(),
-                kind: InvalidShapeKind::ProductOverflow,
-                offending_dim: Some(axis_idx),
-            })?;
-    }
-    Strides::from_slice(&values)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,28 +131,28 @@ mod tests {
     #[test]
     fn test_f_strides_1d() {
         // F-contiguous strides computed from shape dimensions.
-        let strides = compute_f_strides(&Ix1(5)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix1(5)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1]);
     }
 
     #[test]
     fn test_f_strides_2d() {
         // F-contiguous strides for [3, 4] are [1, 3].
-        let strides = compute_f_strides(&Ix2(3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix2(3, 4)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
     #[test]
     fn test_f_strides_3d() {
         // F-contiguous strides for [2, 3, 4] are [1, 2, 6].
-        let strides = compute_f_strides(&Ix3(2, 3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
     }
 
     #[test]
     fn test_f_strides_scalar() {
         // 0-D scalar produces empty strides.
-        let strides = compute_f_strides(&Ix0).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix0).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[] as &[usize]);
     }
 
@@ -173,7 +160,7 @@ mod tests {
     fn test_f_strides_overflow() {
         // Overflow of cumulative product → InvalidShape::ProductOverflow.
         let shape = Ix2(usize::MAX, usize::MAX);
-        let err = compute_f_strides(&shape).expect_err("expected overflow error");
+        let err = Strides::f_contiguous(&shape).expect_err("expected overflow error");
         match err {
             XenonError::InvalidShape {
                 kind: InvalidShapeKind::ProductOverflow,
@@ -186,7 +173,7 @@ mod tests {
     #[test]
     fn test_strides_try_stride_ok() {
         // try_stride returns Ok(value) for valid axis.
-        let strides = compute_f_strides(&Ix3(2, 3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
         assert_eq!(strides.try_stride(0).expect("valid axis"), 1);
         assert_eq!(strides.try_stride(1).expect("valid axis"), 2);
         assert_eq!(strides.try_stride(2).expect("valid axis"), 6);
@@ -195,7 +182,7 @@ mod tests {
     #[test]
     fn test_strides_try_stride_out_of_bounds() {
         // try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
-        let strides = compute_f_strides(&Ix2(3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix2(3, 4)).expect("valid test shape");
         let err = strides
             .try_stride(2)
             .expect_err("expected out-of-bounds error");
@@ -208,7 +195,7 @@ mod tests {
     #[test]
     fn test_strides_iter() {
         // iter yields stride values in axis order.
-        let strides = compute_f_strides(&Ix3(2, 3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
         let collected: Vec<usize> = strides.iter().copied().collect();
         assert_eq!(collected, vec![1, 2, 6]);
     }

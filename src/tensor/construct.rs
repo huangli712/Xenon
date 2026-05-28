@@ -6,7 +6,7 @@ use core::ptr::NonNull;
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
-use crate::layout::{LayoutFlags, Strides, compute_f_strides, compute_layout_flags};
+use crate::layout::{LayoutFlags, Strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, StorageOwned, ViewMutRepr, ViewRepr};
 use std::borrow::Cow;
 // ── canonical new_unchecked (07-tensor.md §5.6 L669-730) ──
@@ -354,13 +354,13 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if `compute_f_strides(&shape)` returns an error (shape product
+    /// Panics if `Strides::f_contiguous(&shape)` returns an error (shape product
     /// overflow), or if `Owned::from_vec(data)` returns an error (allocation
     /// failure or byte-size overflow). Both are unreachable when the caller
     /// upholds the `# Safety` precondition that `shape.checked_size()` was
     /// previously validated.
     pub unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
-        let strides = crate::layout::compute_f_strides(&shape).expect("caller-proved valid shape");
+        let strides = crate::layout::Strides::f_contiguous(&shape).expect("caller-proved valid shape");
         let storage = Owned::from_vec(data).expect("caller-proved valid vec");
         let flags = compute_layout_flags::<A, D>(&shape, &strides, storage.as_ptr());
         unsafe { Self::new_unchecked(storage, shape, strides, 0, flags, false) }
@@ -543,7 +543,7 @@ where
         }
 
         // Gate 5: strides must equal canonical F-order strides.
-        let expected_strides = compute_f_strides(&raw.shape)?;
+        let expected_strides = Strides::f_contiguous(&raw.shape)?;
         if raw.strides.as_slice() != expected_strides.as_slice() {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),

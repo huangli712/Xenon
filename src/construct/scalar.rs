@@ -23,7 +23,7 @@ where
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
         let shape = Ix0;
-        let strides = layout::compute_f_strides(&shape)?;
+        let strides = layout::Strides::f_contiguous(&shape)?;
         let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
         // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
         // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
