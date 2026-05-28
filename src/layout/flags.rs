@@ -7,7 +7,7 @@
 use crate::dimension::Dimension;
 use super::aligned::is_aligned;
 use super::contiguous::is_f_contiguous;
-use super::strides::{should_set_zero_stride_flag, Strides};
+use super::strides::Strides;
 
 /// 8-bit packed layout flags. Concrete bit layout in `06-layout §5.1`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -189,7 +189,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
     ptr: *const A,
 ) -> LayoutFlags {
     // §6.1 step 1: HAS_ZERO_STRIDE := any(stride==0) && product(shape) > 0.
-    let is_broadcast_zero_stride = should_set_zero_stride_flag(shape, strides);
+    let is_broadcast_zero_stride = strides.should_set_zero_stride_flag(shape);
 
     // §6.1 step 2: F_CONTIGUOUS := !is_broadcast_zero_stride
     //                              && is_f_contiguous(shape, strides).

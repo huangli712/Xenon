@@ -88,10 +88,24 @@ impl<D: Dimension> Strides<D> {
     ///
     /// **This is NOT the same as the `HAS_ZERO_STRIDE` flag value**: the
     /// flag is set only when `product(shape) > 0` additionally holds.
-    /// Use `should_set_zero_stride_flag(shape, strides)` for flag
-    /// assignment in `compute_layout_flags` (`06-layout §5.11`, §6.1).
+    /// Use `should_set_zero_stride_flag(shape)` for flag assignment in
+    /// `compute_layout_flags` (`06-layout §5.11`, §6.1).
     pub fn has_zero_stride(&self) -> bool {
         self.as_slice().contains(&0)
+    }
+
+    /// Flag-assignment guard for `HAS_ZERO_STRIDE`.
+    ///
+    /// Returns `true` iff `any(stride == 0) && product(shape) > 0`, which
+    /// is the formal definition from `06-layout §5.11`. Empty-array
+    /// degenerate metadata (`product(shape) == 0`) is excluded by this
+    /// guard, so `compute_layout_flags` MUST call this helper instead of
+    /// bare `has_zero_stride` when writing the bit.
+    pub fn should_set_zero_stride_flag(&self, shape: &D) -> bool {
+        if !self.has_zero_stride() {
+            return false;
+        }
+        shape.slice().iter().all(|&e| e > 0)
     }
 }
 
@@ -124,22 +138,6 @@ pub(crate) fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, X
             })?;
     }
     Strides::from_slice(&values)
-}
-
-// === Zero-stride detection (W6T8) ===
-
-/// Flag-assignment guard for `HAS_ZERO_STRIDE`.
-///
-/// Returns `true` iff `any(stride == 0) && product(shape) > 0`, which is
-/// the formal definition from `06-layout §5.11`. Empty-array degenerate
-/// metadata (`product(shape) == 0`) is excluded by this guard, so
-/// `compute_layout_flags` MUST call this helper instead of bare
-/// `has_zero_stride` when writing the bit.
-pub(crate) fn should_set_zero_stride_flag<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
-    if !strides.has_zero_stride() {
-        return false;
-    }
-    shape.slice().iter().all(|&e| e > 0)
 }
 
 #[cfg(test)]
@@ -237,21 +235,20 @@ mod tests {
     fn test_should_set_zero_stride_flag_broadcast() {
         let shape = Ix2(5, 1);
         let strides = Strides::new(Ix2(1, 0));
-        assert!(should_set_zero_stride_flag(&shape, &strides));
+        assert!(strides.should_set_zero_stride_flag(&shape));
     }
 
     #[test]
     fn test_should_set_zero_stride_flag_empty() {
         let shape = Ix2(0, 3);
         let strides = Strides::new(Ix2(1, 0));
-        assert!(!should_set_zero_stride_flag(&shape, &strides));
+        assert!(!strides.should_set_zero_stride_flag(&shape));
     }
 
     #[test]
     fn test_should_set_zero_stride_flag_no_zero() {
         let shape = Ix2(5, 4);
         let strides = Strides::new(Ix2(1, 5));
-        assert!(!should_set_zero_stride_flag(&shape, &strides));
+        assert!(!strides.should_set_zero_stride_flag(&shape));
     }
-
 }
