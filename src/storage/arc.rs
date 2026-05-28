@@ -146,6 +146,7 @@ unsafe impl<A: Element> RawStorage for ArcRepr<A> {
 // SAFETY: ArcRepr exposes only shared read-only access to the initialized
 // AlignedBuf<A> range described by RawStorage.
 unsafe impl<A: Element> Storage for ArcRepr<A> {}
+
 // SAFETY: ArcRepr is the crate-controlled shared read-only storage mode.
 // Cloning only bumps the Arc refcount and never exposes mutable access.
 unsafe impl<A: Element> StorageShared for ArcRepr<A> {}
