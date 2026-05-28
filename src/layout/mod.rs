@@ -2,6 +2,7 @@
 //!
 //! See `docs/design/06-layout.md`.
 
+mod aligned;
 mod contiguous;
 mod flags;
 mod strides;
