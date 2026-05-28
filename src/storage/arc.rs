@@ -277,7 +277,7 @@ mod tests {
         assert!(arc.is_empty());
     }
 
-    /// TryFrom&lt;Vec&gt; wraps data into an ArcRepr.
+    /// TryFrom<Vec> wraps data into an ArcRepr.
     #[test]
     fn test_arc_try_from_vec() {
         let arc = ArcRepr::<i32>::try_from(vec![1, 2, 3])
@@ -310,5 +310,23 @@ mod tests {
             .expect("ArcRepr::from_vec should succeed for small i64 input");
         let cloned = arc.clone();
         assert_eq!(arc.as_slice(), cloned.as_slice());
+    }
+
+    /// Constructs an ArcRepr filled with zeros.
+    #[test]
+    fn test_arc_zeros() {
+        let arc = ArcRepr::<f64>::zeros(4)
+            .expect("ArcRepr::zeros should succeed for small f64 input");
+        assert_eq!(arc.len(), 4);
+        assert_eq!(arc.as_slice(), &[0.0, 0.0, 0.0, 0.0]);
+    }
+
+    /// Constructs an ArcRepr filled with clones of a value.
+    #[test]
+    fn test_arc_from_elem() {
+        let arc = ArcRepr::<i32>::from_elem(3, 7)
+            .expect("ArcRepr::from_elem should succeed for small i32 input");
+        assert_eq!(arc.len(), 3);
+        assert_eq!(arc.as_slice(), &[7, 7, 7]);
     }
 }
