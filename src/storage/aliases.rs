@@ -1,7 +1,7 @@
 //! Short type aliases for storage representations.
 
-use crate::storage::ViewMutRepr;
-use crate::storage::ViewRepr;
+use super::ViewMutRepr;
+use super::ViewRepr;
 
 /// Short alias for [`ViewRepr`].
 pub type View<'a, A> = ViewRepr<'a, A>;

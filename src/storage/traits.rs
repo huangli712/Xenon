@@ -11,6 +11,8 @@
 
 use core::ptr::NonNull;
 
+use Sealed;
+
 // ---------------------------------------------------------------------------
 // W7T6: Marker traits (IsOwned, IsView, IsViewMut, IsShared)
 // ---------------------------------------------------------------------------
@@ -26,7 +28,7 @@ use core::ptr::NonNull;
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsOwned: RawStorage + crate::private::Sealed {}
+pub unsafe trait IsOwned: RawStorage + Sealed {}
 
 /// Marker trait for immutable borrowed view storage representations.
 ///
@@ -39,7 +41,7 @@ pub unsafe trait IsOwned: RawStorage + crate::private::Sealed {}
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
+pub unsafe trait IsView: RawStorage + Sealed {}
 
 /// Marker trait for mutable borrowed view storage representations.
 ///
@@ -52,7 +54,7 @@ pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
+pub unsafe trait IsViewMut: RawStorage + Sealed {}
 
 /// Marker trait for shared read-only storage representations.
 ///
@@ -65,7 +67,7 @@ pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsShared: RawStorage + crate::private::Sealed {}
+pub unsafe trait IsShared: RawStorage + Sealed {}
 
 // ---------------------------------------------------------------------------
 // W7T2: RawStorage — raw pointer access to underlying storage
@@ -83,7 +85,7 @@ pub unsafe trait IsShared: RawStorage + crate::private::Sealed {}
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait RawStorage: crate::private::Sealed {
+pub unsafe trait RawStorage: Sealed {
     /// The element type of the storage.
     type Elem;
 
@@ -127,7 +129,7 @@ pub unsafe trait RawStorage: crate::private::Sealed {
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait Storage: RawStorage + crate::private::Sealed {
+pub unsafe trait Storage: RawStorage + Sealed {
     /// Returns an immutable reference to the element at the given index.
     fn get(&self, index: usize) -> Option<&Self::Elem> {
         if index < self.len() {
@@ -178,7 +180,7 @@ pub unsafe trait Storage: RawStorage + crate::private::Sealed {
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait RawStorageMut: RawStorage + crate::private::Sealed {
+pub unsafe trait RawStorageMut: RawStorage + Sealed {
     /// Returns a raw mutable pointer to the start of the data.
     fn as_mut_ptr(&mut self) -> *mut Self::Elem;
 
@@ -210,7 +212,7 @@ pub unsafe trait RawStorageMut: RawStorage + crate::private::Sealed {
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
+pub unsafe trait StorageMut: Storage + RawStorageMut + Sealed {
     /// Returns a mutable reference to the element at the given index.
     fn get_mut(&mut self, index: usize) -> Option<&mut Self::Elem> {
         if index < self.len() {
@@ -270,7 +272,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
+pub unsafe trait StorageOwned: StorageMut + Clone + Sealed {
     /// Allocates storage of the given size, zero-filled.
     fn zeros(len: usize) -> Self
     where
@@ -335,7 +337,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
 /// Implementors must uphold the [`Storage`] contract and represent a
 /// shared read-only storage mode whose aliasing and thread-safety
 /// invariants are controlled by this crate.
-pub unsafe trait StorageShared: Storage + Clone + crate::private::Sealed {}
+pub unsafe trait StorageShared: Storage + Clone + Sealed {}
 
 /// Storage types that can be converted into an owned tensor by consuming self.
 ///
@@ -370,7 +372,7 @@ mod tests {
     /// W7T15 (IsViewMut), and W7T16 (IsShared).
     #[test]
     fn test_marker_traits() {
-        fn _sealed<T: crate::private::Sealed>() {}
+        fn _sealed<T: Sealed>() {}
         fn _bound_owned<T: IsOwned>() {}
         fn _bound_view<T: IsView>() {}
         fn _bound_view_mut<T: IsViewMut>() {}
@@ -392,7 +394,7 @@ mod tests {
 
     struct MockEmpty;
 
-    impl crate::private::Sealed for MockEmpty {}
+    impl Sealed for MockEmpty {}
 
     unsafe impl RawStorage for MockEmpty {
         type Elem = f64;
@@ -423,7 +425,7 @@ mod tests {
         data: [i32; 3],
     }
 
-    impl crate::private::Sealed for MockStorage {}
+    impl Sealed for MockStorage {}
 
     unsafe impl RawStorage for MockStorage {
         type Elem = i32;
@@ -455,7 +457,7 @@ mod tests {
         data: [i32; 3],
     }
 
-    impl crate::private::Sealed for MockStorageMut {}
+    impl Sealed for MockStorageMut {}
 
     unsafe impl RawStorage for MockStorageMut {
         type Elem = i32;
@@ -501,8 +503,8 @@ mod tests {
         data: Vec<i32>,
     }
 
-    impl crate::private::Sealed for MockOwned {}
-    impl crate::private::Sealed for MockShared {}
+    impl Sealed for MockOwned {}
+    impl Sealed for MockShared {}
 
     unsafe impl RawStorage for MockOwned {
         type Elem = i32;
