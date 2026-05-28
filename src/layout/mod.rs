@@ -14,23 +14,6 @@ use crate::dimension::Dimension;
 
 use strides::should_set_zero_stride_flag;
 
-/// Compute canonical `LayoutFlags` for an already-validated F-order layout
-/// (`06-layout §5.2`).
-///
-/// Fast path: use only when the caller has already established that the
-/// layout is F-order (e.g., immediately after a successful
-/// `compute_f_strides()`). For the general case, use
-/// `compute_layout_flags(shape, strides, ptr)` (§5.12).
-///
-/// # Arguments
-///
-/// * `aligned` - whether the logical-first pointer satisfies 64-byte
-///   alignment, OR whether the layout describes an empty tensor (§5.9).
-/// * `is_broadcast_zero_stride` - whether the layout contains broadcast-induced
-///   zero strides. Empty-array degenerate zero strides (`product(shape) == 0`)
-///   MUST be passed as `false` (their `F_CONTIGUOUS` bit is retained).
-
-
 /// Central entry for computing `LayoutFlags` from `shape + strides + ptr`
 /// (`06-layout §5.12`).
 ///
