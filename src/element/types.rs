@@ -89,10 +89,6 @@ pub const fn element_type_of<A: Element>() -> ElementType {
     A::ELEMENT_TYPE
 }
 
-/// Returns the canonical name for `A`.
-pub const fn element_type_name_of<A: Element>() -> &'static str {
-    A::ELEMENT_TYPE_NAME
-}
 
 
 #[cfg(test)]
@@ -133,13 +129,10 @@ mod tests {
         assert_eq!(ElementType::of::<Complex<f64>>(), ElementType::Complex64);
     }
 
-    /// Verifies element_type_of() and element_type_name_of() free
-    /// functions.
+    /// Verifies element_type_of() free function.
     #[test]
     fn test_free_functions_dispatch() {
         assert_eq!(element_type_of::<f32>(), ElementType::F32);
-        assert_eq!(element_type_name_of::<i64>(), "i64");
-        assert_eq!(element_type_name_of::<Complex<f32>>(), "Complex<f32>");
     }
 
     /// Verifies Display impl for ElementType.
