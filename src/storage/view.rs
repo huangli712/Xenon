@@ -3,22 +3,23 @@
 //! `ViewRepr<'a, A>` is a shared-borrow read-only storage representation.
 //! O(1) `Copy`/`Clone` metadata, no allocation.
 
-use crate::storage::Owned;
-use crate::storage::RawStorage;
-use crate::storage::Storage;
-use crate::storage::StorageIntoOwned;
-use crate::storage::buffer::AlignedBuf;
-use crate::storage::traits::IsView;
+use core::marker::PhantomData;
+
+use crate::private::Sealed;
+
+use super::buffer::AlignedBuf;
+use super::IsView;
+use super::{Owned, RawStorage, Storage, StorageIntoOwned};
 
 /// Immutable view over borrowed data.
 #[derive(Debug, Clone, Copy)]
 pub struct ViewRepr<'a, A> {
     ptr: *const A,
     len: usize,
-    _marker: core::marker::PhantomData<&'a A>,
+    _marker: PhantomData<&'a A>,
 }
 
-impl<'a, A> crate::private::Sealed for ViewRepr<'a, A> {}
+impl<'a, A> Sealed for ViewRepr<'a, A> {}
 
 impl<'a, A> ViewRepr<'a, A> {
     /// Creates a `ViewRepr` from a raw pointer and length.
@@ -33,7 +34,7 @@ impl<'a, A> ViewRepr<'a, A> {
         Self {
             ptr,
             len,
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -42,7 +43,7 @@ impl<'a, A> ViewRepr<'a, A> {
         Self {
             ptr: slice.as_ptr(),
             len: slice.len(),
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -57,7 +58,7 @@ impl<'a, A> ViewRepr<'a, A> {
             // SAFETY: start <= end <= len, so start is within bounds
             ptr: unsafe { self.ptr.add(start) },
             len: end - start,
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
