@@ -14,7 +14,7 @@ use std::borrow::Cow;
 
 use crate::element::Element;
 use crate::error::{InvalidShapeKind, XenonError};
-use crate::storage::alloc::AlignedAlloc;
+use super::alloc::AlignedAlloc;
 
 // ---------------------------------------------------------------------------
 // Internal helper
