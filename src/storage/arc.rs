@@ -4,6 +4,8 @@
 //! `Arc<SharedBuf<A>>`. O(1) shallow `Clone` via reference-count bump.
 //! Public API stays read-only.
 
+use core::mem::align_of;
+use core::ptr::write;
 use std::sync::Arc;
 
 use crate::private::Sealed;
@@ -12,6 +14,7 @@ use crate::element::Element;
 
 use super::buffer::{AlignedBuf, SharedBuf};
 use super::IsShared;
+use super::Owned;
 use super::{StorageIntoOwned, RawStorage, Storage, StorageShared};
 
 /// Shared read-only storage with atomic reference counting.
@@ -159,17 +162,21 @@ unsafe impl<A: Element> StorageShared for ArcRepr<A> {}
 unsafe impl<A: Element> IsShared for ArcRepr<A> {}
 
 impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
+    /// Copies the shared data into a fresh `Owned` buffer (O(n)).
+    ///
+    /// Elements are cloned one-by-one into a new 64-byte aligned allocation.
+    /// The result is independent of the original `ArcRepr`.
     fn into_owned_storage(self) -> crate::storage::Owned<A>
     where
         Self::Elem: Clone,
     {
-        let align = core::mem::align_of::<A>().max(64);
+        let align = align_of::<A>().max(64);
         let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len(), align)
             .expect("allocation failed in ArcRepr::into_owned_storage");
         for i in 0..self.len() {
             // SAFETY: i < len, both src and dst pointers are valid
             unsafe {
-                core::ptr::write(buf.as_mut_ptr().add(i), *self.inner.buf.as_ptr().add(i));
+                write(buf.as_mut_ptr().add(i), *self.inner.buf.as_ptr().add(i));
             }
             // Increment length after each successful write so that
             // a panic during a later clone() will still drop the
@@ -178,7 +185,7 @@ impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
                 buf.set_len(i + 1);
             }
         }
-        crate::storage::Owned { data: buf }
+        Owned { data: buf }
     }
 }
 
