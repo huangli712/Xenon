@@ -6,13 +6,24 @@
 
 use std::sync::Arc;
 
-use crate::element::Element;
 use crate::error::XenonError;
+use crate::element::Element;
+
 use super::buffer::{AlignedBuf, SharedBuf};
 use super::IsShared;
 use super::{StorageIntoOwned, RawStorage, Storage, StorageShared};
 
-/// Shared read-only storage.
+/// Shared read-only storage with atomic reference counting.
+///
+/// `ArcRepr` wraps an [`AlignedBuf`] inside `Arc<SharedBuf<A>>`. Cloning is
+/// O(1) via an atomic reference-count bump, and all clones share the same
+/// underlying data. The public API is read-only — mutable access requires
+/// converting to [`Owned`] via [`StorageIntoOwned::into_owned_storage`].
+///
+/// # Thread Safety
+///
+/// `ArcRepr<A>` is both `Send` and `Sync` when `A: Send + Sync`, allowing
+/// concurrent reads from multiple threads.
 #[derive(Debug)]
 pub struct ArcRepr<A> {
     inner: Arc<SharedBuf<A>>,
