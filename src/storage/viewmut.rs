@@ -146,6 +146,9 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     }
 }
 
+/// Short alias for [`ViewMutRepr`].
+pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

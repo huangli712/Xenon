@@ -117,6 +117,9 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
     }
 }
 
+/// Short alias for [`ViewRepr`].
+pub type View<'a, A> = ViewRepr<'a, A>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
