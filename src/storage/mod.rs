@@ -31,6 +31,7 @@
 
 mod alloc;
 mod arc;
+mod buffer;
 mod owned;
 mod traits;
 mod view;

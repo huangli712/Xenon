@@ -11,18 +11,10 @@ use crate::error::XenonError;
 use crate::storage::StorageIntoOwned;
 #[cfg(test)]
 use crate::storage::alloc::AlignedAlloc;
+use crate::storage::buffer::SharedBuf;
 use crate::storage::owned::AlignedBuf;
 use crate::storage::traits::IsShared;
 use crate::storage::{RawStorage, Storage, StorageShared};
-
-/// Internal shared buffer wrapping an `AlignedBuf`.
-///
-/// When the last `Arc` is dropped, `AlignedBuf`'s `Drop` releases the
-/// aligned allocation with the original layout.
-#[derive(Debug)]
-pub(crate) struct SharedBuf<A> {
-    buf: AlignedBuf<A>,
-}
 
 /// Shared read-only storage.
 #[derive(Debug)]
