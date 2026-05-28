@@ -204,7 +204,7 @@ mod tests {
     use crate::dimension::{Ix0, Ix2, Ix3};
     use super::Strides;
 
-    // --- LayoutFlags bitfield ---------------------------------------------------
+    // --- LayoutFlags bitfield -----------------------------------------------
 
     /// Default LayoutFlags has all bits cleared.
     #[test]
@@ -246,7 +246,7 @@ mod tests {
         assert!(flags.has_zero_stride());
     }
 
-    // --- LayoutFlags::classify --------------------------------------------------
+    // --- LayoutFlags::classify ----------------------------------------------
 
     /// BroadcastView takes priority over FContiguous in classify().
     #[test]
