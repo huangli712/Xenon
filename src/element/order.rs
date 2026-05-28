@@ -1,14 +1,23 @@
-//! Marker trait for element types that support ordered comparison.
+//! Ordered comparison marker trait.
 //!
-//! Only `i32`, `i64`, `f32`, `f64` implement this trait. Used by
-//! `less()`, `greater()`, and related comparison functions.
+//! `OrderedCompareElement` constrains comparison operations (`less`,
+//! `greater`, `less_equal`, `greater_equal`) to the closed set `{i32,
+//! i64, f32, f64}`. `Complex<f32>` and `Complex<f64>` are excluded at
+//! compile time because they do not implement `PartialOrd`.
 
-use crate::element::primitives::Element;
 use crate::private::Sealed;
+use super::Element;
 
 /// Marker trait for element types that support ordered comparison.
 ///
-/// Only `i32`, `i64`, `f32`, `f64` implement this trait.
+/// `OrderedCompareElement` is sealed to `{i32, i64, f32, f64}` via
+/// `PartialOrd` — the only supertrait that `Complex<f32>` and
+/// `Complex<f64>` lack. This allows comparison functions to use a
+/// single generic bound while excluding complex types at compile time.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
 impl OrderedCompareElement for i32 {}
@@ -20,7 +29,8 @@ impl OrderedCompareElement for f64 {}
 mod tests {
     use super::*;
 
-    /// Verifies OrderedCompareElement trait bounds for concrete types.
+    /// Compile-time verification that `{i32, i64, f32, f64}` satisfy
+    /// the `OrderedCompareElement` trait.
     #[test]
     fn test_marker_trait_impls() {
         fn assert_ordered<T: OrderedCompareElement>() {}
