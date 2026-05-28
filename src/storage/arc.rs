@@ -8,12 +8,11 @@ use std::sync::Arc;
 
 use crate::element::Element;
 use crate::error::XenonError;
-use super::StorageIntoOwned;
 #[cfg(test)]
 use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, SharedBuf};
 use super::IsShared;
-use super::{RawStorage, Storage, StorageShared};
+use super::{StorageIntoOwned, RawStorage, Storage, StorageShared};
 
 /// Shared read-only storage.
 #[derive(Debug)]
