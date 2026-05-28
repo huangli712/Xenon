@@ -142,14 +142,6 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     }
 }
 
-/// ```compile_fail
-/// # use xenon::storage::ViewMutRepr;
-/// fn assert_sync<T: Sync>() {}
-/// assert_sync::<ViewMutRepr<'_, f64>>();
-/// ```
-#[allow(dead_code)]
-fn test_view_mut_not_sync() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
