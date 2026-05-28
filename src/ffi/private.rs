@@ -6,8 +6,8 @@
 
 use core::marker::PhantomData;
 
-use super::types::{ElementType, TensorExportMutRaw, TensorExportRaw};
-use crate::element::Element;
+use super::types::{TensorExportMutRaw, TensorExportRaw};
+use crate::element::{Element, ElementType};
 
 /// Raw tensor data export for FFI consumers (read-only).
 ///
@@ -100,7 +100,7 @@ impl<'a, A: Element> From<TensorExport<'a, A>> for TensorExportRaw {
     fn from(e: TensorExport<'a, A>) -> Self {
         TensorExportRaw {
             data: e.data.cast(),
-            element_type: e.element_type,
+            element_type: e.element_type as u8,
             ndim: e.ndim,
             shape: e.shape,
             strides: e.strides,
@@ -114,7 +114,7 @@ impl<'a, A: Element> From<TensorExportMut<'a, A>> for TensorExportMutRaw {
     fn from(e: TensorExportMut<'a, A>) -> Self {
         TensorExportMutRaw {
             data: e.data.cast(),
-            element_type: e.element_type,
+            element_type: e.element_type as u8,
             ndim: e.ndim,
             shape: e.shape,
             strides: e.strides,
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(raw.ndim, 2);
         assert_eq!(raw.storage_len, 6);
         assert_eq!(raw.offset, 1);
-        assert_eq!(raw.element_type, ElementType::F64);
+        assert_eq!(raw.element_type, ElementType::F64 as u8);
         assert_eq!(raw.shape, shape.as_ptr());
         assert_eq!(raw.strides, strides.as_ptr());
     }
@@ -175,7 +175,7 @@ mod tests {
         assert_eq!(raw.ndim, 1);
         assert_eq!(raw.storage_len, 3);
         assert_eq!(raw.offset, 0);
-        assert_eq!(raw.element_type, ElementType::F64);
+        assert_eq!(raw.element_type, ElementType::F64 as u8);
         assert!(!raw.data.is_null());
         assert_eq!(raw.shape, shape.as_ptr());
         assert_eq!(raw.strides, strides.as_ptr());
