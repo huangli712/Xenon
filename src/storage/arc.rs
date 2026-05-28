@@ -116,6 +116,9 @@ impl<A> ArcRepr<A> {
 }
 
 impl<A> Clone for ArcRepr<A> {
+    /// Clones the handle by bumping the atomic reference count (O(1)).
+    ///
+    /// The underlying data is shared — no deep copy is performed.
     fn clone(&self) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
@@ -129,6 +132,7 @@ impl<A> Clone for ArcRepr<A> {
 unsafe impl<A: Element> RawStorage for ArcRepr<A> {
     type Elem = A;
 
+    /// Forwards to the underlying `AlignedBuf` through the `Arc`.
     fn as_ptr(&self) -> *const A {
         self.inner.buf.as_ptr()
     }
