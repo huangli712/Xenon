@@ -1,6 +1,6 @@
 //! F-order contiguity detection.
 //!
-//! Full recognition algorithm per `06-layout §5.7`. Replaces W6T4 placeholder.
+//! Full recognition algorithm per `06-layout §5.7`.
 
 use crate::dimension::Dimension;
 

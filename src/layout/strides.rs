@@ -1,7 +1,4 @@
-//! Stride carrier and helpers.
-//!
-//! Full implementations:
-//! - `compute_f_strides` → here (W6T6)
+//! Stride carrier, F-order stride computation, and zero-stride helpers.
 
 use std::borrow::Cow;
 
@@ -101,7 +98,7 @@ impl<D: Dimension> Strides<D> {
     /// degenerate metadata (`product(shape) == 0`) is excluded by this
     /// guard, so `compute_layout_flags` MUST call this helper instead of
     /// bare `has_zero_stride` when writing the bit.
-    pub fn should_set_zero_stride_flag(&self, shape: &D) -> bool {
+    pub(crate) fn should_set_zero_stride_flag(&self, shape: &D) -> bool {
         if !self.has_zero_stride() {
             return false;
         }
@@ -223,7 +220,7 @@ mod tests {
         assert_eq!(collected, vec![1, 2, 6]);
     }
 
-    // --- §8.2 / §5.11 zero-stride tests (W6T8) ---
+    // --- §8.2 / §5.11 zero-stride tests ---
 
     #[test]
     fn test_zero_stride_detect() {
