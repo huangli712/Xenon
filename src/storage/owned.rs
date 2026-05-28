@@ -445,15 +445,6 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
     }
 }
 
-/// ```compile_fail
-/// # use std::rc::Rc;
-/// # use xenon::storage::Owned;
-/// fn assert_send<T: Send>() {}
-/// assert_send::<Owned<Rc<i32>>>();
-/// ```
-#[allow(dead_code)]
-fn test_owned_negative_rc() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
