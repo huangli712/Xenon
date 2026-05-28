@@ -42,7 +42,7 @@ impl ElementType {
     ///
     /// Each name matches the corresponding `Element::ELEMENT_TYPE_NAME`
     /// string for the concrete type.
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             ElementType::Bool => "bool",
             ElementType::I32 => "i32",
@@ -59,7 +59,8 @@ impl ElementType {
     /// This is a zero-cost generic dispatch: `ElementType::of::<A>()`
     /// resolves to the `A::ELEMENT_TYPE` associated constant and is
     /// eligible for const evaluation.
-    pub const fn of<A: Element>() -> Self {
+    #[allow(dead_code)]
+    pub(crate) const fn of<A: Element>() -> Self {
         A::ELEMENT_TYPE
     }
 }
@@ -75,7 +76,7 @@ impl Display for ElementType {
 ///
 /// This is a free-function equivalent of [`ElementType::of`].
 /// Both resolve to `A::ELEMENT_TYPE` and are zero-cost const functions.
-pub const fn element_type_of<A: Element>() -> ElementType {
+pub(crate) const fn element_type_of<A: Element>() -> ElementType {
     A::ELEMENT_TYPE
 }
 
