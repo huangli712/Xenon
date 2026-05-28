@@ -143,17 +143,7 @@ impl LayoutFlags {
     ///   strides (`product(shape) == 0`) MUST be passed as `false`
     ///   (they retain the `F_CONTIGUOUS` bit).
     #[inline]
-    #[allow(
-        dead_code,
-        reason = "Fast-path API — canonical LayoutFlags constructor \
-                  for already-validated F-order layouts. Pairs with the \
-                  general `compute_layout_flags`; no production caller \
-                  currently chooses the fast path (all sites go through \
-                  the general one). Implementation + tests are complete. \
-                  (`allow` rather than `expect` because dead_code only \
-                  fires without `--tests`; test-mode use suppresses the \
-                  lint.)"
-    )]
+    #[allow(dead_code)]
     pub(crate) const fn flags_for_f_layout(
         aligned: bool,
         is_broadcast_zero_stride: bool,
