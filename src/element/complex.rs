@@ -5,9 +5,9 @@
 //! `norm`). The conjugate is already provided by [`Numeric::conjugate`]
 //! and is not repeated here.
 
+use crate::private::Sealed;
 use crate::complex::Complex;
 use super::{Numeric, RealScalar};
-use crate::private::Sealed;
 
 /// Complex scalar trait.
 ///
@@ -34,8 +34,6 @@ pub trait ComplexScalar: Numeric + Sealed {
     /// Returns the modulus |z| = √(re² + im²).
     fn norm(self) -> Self::Real;
 }
-
-// ── ComplexScalar impls ───────────────────────────────────────────────────
 
 /// `Complex<f32>`: `Real = f32`, delegates to the inner `Complex` field.
 impl ComplexScalar for Complex<f32> {
@@ -67,8 +65,8 @@ impl ComplexScalar for Complex<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::complex::Complex;
+    use super::*;
 
     /// Verifies that the `ComplexScalar` API surface (re, im, norm) and
     /// associated type `Real` are well-formed through a generic
