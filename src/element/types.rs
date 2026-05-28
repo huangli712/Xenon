@@ -89,8 +89,6 @@ pub const fn element_type_of<A: Element>() -> ElementType {
     A::ELEMENT_TYPE
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
