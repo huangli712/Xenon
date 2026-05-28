@@ -1,22 +1,31 @@
-//! Element trait definition and implementations for the 7 closed element types.
+//! Element trait definition and implementations for the closed set of 7
+//! element types: `{bool, i32, i64, f32, f64, Complex<f32>, Complex<f64>}`.
+//!
+//! The `Element` trait provides algebraic identity values (`zero`, `one`),
+//! a compile‑time type discriminant (`ELEMENT_TYPE`), and a canonical name
+//! (`ELEMENT_TYPE_NAME`) for use in error messages and FFI mapping.
 
 use core::fmt::{Debug, Display};
 
 use crate::complex::Complex;
-use crate::element::types::ElementType;
+use super::types::ElementType;
 use crate::private::Sealed;
 
 // ── Element trait ─────────────────────────────────────────────────────────
 
 /// Base trait for all tensor element types.
 ///
-/// `Element` provides identity values (`zero`/`one`), a compile-time type
-/// discriminant (`ELEMENT_TYPE`), and a canonical name (`ELEMENT_TYPE_NAME`)
-/// for use in error messages and FFI mapping.
+/// `Element` provides the algebraic identities `zero()` and `one()`, a
+/// compile‑time type discriminant `ELEMENT_TYPE` for FFI dispatch, and
+/// a canonical name `ELEMENT_TYPE_NAME` for diagnostics.
+///
+/// The supertrait bounds `Copy + Clone + PartialEq + Debug + Display +
+/// Send + Sync` guarantee that every element type is cheap to move,
+/// printable, debuggable, and safe to send across threads.
 ///
 /// # Sealed
 ///
-/// Only types within Xenon's closed element set may implement `Element`.
+/// Only Xenon’s closed set of 7 types may implement `Element`.
 pub trait Element:
     Copy + Clone + PartialEq + Debug + Display + Send + Sync + Sealed
 {
@@ -33,6 +42,9 @@ pub trait Element:
     const ELEMENT_TYPE_NAME: &'static str;
 }
 
+// ── Element impls ─────────────────────────────────────────────────────────
+
+/// `bool`: `zero()` is `false`, `one()` is `true`.
 impl Element for bool {
     fn zero() -> Self {
         false
@@ -44,6 +56,7 @@ impl Element for bool {
     const ELEMENT_TYPE_NAME: &'static str = "bool";
 }
 
+/// `i32`: standard integer identities.
 impl Element for i32 {
     fn zero() -> Self {
         0
@@ -55,6 +68,7 @@ impl Element for i32 {
     const ELEMENT_TYPE_NAME: &'static str = "i32";
 }
 
+/// `i64`: standard integer identities.
 impl Element for i64 {
     fn zero() -> Self {
         0
@@ -66,6 +80,7 @@ impl Element for i64 {
     const ELEMENT_TYPE_NAME: &'static str = "i64";
 }
 
+/// `f32`: IEEE‑754 identities.
 impl Element for f32 {
     fn zero() -> Self {
         0.0
@@ -77,6 +92,7 @@ impl Element for f32 {
     const ELEMENT_TYPE_NAME: &'static str = "f32";
 }
 
+/// `f64`: IEEE‑754 identities.
 impl Element for f64 {
     fn zero() -> Self {
         0.0
@@ -88,6 +104,7 @@ impl Element for f64 {
     const ELEMENT_TYPE_NAME: &'static str = "f64";
 }
 
+/// `Complex<f32>`: `zero()` is `0 + 0i`, `one()` is `1 + 0i`.
 impl Element for Complex<f32> {
     fn zero() -> Self {
         Complex::new(0.0, 0.0)
@@ -99,6 +116,7 @@ impl Element for Complex<f32> {
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f32>";
 }
 
+/// `Complex<f64>`: `zero()` is `0 + 0i`, `one()` is `1 + 0i`.
 impl Element for Complex<f64> {
     fn zero() -> Self {
         Complex::new(0.0, 0.0)
@@ -114,21 +132,21 @@ impl Element for Complex<f64> {
 mod tests {
     use super::*;
 
-    /// Verifies f32 Element::zero and Element::one.
+    /// Verifies `f32` `Element::zero` and `Element::one`.
     #[test]
     fn test_f32_zero_one() {
         assert_eq!(<f32 as Element>::zero(), 0.0_f32);
         assert_eq!(<f32 as Element>::one(), 1.0_f32);
     }
 
-    /// Verifies f64 Element::zero and Element::one.
+    /// Verifies `f64` `Element::zero` and `Element::one`.
     #[test]
     fn test_f64_zero_one() {
         assert_eq!(<f64 as Element>::zero(), 0.0_f64);
         assert_eq!(<f64 as Element>::one(), 1.0_f64);
     }
 
-    /// Verifies bool Element impl: zero, one, and trait bound.
+    /// Verifies `bool` `Element` impl and compile‑time trait bound.
     #[test]
     fn test_bool_element_only() {
         fn assert_element<A: Element>() {}
@@ -137,15 +155,15 @@ mod tests {
         assert!(bool::one());
     }
 
-    /// Verifies Complex&lt;f64&gt; Element::zero and Element::one.
+    /// Verifies `Complex<f64>` `Element::zero` and `Element::one`.
     #[test]
     fn test_complex_f64_zero_one() {
         assert_eq!(<Complex<f64> as Element>::zero(), Complex::new(0.0, 0.0));
         assert_eq!(<Complex<f64> as Element>::one(), Complex::new(1.0, 0.0));
     }
 
-    /// Verifies that the `Element` API surface (`zero`, `one`, `ELEMENT_TYPE`,
-    /// `ELEMENT_TYPE_NAME`) is well-formed and reachable through a generic
+    /// Verifies that the `Element` API surface (`zero`, `one`,
+    /// `ELEMENT_TYPE`, `ELEMENT_TYPE_NAME`) is reachable through a generic
     /// `A: Element` bound. Exercises all 7 closed element types.
     #[test]
     fn test_element_contract() {
@@ -164,9 +182,9 @@ mod tests {
         check::<Complex<f64>>();
     }
 
-    /// Compile-time verification: `usize` must NOT implement `Element`.
-    /// This test will FAIL TO COMPILE if someone accidentally adds
-    /// an `Element` impl for `usize`.
+    /// Compile‑time verification: `usize` must NOT implement `Element`.
+    /// Uncommenting the `_assert_element::<usize>()` line must produce a
+    /// compile error.
     #[test]
     fn test_usize_does_not_implement_element() {
         fn _assert_element<T: Element>() {
@@ -175,12 +193,11 @@ mod tests {
         _assert_element::<i32>();
         _assert_element::<i64>();
         _assert_element::<f64>();
-        // Negative bound: uncommenting the line below MUST cause a compile error.
         // _assert_element::<usize>();
     }
 
-    /// Verifies Element::ELEMENT_TYPE_NAME matches ElementType::name()
-    /// for each type.
+    /// Verifies `ELEMENT_TYPE_NAME` matches `ElementType::name()` for
+    /// every element type.
     #[test]
     fn test_element_type_name_consistency() {
         assert_eq!(<i32 as Element>::ELEMENT_TYPE_NAME, ElementType::I32.name());
@@ -201,7 +218,7 @@ mod tests {
         );
     }
 
-    /// Property: zero() + a == a for all element types.
+    /// Property: `zero() + a == a` for all element types.
     #[test]
     fn test_property_zero_additive_identity() {
         for a in [-7_i32, 0, 42] {
@@ -222,7 +239,7 @@ mod tests {
         }
     }
 
-    /// Property: one() * a == a for all element types.
+    /// Property: `one() * a == a` for all element types.
     #[test]
     fn test_property_one_multiplicative_identity() {
         for a in [-7_i32, 0, 42] {
