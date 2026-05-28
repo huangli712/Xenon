@@ -1,19 +1,26 @@
-//! Checked arithmetic traits.
+//! Checked arithmetic traits for integer types.
 //!
-//! Integer-only overflow-sensitive operations that return `Option`. Callers
-//! translate `None` to a panic. Float types use ordinary operators (NaN
-//! propagation handles the semantics) and are intentionally not covered
-//! here.
+//! Each trait wraps a standard library `checked_*` method and returns
+//! `Option` — `None` signals overflow or division-by-zero. Float and
+//! complex types are intentionally excluded; they use ordinary operators
+//! with NaN propagation instead.
+//!
+//! # Sealed
+//!
+//! Only `i32` and `i64` implement these traits. The `Sealed` supertrait
+//! prevents external implementations.
 
-use crate::element::Numeric;
 use crate::private::Sealed;
+use super::Numeric;
 
-/// Checked addition for types that support it.
+// ── CheckedAdd ────────────────────────────────────────────────────────────
+
+/// Checked addition for integer types.
 ///
-/// Returns `None` on overflow instead of wrapping.
-/// Only implemented for integer types (`i32`, `i64`).
-/// Float types use ordinary `+` (NaN propagation handles the semantics).
-#[allow(dead_code)]
+/// Returns `None` on overflow instead of wrapping. Callers translate
+/// `None` to a panic with diagnostic context (element index, shape).
+///
+/// Only `i32` and `i64` implement this trait.
 pub(crate) trait CheckedAdd: Numeric + Sealed {
     /// Returns `Some(self + rhs)` if no overflow, `None` otherwise.
     fn checked_add(self, rhs: Self) -> Option<Self>;
@@ -33,8 +40,14 @@ impl CheckedAdd for i64 {
     }
 }
 
-/// Checked subtraction for integer-only overflow-sensitive paths.
-#[allow(dead_code)]
+// ── CheckedSub ────────────────────────────────────────────────────────────
+
+/// Checked subtraction for integer types.
+///
+/// Returns `None` on overflow instead of wrapping. Used by element-wise
+/// subtraction and related reductions.
+///
+/// Only `i32` and `i64` implement this trait.
 pub(crate) trait CheckedSub: Numeric + Sealed {
     /// Returns `Some(self - rhs)` if no overflow, `None` otherwise.
     fn checked_sub(self, rhs: Self) -> Option<Self>;
@@ -54,8 +67,14 @@ impl CheckedSub for i64 {
     }
 }
 
-/// Checked multiplication for integer-only overflow-sensitive paths.
-#[allow(dead_code)]
+// ── CheckedMul ────────────────────────────────────────────────────────────
+
+/// Checked multiplication for integer types.
+///
+/// Returns `None` on overflow instead of wrapping. Used by element-wise
+/// multiplication and dot‑product accumulation.
+///
+/// Only `i32` and `i64` implement this trait.
 pub(crate) trait CheckedMul: Numeric + Sealed {
     /// Returns `Some(self * rhs)` if no overflow, `None` otherwise.
     fn checked_mul(self, rhs: Self) -> Option<Self>;
@@ -75,8 +94,14 @@ impl CheckedMul for i64 {
     }
 }
 
-/// Checked negation for integer-only overflow-sensitive paths.
-#[allow(dead_code)]
+// ── CheckedNeg ────────────────────────────────────────────────────────────
+
+/// Checked negation for integer types.
+///
+/// Returns `None` when negating `i32::MIN` or `i64::MIN` (whose absolute
+/// value cannot be represented).
+///
+/// Only `i32` and `i64` implement this trait.
 pub(crate) trait CheckedNeg: Numeric + Sealed {
     /// Returns `Some(-self)` if no overflow, `None` otherwise.
     fn checked_neg(self) -> Option<Self>;
@@ -96,13 +121,17 @@ impl CheckedNeg for i64 {
     }
 }
 
-/// Checked division for integer-only overflow-sensitive paths.
+// ── CheckedDiv ────────────────────────────────────────────────────────────
+
+/// Checked division for integer types.
 ///
-/// Returns `None` for divisor zero or for the `MIN / -1` overflow case;
-/// callers translate `None` to a panic.
-#[allow(dead_code)]
+/// Returns `None` for two cases: division by zero, and `MIN / -1` (which
+/// overflows the signed integer range). Callers translate `None` to a
+/// panic with a descriptive trigger label.
+///
+/// Only `i32` and `i64` implement this trait.
 pub(crate) trait CheckedDiv: Numeric + Sealed {
-    /// Returns `Some(self / rhs)` if no overflow or zero-divisor, `None` otherwise.
+    /// Returns `Some(self / rhs)` if the division is safe, `None` otherwise.
     fn checked_div(self, rhs: Self) -> Option<Self>;
 }
 
@@ -124,10 +153,11 @@ impl CheckedDiv for i64 {
 mod tests {
     use super::*;
 
-    /// Verifies overflow detection for all five checked arithmetic traits
-    /// on i32 and i64.
+    /// Verifies overflow detection on all five checked arithmetic traits,
+    /// covering `i32` and `i64` for both success and failure paths.
     #[test]
     fn test_checked_arithmetic_traits() {
+        // Success
         assert_eq!(<i32 as CheckedAdd>::checked_add(1, 2), Some(3));
         assert_eq!(<i64 as CheckedAdd>::checked_add(1, 2), Some(3));
         assert_eq!(<i32 as CheckedSub>::checked_sub(5, 3), Some(2));
@@ -139,6 +169,7 @@ mod tests {
         assert_eq!(<i32 as CheckedDiv>::checked_div(10, 3), Some(3));
         assert_eq!(<i64 as CheckedDiv>::checked_div(10, 3), Some(3));
 
+        // Overflow / error
         assert_eq!(<i32 as CheckedAdd>::checked_add(i32::MAX, 1), None);
         assert_eq!(<i64 as CheckedAdd>::checked_add(i64::MAX, 1), None);
         assert_eq!(<i32 as CheckedSub>::checked_sub(i32::MIN, 1), None);
