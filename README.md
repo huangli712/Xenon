@@ -32,7 +32,7 @@ fn main() -> xenon::Result<()> {
 
 ```toml
 [dependencies]
-xenon = "0.0.11"
+xenon = "0.0.12"
 ```
 
 ## Documentation
