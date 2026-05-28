@@ -6,12 +6,9 @@
 //! (`ELEMENT_TYPE_NAME`) for use in error messages and FFI mapping.
 
 use core::fmt::{Debug, Display};
-
+use crate::private::Sealed;
 use crate::complex::Complex;
 use super::types::ElementType;
-use crate::private::Sealed;
-
-// ── Element trait ─────────────────────────────────────────────────────────
 
 /// Base trait for all tensor element types.
 ///
@@ -41,8 +38,6 @@ pub trait Element:
     /// Canonical, stable name for this element type.
     const ELEMENT_TYPE_NAME: &'static str;
 }
-
-// ── Element impls ─────────────────────────────────────────────────────────
 
 /// `bool`: `zero()` is `false`, `one()` is `true`.
 impl Element for bool {
