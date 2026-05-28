@@ -29,6 +29,7 @@
 //! `ViewMutRepr` is intentionally not `Sync`; parallel mutable execution must
 //! split exclusive access into non-overlapping chunks before crossing threads.
 
+mod aliases;
 mod alloc;
 mod arc;
 mod buffer;
@@ -37,6 +38,7 @@ mod traits;
 mod view;
 mod viewmut;
 
+pub use aliases::{View, ViewMut};
 pub use arc::ArcRepr;
 pub use owned::Owned;
 pub use traits::{
@@ -46,8 +48,3 @@ pub use traits::{
 };
 pub use view::ViewRepr;
 pub use viewmut::ViewMutRepr;
-
-/// Short alias for [`ViewRepr`].
-pub type View<'a, A> = ViewRepr<'a, A>;
-/// Short alias for [`ViewMutRepr`].
-pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
