@@ -7,7 +7,7 @@ use crate::dimension::Dimension;
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 use crate::dispatch::{ExecPath, select_exec_path};
-use crate::element::{ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar};
+use crate::element::{CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar};
 use crate::math::helpers::{apply_complex_to_real, apply_unary, apply_unary_indexed};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
@@ -134,7 +134,7 @@ macro_rules! impl_unary_int {
         impl UnaryArith for $t {
             #[inline]
             fn neg_step(x: Self) -> Self {
-                x.checked_neg().unwrap_or_else(|| {
+                <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
                     panic!(
                         "integer overflow: operation=neg, type={}, trigger={}",
                         stringify!($t),
@@ -154,7 +154,7 @@ macro_rules! impl_unary_int {
             }
             #[inline]
             fn neg_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-                x.checked_neg().unwrap_or_else(|| {
+                <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
                     panic!(
                         "integer overflow: operation=neg, type={}, trigger={}, \
                          element_index={}, shape={:?}",
@@ -186,7 +186,7 @@ macro_rules! impl_unary_int {
                 if x >= 0 {
                     x
                 } else {
-                    x.checked_neg().unwrap_or_else(|| {
+                    <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
                         panic!(
                             "integer overflow: operation=abs, type={}, trigger={}",
                             stringify!($t),
@@ -204,7 +204,7 @@ macro_rules! impl_unary_int {
                 if x >= 0 {
                     x
                 } else {
-                    x.checked_neg().unwrap_or_else(|| {
+                    <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
                         panic!(
                             "integer overflow: operation=abs, type={}, trigger={}, \
                              element_index={}, shape={:?}",
