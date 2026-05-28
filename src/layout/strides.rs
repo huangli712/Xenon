@@ -6,8 +6,6 @@ use crate::dimension::Dimension;
 use crate::error::{InvalidShapeKind, XenonError};
 
 /// Stride carrier; element-offset along each axis, same rank as `D`.
-///
-/// See `06-layout §5.5` for the full API contract.
 #[derive(Debug, Clone)]
 pub struct Strides<D: Dimension> {
     strides: D,
@@ -29,8 +27,6 @@ impl<D: Dimension> Strides<D> {
 
     /// Construct strides from a slice of `usize` stride values.
     ///
-    /// See `06-layout §5.5`.
-    ///
     /// # Errors
     ///
     /// Returns `XenonError::DimensionMismatch` if `slice.len()` does not
@@ -41,8 +37,7 @@ impl<D: Dimension> Strides<D> {
     }
 
     /// Compute default F-contiguous strides for the given shape.
-    /// Convenience alias for the free function `compute_f_strides`
-    /// (`06-layout §5.5`).
+    /// Convenience alias for `compute_f_strides`.
     ///
     /// # Errors
     ///
@@ -54,8 +49,6 @@ impl<D: Dimension> Strides<D> {
     }
 
     /// Returns the stride for dimension `axis`.
-    ///
-    /// See `06-layout §5.5`.
     ///
     /// # Errors
     ///
@@ -75,8 +68,7 @@ impl<D: Dimension> Strides<D> {
 
     /// Returns an iterator over stride values.
     ///
-    /// Delegates to `D::slice().iter()` so the iteration shares its
-    /// representation with `Dimension::slice()`. See `06-layout §5.5`.
+    /// Delegates to `D::slice().iter()`.
     pub fn iter(&self) -> impl Iterator<Item = &usize> {
         self.as_slice().iter()
     }
@@ -86,18 +78,15 @@ impl<D: Dimension> Strides<D> {
     /// **This is NOT the same as the `HAS_ZERO_STRIDE` flag value**: the
     /// flag is set only when `product(shape) > 0` additionally holds.
     /// Use `should_set_zero_stride_flag(shape)` for flag assignment in
-    /// `compute_layout_flags` (`06-layout §5.11`, §6.1).
+    /// `compute_layout_flags`.
     pub fn has_zero_stride(&self) -> bool {
         self.as_slice().contains(&0)
     }
 
-    /// Flag-assignment guard for `HAS_ZERO_STRIDE`.
-    ///
-    /// Returns `true` iff `any(stride == 0) && product(shape) > 0`, which
-    /// is the formal definition from `06-layout §5.11`. Empty-array
-    /// degenerate metadata (`product(shape) == 0`) is excluded by this
-    /// guard, so `compute_layout_flags` MUST call this helper instead of
-    /// bare `has_zero_stride` when writing the bit.
+    /// Returns `true` iff `any(stride == 0) && product(shape) > 0`.
+    /// Empty-array degenerate metadata (`product(shape) == 0`) is
+    /// excluded by this guard, so `compute_layout_flags` MUST call this
+    /// helper instead of bare `has_zero_stride` when writing the bit.
     pub(crate) fn should_set_zero_stride_flag(&self, shape: &D) -> bool {
         if !self.has_zero_stride() {
             return false;
@@ -108,7 +97,7 @@ impl<D: Dimension> Strides<D> {
 
 /// Compute strides for an F-order contiguous layout from the given shape.
 ///
-/// See `06-layout §5.6` algorithm:
+/// Algorithm:
 /// ```text
 /// strides[0] = 1;
 /// for i in 1..N: strides[i] = strides[i-1].checked_mul(shape[i-1])?
@@ -150,35 +139,35 @@ mod tests {
 
     #[test]
     fn test_f_strides_1d() {
-        // §8.2 high priority: shape [5] → strides [1]
+        // F-contiguous strides computed from shape dimensions.
         let strides = compute_f_strides(&Ix1(5)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1]);
     }
 
     #[test]
     fn test_f_strides_2d() {
-        // §8.2 high priority: shape [3, 4] → strides [1, 3]
+        // F-contiguous strides for [3, 4] are [1, 3].
         let strides = compute_f_strides(&Ix2(3, 4)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
     #[test]
     fn test_f_strides_3d() {
-        // §8.2 high priority: shape [2, 3, 4] → strides [1, 2, 6]
+        // F-contiguous strides for [2, 3, 4] are [1, 2, 6].
         let strides = compute_f_strides(&Ix3(2, 3, 4)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
     }
 
     #[test]
     fn test_f_strides_scalar() {
-        // §8.2 high priority: 0-D → empty strides.
+        // 0-D scalar produces empty strides.
         let strides = compute_f_strides(&Ix0).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[] as &[usize]);
     }
 
     #[test]
     fn test_f_strides_overflow() {
-        // §8.2 high priority: overflow → Err(InvalidShape::ProductOverflow).
+        // Overflow of cumulative product → InvalidShape::ProductOverflow.
         let shape = Ix2(usize::MAX, usize::MAX);
         let err = compute_f_strides(&shape).expect_err("expected overflow error");
         match err {
@@ -192,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_strides_try_stride_ok() {
-        // §5.5: try_stride returns Ok(value) for valid axis.
+        // try_stride returns Ok(value) for valid axis.
         let strides = compute_f_strides(&Ix3(2, 3, 4)).expect("valid test shape");
         assert_eq!(strides.try_stride(0).expect("valid axis"), 1);
         assert_eq!(strides.try_stride(1).expect("valid axis"), 2);
@@ -201,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_strides_try_stride_out_of_bounds() {
-        // §5.5: try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
+        // try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
         let strides = compute_f_strides(&Ix2(3, 4)).expect("valid test shape");
         let err = strides
             .try_stride(2)
@@ -214,13 +203,13 @@ mod tests {
 
     #[test]
     fn test_strides_iter() {
-        // §5.5: iter yields stride values in axis order.
+        // iter yields stride values in axis order.
         let strides = compute_f_strides(&Ix3(2, 3, 4)).expect("valid test shape");
         let collected: Vec<usize> = strides.iter().copied().collect();
         assert_eq!(collected, vec![1, 2, 6]);
     }
 
-    // --- §8.2 / §5.11 zero-stride tests ---
+    // --- zero-stride tests ---
 
     #[test]
     fn test_zero_stride_detect() {

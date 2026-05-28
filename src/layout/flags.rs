@@ -9,11 +9,12 @@ use super::aligned::is_aligned;
 use super::contiguous::is_f_contiguous;
 use super::strides::Strides;
 
-/// 8-bit packed layout flags. Concrete bit layout in `06-layout §5.1`.
+/// 8-bit packed layout flags: F_CONTIGUOUS (bit 0), ALIGNED (bit 2),
+/// HAS_ZERO_STRIDE (bit 3). Bits 1, 4-7 are reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LayoutFlags(u8);
 
-/// Classification of tensor memory layout contiguity (`06-layout §5.3`).
+/// Classification of tensor memory layout contiguity status.
 ///
 /// Variants are mutually exclusive. `BroadcastView` applies only when
 /// `product(shape) > 0 && any(stride == 0)`; empty tensors with degenerate
@@ -97,11 +98,11 @@ impl LayoutFlags {
         }
     }
 
-    // === LayoutState classification (§5.3) ===
+    // === LayoutState classification ===
 
     /// Classifies the current layout into a `LayoutState` variant.
     ///
-    /// Deterministic priority: `BroadcastView` → `FContiguous` → `NonContiguous`.
+    /// Priority: `BroadcastView` → `FContiguous` → `NonContiguous`.
     ///
     /// # Invariant
     ///
@@ -123,34 +124,35 @@ impl LayoutFlags {
         }
     }
 
-    // === Constructor (§5.2) ===
+    // === Constructor ===
 
-    /// Compute canonical `LayoutFlags` for an already-validated F-order layout
-    /// (`06-layout §5.2`).
+    /// Compute canonical `LayoutFlags` for an already-validated F-order
+    /// layout.
     ///
-    /// Fast path: use only when the caller has already established that the
-    /// layout is F-order (e.g., immediately after a successful
+    /// Fast path: use only when the caller has already established that
+    /// the layout is F-order (e.g., immediately after a successful
     /// `compute_f_strides()`). For the general case, use
-    /// `compute_layout_flags(shape, strides, ptr)` (§5.12).
+    /// `compute_layout_flags(shape, strides, ptr)`.
     ///
     /// # Arguments
     ///
     /// * `aligned` - whether the logical-first pointer satisfies 64-byte
-    ///   alignment, OR whether the layout describes an empty tensor (§5.9).
-    /// * `is_broadcast_zero_stride` - whether the layout contains broadcast-induced
-    ///   zero strides. Empty-array degenerate zero strides (`product(shape) == 0`)
-    ///   MUST be passed as `false` (their `F_CONTIGUOUS` bit is retained).
+    ///   alignment, OR whether the layout describes an empty tensor.
+    /// * `is_broadcast_zero_stride` - whether the layout contains
+    ///   broadcast-induced zero strides. Empty-array degenerate zero
+    ///   strides (`product(shape) == 0`) MUST be passed as `false`
+    ///   (they retain the `F_CONTIGUOUS` bit).
     #[inline]
     #[allow(
         dead_code,
-        reason = "06-layout §5.2 fast-path API — canonical LayoutFlags constructor \
-                  for already-validated F-order layouts. Pairs with the general \
-                  `compute_layout_flags` (§5.12); no production caller currently \
-                  chooses the fast path (all sites go through the general one). \
-                  Implementation + tests are complete. (`allow` rather than \
-                  `expect` because dead_code only fires without `--tests`; \
-                  test-mode use suppresses the lint, so `expect` would be \
-                  unfulfilled.)"
+        reason = "Fast-path API — canonical LayoutFlags constructor \
+                  for already-validated F-order layouts. Pairs with the \
+                  general `compute_layout_flags`; no production caller \
+                  currently chooses the fast path (all sites go through \
+                  the general one). Implementation + tests are complete. \
+                  (`allow` rather than `expect` because dead_code only \
+                  fires without `--tests`; test-mode use suppresses the \
+                  lint.)"
     )]
     pub(crate) const fn flags_for_f_layout(
         aligned: bool,
@@ -163,8 +165,7 @@ impl LayoutFlags {
     }
 }
 
-/// Central entry for computing `LayoutFlags` from `shape + strides + ptr`
-/// (`06-layout §5.12`).
+/// Central entry for computing `LayoutFlags` from `shape + strides + ptr`.
 ///
 /// This function is the **single source of truth** for the
 /// `HAS_ZERO_STRIDE` bit and for the F-order / alignment flags as cached
@@ -178,7 +179,7 @@ impl LayoutFlags {
 /// validation belongs to the caller (e.g., `Dimension::checked_size` or
 /// `compute_f_strides`). This function does NOT return `Result`.
 ///
-/// # Pointer safety (§6.5)
+/// # Pointer safety
 ///
 /// `ptr` is inspected only as an integer address (modulo alignment) and
 /// is never dereferenced. The pointer is permitted to be dangling (e.g.,
@@ -188,18 +189,18 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
     strides: &Strides<D>,
     ptr: *const A,
 ) -> LayoutFlags {
-    // §6.1 step 1: HAS_ZERO_STRIDE := any(stride==0) && product(shape) > 0.
+    // Step 1: HAS_ZERO_STRIDE := any(stride==0) && product(shape) > 0.
     let is_broadcast_zero_stride = strides.should_set_zero_stride_flag(shape);
 
-    // §6.1 step 2: F_CONTIGUOUS := !is_broadcast_zero_stride
-    //                              && is_f_contiguous(shape, strides).
+    // Step 2: F_CONTIGUOUS := !is_broadcast_zero_stride
+    //                          && is_f_contiguous(shape, strides).
     //
     // Empty-array degenerate metadata (product == 0) keeps
     // `is_broadcast_zero_stride == false` and can therefore still be
-    // F_CONTIGUOUS, matching §5.11 edge-case table row 3.
+    // F_CONTIGUOUS.
     let f_contig = !is_broadcast_zero_stride && is_f_contiguous(shape, strides);
 
-    // §6.1 step 3 + §5.9: empty tensors report ALIGNED = true regardless
+    // Step 3: empty tensors report ALIGNED = true regardless
     // of the dangling pointer; otherwise inspect the address.
     let is_empty = shape.slice().contains(&0);
     let aligned = if is_empty {
@@ -277,7 +278,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
     }
 
-    // === §5.2 flags_for_f_layout ===
+    // === flags_for_f_layout ===
 
     #[test]
     fn test_flags_for_f_layout_aligned_no_broadcast() {
@@ -291,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_flags_for_f_layout_broadcast_clears_f_contig() {
-        // §5.2: when caller declares broadcast zero stride, the fast path
+        // When caller declares broadcast zero stride, the fast path
         // MUST clear F_CONTIGUOUS regardless of the F-order assumption.
         let flags = LayoutFlags::flags_for_f_layout(true, true);
         assert!(!flags.is_f_contiguous());
@@ -299,7 +300,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::BroadcastView);
     }
 
-    // === §5.12 compute_layout_flags ===
+    // === compute_layout_flags ===
 
     fn dangling_u8() -> *const u8 {
         core::ptr::NonNull::<u8>::dangling().as_ptr()
@@ -307,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_compute_layout_flags_construction_f_order() {
-        // §5.6/§5.7 symmetry: compute_f_strides ⇒ is_f_contiguous == true.
+        // compute_f_strides ⇒ is_f_contiguous == true.
         let shape = Ix3(2, 3, 4);
         let strides = compute_f_strides(&shape).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
@@ -340,7 +341,7 @@ mod tests {
         );
         assert!(
             flags.is_f_contiguous(),
-            "empty F-order metadata should remain F_CONTIGUOUS (§5.11)"
+            "empty F-order metadata should remain F_CONTIGUOUS"
         );
         assert!(flags.is_aligned());
         assert_eq!(flags.classify(), LayoutState::FContiguous);

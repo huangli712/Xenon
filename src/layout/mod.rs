@@ -1,6 +1,4 @@
 //! Layout module: F-order strides, contiguity, flags and alignment.
-//!
-//! See `docs/design/06-layout.md`.
 
 mod aligned;
 mod contiguous;

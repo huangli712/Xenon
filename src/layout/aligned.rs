@@ -1,15 +1,16 @@
 //! Pointer alignment checks.
 //!
-//! `is_aligned` / `is_aligned_to` — raw-pointer alignment verification
-//! (`06-layout §5.9`).
+//! `is_aligned` / `is_aligned_to` — raw-pointer alignment verification.
 
-/// Check whether `ptr` satisfies the alignment requirement
-/// (`06-layout §5.9`).
+/// Check whether `ptr` satisfies the alignment requirement.
+///
+/// 64 bytes (cache-line width) is the minimum useful alignment for most
+/// SIMD paths.
 ///
 /// Returns `false` for `align == 0` or non-power-of-two `align`; never
 /// panics. The pointer is inspected only as an integer address (modulo
 /// `align`); it is **not** dereferenced, and is permitted to be dangling
-/// (e.g., for empty tensors; see §6.5).
+/// (e.g., for empty tensors).
 #[inline]
 pub(crate) fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
     if align == 0 || !align.is_power_of_two() {
@@ -18,9 +19,7 @@ pub(crate) fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
     (ptr as usize).is_multiple_of(align)
 }
 
-/// Check whether the logical first-element pointer is 64-byte aligned
-/// (cache-line size; the minimum useful for most SIMD paths).
-/// See `06-layout §5.9`.
+/// Convenience: check whether `ptr` is 64-byte aligned.
 #[inline]
 pub(crate) fn is_aligned(ptr: *const u8) -> bool {
     is_aligned_to(ptr, 64)
