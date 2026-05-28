@@ -157,7 +157,7 @@ fn _doctest_into_raw_parts_rejects_view() {}
 #[cfg(test)]
 mod tests {
     use crate::dimension::Ix1;
-    use crate::ffi::types::ElementType;
+    use crate::element::ElementType;
     use crate::layout::Strides;
     use crate::tensor::{TensorView, TensorViewMut};
 
@@ -181,7 +181,7 @@ mod tests {
         let raw = tensor.export();
         assert_eq!(raw.ndim, 1);
         assert_eq!(raw.storage_len, 3);
-        assert_eq!(raw.element_type, ElementType::I32);
+        assert_eq!(raw.element_type, ElementType::I32 as u8);
         // The critical contract: §5.4 mandates `data` carries the storage
         // base pointer, not the logical first. For offset = 0 views the two
         // are equal; the offset != 0 case is tested in

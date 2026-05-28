@@ -6,7 +6,6 @@
 use core::ffi::c_void;
 use std::borrow::Cow;
 
-use crate::element::ElementType;
 pub use crate::error::{FfiBackend, FfiErrorCategory};
 
 use crate::error::XenonError;

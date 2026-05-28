@@ -14,8 +14,8 @@
 
 // Conversion traits
 pub use crate::convert::{
-    CastElement,
     CastTo,
+    CastElement,
 };
 
 // Complex number type
