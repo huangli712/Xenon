@@ -5,10 +5,8 @@
 //! entry point.
 
 use core::ops::{Add, Div, Mul, Neg, Sub};
-
-use super::Element;
-
 use crate::complex::Complex;
+use super::Element;
 
 /// Numeric element trait.
 ///
@@ -24,15 +22,18 @@ use crate::complex::Complex;
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait Numeric:
-    Element + Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self> + Neg<Output = Self>
+    Element
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + Neg<Output = Self>
 {
     /// Returns the conjugate of `self`.
     ///
     /// For real and integer types this is the identity operation.
     fn conjugate(self) -> Self;
 }
-
-// ── Numeric impls ─────────────────────────────────────────────────────────
 
 impl Numeric for i32 {
     #[inline]
