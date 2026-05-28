@@ -294,6 +294,7 @@ mod tests {
 
     // --- compute_layout_flags -----------------------------------------------
 
+    /// Non-dereferenceable `u8` pointer for pointer-alignment-only tests.
     fn dangling_u8() -> *const u8 {
         core::ptr::NonNull::<u8>::dangling().as_ptr()
     }
