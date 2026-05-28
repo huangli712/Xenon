@@ -19,6 +19,9 @@ pub struct ViewRepr<'a, A> {
     _marker: PhantomData<&'a A>,
 }
 
+/// Short alias for [`ViewRepr`].
+pub type View<'a, A> = ViewRepr<'a, A>;
+
 impl<'a, A> Sealed for ViewRepr<'a, A> {}
 
 impl<'a, A> ViewRepr<'a, A> {
@@ -116,9 +119,6 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
         Owned { data: buf }
     }
 }
-
-/// Short alias for [`ViewRepr`].
-pub type View<'a, A> = ViewRepr<'a, A>;
 
 #[cfg(test)]
 mod tests {
