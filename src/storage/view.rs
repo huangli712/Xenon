@@ -7,7 +7,7 @@ use crate::storage::Owned;
 use crate::storage::RawStorage;
 use crate::storage::Storage;
 use crate::storage::StorageIntoOwned;
-use crate::storage::owned::AlignedBuf;
+use crate::storage::buffer::AlignedBuf;
 use crate::storage::traits::IsView;
 
 /// Immutable view over borrowed data.

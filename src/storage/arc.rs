@@ -12,7 +12,7 @@ use crate::storage::StorageIntoOwned;
 #[cfg(test)]
 use crate::storage::alloc::AlignedAlloc;
 use crate::storage::buffer::SharedBuf;
-use crate::storage::owned::AlignedBuf;
+use crate::storage::buffer::AlignedBuf;
 use crate::storage::traits::IsShared;
 use crate::storage::{RawStorage, Storage, StorageShared};
 

@@ -10,7 +10,7 @@ use crate::storage::Storage;
 use crate::storage::StorageIntoOwned;
 use crate::storage::StorageMut;
 use crate::storage::ViewRepr;
-use crate::storage::owned::AlignedBuf;
+use crate::storage::buffer::AlignedBuf;
 use crate::storage::traits::IsViewMut;
 
 /// Mutable view over exclusively borrowed data.
