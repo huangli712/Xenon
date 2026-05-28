@@ -4,7 +4,6 @@
 //! strictly increasing strides, with stride[0] == 1.
 
 use crate::dimension::Dimension;
-
 use super::Strides;
 
 /// Returns `true` if the tensor is F-contiguous.
@@ -50,8 +49,8 @@ pub fn is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3};
+    use super::*;
 
     /// Empty shape with zero stride is still F-contiguous.
     #[test]
@@ -61,41 +60,41 @@ mod tests {
         assert!(is_f_contiguous(&shape, &strides));
     }
 
+    /// F-order strides for [2, 3] are [1, 2] ⇒ contiguous.
     #[test]
     fn test_f_contig_true() {
-        // F-order strides for [2, 3] are [1, 2] ⇒ contiguous.
         let shape = Ix2(2, 3);
         let strides = Strides::new(Ix2(1, 2));
         assert!(is_f_contiguous(&shape, &strides));
     }
 
+    /// C-order strides [3, 1] for [2, 3] ⇒ NOT F-contiguous.
     #[test]
     fn test_f_contig_false() {
-        // C-order strides [3, 1] for [2, 3] ⇒ NOT F-contiguous.
         let shape = Ix2(2, 3);
         let strides = Strides::new(Ix2(3, 1));
         assert!(!is_f_contiguous(&shape, &strides));
     }
 
+    /// 0-D scalar always F-contiguous.
     #[test]
     fn test_f_contig_scalar() {
-        // 0-D scalar always F-contiguous.
         let shape = Ix0;
         let strides = Strides::new(Ix0);
         assert!(is_f_contiguous(&shape, &strides));
     }
 
+    /// Size-1 axis with arbitrary stride is still F-contiguous.
     #[test]
     fn test_f_contig_size1_axis() {
-        // size=1 axis is allowed to have arbitrary stride.
         let shape = Ix3(5, 1, 4);
         let strides = Strides::new(Ix3(1, 999, 5));
         assert!(is_f_contiguous(&shape, &strides));
     }
 
+    /// 1-D arrays are F-contiguous when stride[0] == 1.
     #[test]
     fn test_f_contig_1d() {
-        // 1-D arrays are F-contiguous when stride[0] == 1.
         let shape = Ix1(5);
         let strides = Strides::new(Ix1(1));
         assert!(is_f_contiguous(&shape, &strides));
