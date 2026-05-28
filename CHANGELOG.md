@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.11] — 2026-05-28
+
+### Added
+
+- `///` doc comments and section separators across all element submodules.
+
+### Removed
+
+- Unused `BoolElement` trait.
+- `element_type_name_of` free function.
+
+### Changed
+
+- Extracted `checked.rs` from overload module; `CastTo`/`CastElement` into `convert/cast.rs`.
+- Moved `Element` trait to `element/primitives.rs`; `OrderedCompareElement` to `element/order.rs`.
+- Consolidated all `Sealed` impls into `src/private.rs`.
+- Moved `Numeric`/`RealScalar`/`ComplexScalar` impls to respective submodules.
+- FFI raw structs switched from `ElementType` to `u8` for C ABI compatibility.
+- Restricted `ElementType` helpers (`name`, `of`, `element_type_of`) to `pub(crate)`.
+- Replaced fully-qualified paths with local imports throughout element module.
+
 ## [v0.0.10] — 2026-05-27
 
 ### Added
@@ -32,13 +53,19 @@ All notable changes to this project are documented in this file.
 
 ## [v0.0.9] — 2026-05-27
 
+### Added
+
+- `///` doc comments to all test functions across the complex module.
+
+### Removed
+
+- Stale design-doc and task-tracking cross-references from doc comments.
+
 ### Changed
 
 - Replaced fully-qualified paths with direct imports throughout error.rs, display.rs, ops.rs, and types.rs.
 - Extracted `ComplexFloat` trait and `Complex` struct into a dedicated `types.rs` sub-module.
 - Moved `ComplexFloat`/`Complex` unit tests from `mod.rs` into `types.rs`.
-- Added `///` doc comments to all test functions across the complex module.
-- Removed stale design-doc and task-tracking cross-references from doc comments.
 
 ## [v0.0.8] — 2026-05-26
 
