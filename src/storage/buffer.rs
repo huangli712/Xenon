@@ -7,19 +7,28 @@
 //! When the last owner is dropped, `AlignedBuf`'s `Drop` releases the
 //! aligned allocation with the original layout.
 
-use core::marker::PhantomData;
-use core::mem::{align_of, size_of};
 use core::ptr::NonNull;
+use core::mem::{align_of, size_of};
+use core::marker::PhantomData;
 use std::borrow::Cow;
 
+use crate::error::{XenonError, InvalidShapeKind};
 use crate::element::Element;
-use crate::error::{InvalidShapeKind, XenonError};
 use super::alloc::AlignedAlloc;
 
 // ---------------------------------------------------------------------------
 // Internal helper
 // ---------------------------------------------------------------------------
 
+/// Validates the allocation layout for `len` elements of type `A`.
+///
+/// Checks that `len * size_of::<A>()` fits within `isize::MAX` after
+/// accounting for alignment padding. Returns the raw byte size on success.
+///
+/// # Errors
+///
+/// Returns `XenonError::InvalidShape` with `ProductOverflow` if the request
+/// would overflow `isize::MAX`.
 pub(crate) fn allocation_size<A>(
     len: usize,
     align: usize,
@@ -49,9 +58,20 @@ pub(crate) fn allocation_size<A>(
 // AlignedBuf<A> — internal aligned buffer
 // ---------------------------------------------------------------------------
 
+/// Aligned heap buffer used for all storage-backed tensor data.
+///
+/// `AlignedBuf` owns a heap allocation obtained through [`AlignedAlloc`], with
+/// a user-controlled alignment (defaulting to 64 bytes). It tracks logical
+/// length, physical capacity, and the alignment used at allocation time.
+///
+/// ZST and zero-capacity buffers are represented via `NonNull::dangling()`
+/// without performing allocation. The `Drop` implementation releases the
+/// allocation and drops initialized elements when the buffer goes out of
+/// scope.
+
 #[derive(Debug)]
 pub(crate) struct AlignedBuf<A> {
-    pub(crate) ptr: NonNull<A>,
+    ptr: NonNull<A>,
     len: usize,
     cap: usize,
     align: usize,
@@ -195,6 +215,10 @@ impl<A> AlignedBuf<A> {
         self.ptr.as_ptr()
     }
 
+    pub(crate) fn as_mut_ptr_unchecked(&self) -> *mut A {
+        self.ptr.as_ptr()
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.len
     }
@@ -272,7 +296,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // AlignedBuf tests (moved from owned.rs)
+    // AlignedBuf tests
     // -----------------------------------------------------------------------
 
     /// Alignment is clamped to at least the element type's alignment.

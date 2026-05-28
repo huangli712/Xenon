@@ -393,7 +393,7 @@ impl<A> Owned<A> {
     /// Returns a mutable pointer to the storage base without requiring
     /// `&mut self`. This is safe because `Owned<A>` has exclusive ownership.
     pub(crate) fn as_mut_ptr_unchecked(&self) -> *mut A {
-        self.data.ptr.as_ptr()
+        self.data.as_mut_ptr_unchecked()
     }
 
     /// Constructs `Owned<A>` from raw allocator components.
