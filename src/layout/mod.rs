@@ -9,17 +9,17 @@
 //!
 //! | Module      | Purpose |
 //! |-------------|---------|
-//! | `strides`   | [`Strides`] carrier and F-order stride computation |
+//! | `strides`   | `Strides` carrier and F-order stride computation |
 //! | `contiguous`| `is_f_contiguous` recognition algorithm |
 //! | `aligned`   | Raw-pointer alignment checks |
-//! | `flags`     | [`LayoutFlags`] bitfield, [`LayoutState`] enum, and the central `compute_layout_flags` entry point |
+//! | `flags`     | `LayoutFlags` bitfield, `LayoutState` enum, etc |
 //!
 //! # Public API
 //!
-//! - [`Strides`] — stride storage and helper methods
 //! - `is_f_contiguous` — check F-contiguity from raw shape + strides
-//! - [`LayoutFlags`] — packed contiguity/alignment/broadcast flags
-//! - [`LayoutState`] — three-way classification: `FContiguous`, `NonContiguous`, `BroadcastView`
+//! - `Strides` — stride storage and helper methods
+//! - `LayoutFlags` — packed contiguity/alignment/broadcast flags
+//! - `LayoutState` — three-way classification: `FContiguous`, `NonContiguous`, `BroadcastView`
 
 mod aligned;
 mod contiguous;
