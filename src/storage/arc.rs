@@ -137,6 +137,7 @@ unsafe impl<A: Element> RawStorage for ArcRepr<A> {
         self.inner.buf.as_ptr()
     }
 
+    /// Forwards to the underlying `AlignedBuf` through the `Arc`.
     fn len(&self) -> usize {
         self.inner.buf.len()
     }
