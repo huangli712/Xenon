@@ -8,8 +8,6 @@ use std::sync::Arc;
 
 use crate::element::Element;
 use crate::error::XenonError;
-#[cfg(test)]
-use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, SharedBuf};
 use super::IsShared;
 use super::{StorageIntoOwned, RawStorage, Storage, StorageShared};
@@ -192,6 +190,7 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for ArcRepr<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::alloc::AlignedAlloc;
 
     #[test]
     fn test_arc_clone_o1() {
