@@ -1,10 +1,10 @@
 //! Real-valued scalar trait and primitive implementations.
 //!
-//! `RealScalar` exposes 11 IEEE‑754 math functions and predicates,
-//! sealed to `f32` and `f64` only.
+//! `RealScalar` exposes 11 IEEE‑754 math functions and predicates, sealed to
+//! `f32` and `f64` only.
 
-use super::Numeric;
 use crate::private::Sealed;
+use super::Numeric;
 
 /// Real-valued scalar trait.
 ///
@@ -55,8 +55,6 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     /// Returns `true` if `self` is finite (not NaN and not infinite).
     fn is_finite(self) -> bool;
 }
-
-// ── RealScalar impls ──────────────────────────────────────────────────────
 
 impl RealScalar for f32 {
     fn abs(self) -> Self {
