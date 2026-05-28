@@ -204,7 +204,12 @@ impl<A> AlignedBuf<A> {
     /// - `align` must equal the actual allocation alignment and satisfy
     ///   `align >= align_of::<A>()`.
     /// - `cap` must be the actual allocated capacity in elements.
-    pub(crate) unsafe fn from_raw_parts(ptr: *mut A, len: usize, cap: usize, align: usize) -> Self {
+    pub(crate) unsafe fn from_raw_parts(
+        ptr: *mut A,
+        len: usize,
+        cap: usize,
+        align: usize
+    ) -> Self {
         Self {
             // SAFETY: caller guarantees ptr is non-null
             ptr: unsafe { NonNull::new_unchecked(ptr) },
@@ -252,8 +257,7 @@ impl<A> AlignedBuf<A> {
     ///
     /// # Safety
     ///
-    /// - `len` must not exceed `self.cap` (unless ZST, where `cap` is
-    ///   `usize::MAX`).
+    /// - `len` must not exceed `self.cap` (unless ZST, where `cap` is `usize::MAX`).
     /// - Elements in `self.len..len` must be initialized (unless ZST).
     pub(crate) unsafe fn set_len(&mut self, len: usize) {
         debug_assert!(len <= self.cap || size_of::<A>() == 0);
@@ -262,6 +266,10 @@ impl<A> AlignedBuf<A> {
 }
 
 impl<A> Drop for AlignedBuf<A> {
+    /// Drops initialized elements and releases the aligned allocation.
+    ///
+    /// Skips ZST (`size_of::<A>() == 0`) and zero-capacity buffers entirely
+    /// since they have no allocation to free.
     fn drop(&mut self) {
         if size_of::<A>() == 0 || self.cap == 0 {
             return;
