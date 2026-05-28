@@ -9,4 +9,4 @@ mod strides;
 pub use contiguous::is_f_contiguous;
 pub use flags::{LayoutFlags, LayoutState};
 pub(crate) use flags::compute_layout_flags;
-pub use strides::{Strides, compute_f_strides, has_zero_stride, is_aligned, is_aligned_to};
+pub use strides::{Strides, compute_f_strides, is_aligned, is_aligned_to};

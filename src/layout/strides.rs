@@ -1,8 +1,7 @@
 //! Stride carrier and helpers.
 //!
 //! Full implementations:
-//! - `compute_f_strides`      → here (W6T6)
-//! - `has_zero_stride`        → W6T8
+//! - `compute_f_strides`          → here (W6T6)
 //! - `is_aligned` / `is_aligned_to` → W6T9
 
 use std::borrow::Cow;
@@ -85,6 +84,16 @@ impl<D: Dimension> Strides<D> {
     pub fn iter(&self) -> impl Iterator<Item = &usize> {
         self.as_slice().iter()
     }
+
+    /// Returns `true` iff any stride value equals 0.
+    ///
+    /// **This is NOT the same as the `HAS_ZERO_STRIDE` flag value**: the
+    /// flag is set only when `product(shape) > 0` additionally holds.
+    /// Use `should_set_zero_stride_flag(shape, strides)` for flag
+    /// assignment in `compute_layout_flags` (`06-layout §5.11`, §6.1).
+    pub fn has_zero_stride(&self) -> bool {
+        self.as_slice().contains(&0)
+    }
 }
 
 /// Compute strides for an F-order contiguous layout from the given shape.
@@ -120,16 +129,6 @@ pub fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonErr
 
 // === Zero-stride detection (W6T8) and alignment checks (W6T9) ===
 
-/// Raw zero-stride detector: returns `true` iff any stride value equals 0.
-///
-/// **This is NOT the same as the `HAS_ZERO_STRIDE` flag value**: the flag
-/// is set only when `product(shape) > 0` additionally holds. Use
-/// `should_set_zero_stride_flag(shape, strides)` for flag assignment in
-/// `compute_layout_flags` (`06-layout §5.11`, §6.1).
-pub fn has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool {
-    strides.as_slice().contains(&0)
-}
-
 /// Flag-assignment guard for `HAS_ZERO_STRIDE`.
 ///
 /// Returns `true` iff `any(stride == 0) && product(shape) > 0`, which is
@@ -138,7 +137,7 @@ pub fn has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool {
 /// `compute_layout_flags` MUST call this helper instead of bare
 /// `has_zero_stride` when writing the bit.
 pub(crate) fn should_set_zero_stride_flag<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
-    if !has_zero_stride(strides) {
+    if !strides.has_zero_stride() {
         return false;
     }
     shape.slice().iter().all(|&e| e > 0)
@@ -254,8 +253,8 @@ mod tests {
 
     #[test]
     fn test_zero_stride_detect() {
-        assert!(has_zero_stride(&Strides::new(Ix2(1, 0))));
-        assert!(!has_zero_stride(&Strides::new(Ix2(1, 2))));
+        assert!(Strides::new(Ix2(1, 0)).has_zero_stride());
+        assert!(!Strides::new(Ix2(1, 2)).has_zero_stride());
     }
 
     #[test]
