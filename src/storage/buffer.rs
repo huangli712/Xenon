@@ -46,7 +46,7 @@ pub(crate) fn allocation_size<A>(
 }
 
 // ---------------------------------------------------------------------------
-// AlignedBuf<A> — internal aligned buffer (W7T8)
+// AlignedBuf<A> — internal aligned buffer
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
@@ -275,6 +275,7 @@ mod tests {
     // AlignedBuf tests (moved from owned.rs)
     // -----------------------------------------------------------------------
 
+    /// Alignment is clamped to at least the element type's alignment.
     #[test]
     fn test_aligned_buf_with_capacity_clamps_alignment_to_element_requirement() {
         let buf = AlignedBuf::<u128>::with_capacity_aligned(4, 1)
@@ -283,6 +284,7 @@ mod tests {
         assert_eq!(buf.capacity(), 4);
     }
 
+    /// ZST buffers work without triggering undefined behavior.
     #[test]
     fn test_zst_no_ub() {
         // Owned::zeros requires A: Element + Default, which () does not

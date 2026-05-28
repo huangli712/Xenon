@@ -1,4 +1,4 @@
-//! Immutable view storage (W7T14).
+//! Immutable view storage.
 //!
 //! `ViewRepr<'a, A>` is a shared-borrow read-only storage representation.
 //! O(1) `Copy`/`Clone` metadata, no allocation.
@@ -124,6 +124,7 @@ pub type View<'a, A> = ViewRepr<'a, A>;
 mod tests {
     use super::*;
 
+    /// Creates a view from a slice and verifies data access.
     #[test]
     fn test_view_from_slice() {
         let data = [1_i32, 2, 3];
@@ -131,6 +132,7 @@ mod tests {
         assert_eq!(view.as_slice(), &[1, 2, 3]);
     }
 
+    /// Clone is O(1) — both handles point to the same data.
     #[test]
     fn test_view_clone_o1() {
         let data = [1_i32, 2, 3];
@@ -141,6 +143,7 @@ mod tests {
         assert_eq!(view.len(), cloned.len());
     }
 
+    /// View lifetime is tied to the borrowed data.
     #[test]
     fn test_view_lifetime() {
         fn assert_lifetime<'a>(slice: &'a [i32]) -> ViewRepr<'a, i32> {
@@ -152,12 +155,14 @@ mod tests {
         assert_eq!(view.as_slice(), &[1, 2, 3]);
     }
 
+    /// View implements Send + Sync when the element type does.
     #[test]
     fn test_view_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ViewRepr<'_, f64>>();
     }
 
+    /// View can be sent across threads for shared reads.
     #[test]
     fn test_view_cross_thread() {
         use crate::dimension::Ix1;
@@ -172,6 +177,7 @@ mod tests {
         });
     }
 
+    /// Multiple threads can concurrently read through a view.
     #[test]
     fn test_view_read_only_across_threads() {
         use crate::dimension::Ix1;

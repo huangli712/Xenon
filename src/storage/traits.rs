@@ -3,8 +3,8 @@
 //!
 //! This module defines the complete storage trait hierarchy:
 //!
-//! - Marker traits (W7T6): `IsOwned`, `IsView`, `IsViewMut`, `IsShared`
-//! - Core trait hierarchy (W7T2–W7T5):
+//! - Marker traits: `IsOwned`, `IsView`, `IsViewMut`, `IsShared`
+//! - Core trait hierarchy:
 //!   `RawStorage` → `Storage` / `RawStorageMut` → `StorageMut` →
 //!   `StorageOwned` / `StorageShared`
 //! - Conversion trait: `StorageIntoOwned`
@@ -14,7 +14,7 @@ use core::ptr::NonNull;
 use crate::private::Sealed;
 
 // ---------------------------------------------------------------------------
-// W7T6: Marker traits (IsOwned, IsView, IsViewMut, IsShared)
+// Marker traits (IsOwned, IsView, IsViewMut, IsShared)
 // ---------------------------------------------------------------------------
 
 /// Marker trait for owned storage representations.
@@ -70,14 +70,14 @@ pub unsafe trait IsViewMut: RawStorage + Sealed {}
 pub unsafe trait IsShared: RawStorage + Sealed {}
 
 // ---------------------------------------------------------------------------
-// W7T2: RawStorage — raw pointer access to underlying storage
+// RawStorage — raw pointer access to underlying storage
 // ---------------------------------------------------------------------------
 
 /// Raw pointer access to underlying storage.
 ///
 /// # Safety
 ///
-/// Implementors must uphold `05-storage §5.3`: `as_ptr()` remains valid for the
+/// Implementors must uphold: `as_ptr()` remains valid for the
 /// storage lifetime, repeated calls return the same address, the pointer is
 /// non-null and properly aligned, the `len()` range is initialized within one
 /// allocation, and the total range does not exceed `isize::MAX`.
@@ -115,7 +115,7 @@ pub unsafe trait RawStorage: Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// W7T3: Storage — safe read access to the entire backing storage
+// Storage — safe read access to backing storage
 // ---------------------------------------------------------------------------
 
 /// Safe read access to the entire backing storage.
@@ -166,7 +166,7 @@ pub unsafe trait Storage: RawStorage + Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// W7T4: RawStorageMut + StorageMut — mutable storage access
+// RawStorageMut + StorageMut — mutable storage access
 // ---------------------------------------------------------------------------
 
 /// Raw pointer access for mutable storage.
@@ -258,7 +258,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut + Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// W7T5: StorageOwned + StorageShared + StorageIntoOwned
+// StorageOwned + StorageShared + StorageIntoOwned
 // ---------------------------------------------------------------------------
 
 /// Storage that owns data.
@@ -347,8 +347,8 @@ pub unsafe trait StorageShared: Storage + Clone + Sealed {}
 pub trait StorageIntoOwned: Storage {
     /// Consume this storage, returning an `Owned<A>` storage.
     ///
-    /// This is a storage-layer method. Tensor-level `into_owned()` is defined
-    /// in `07-tensor.md` and handles shape/strides/offset logic.
+    /// This is a storage-layer method. Tensor-level `into_owned()` handles
+    /// shape, strides, and offset logic separately.
     fn into_owned_storage(self) -> crate::storage::Owned<Self::Elem>
     where
         Self::Elem: Clone;
@@ -362,14 +362,7 @@ mod tests {
     use crate::storage::ViewMutRepr;
     use crate::storage::ArcRepr;
 
-    // -----------------------------------------------------------------------
-    // W7T6 marker trait compile checks
-    // -----------------------------------------------------------------------
-
-    /// Verify that all four marker traits exist and require both the sealed
-    /// bound and the `RawStorage` super-trait per `05-storage.md` §6.8.
-    /// Concrete `unsafe impl`s are added in W7T11 (IsOwned), W7T14 (IsView),
-    /// W7T15 (IsViewMut), and W7T16 (IsShared).
+    /// Verify that all four marker traits exist and are properly sealed.
     #[test]
     fn test_marker_traits() {
         fn _sealed<T: Sealed>() {}
@@ -383,14 +376,13 @@ mod tests {
     // Basic module compile check
     // -----------------------------------------------------------------------
 
+    /// Verifies that the storage module compiles as a basic sanity check.
     #[test]
     fn test_storage_module_compile() {
         assert_eq!(0, 0);
     }
 
-    // -----------------------------------------------------------------------
-    // W7T2 tests
-    // -----------------------------------------------------------------------
+
 
     struct MockEmpty;
 
@@ -408,6 +400,7 @@ mod tests {
         }
     }
 
+    /// Verifies `RawStorage` default methods (`is_empty`, `is_aligned`) on an empty mock implementor.
     #[test]
     fn test_raw_storage_compile() {
         let storage = MockEmpty;
@@ -417,9 +410,7 @@ mod tests {
         assert!(!storage.is_aligned());
     }
 
-    // -----------------------------------------------------------------------
-    // W7T3 tests
-    // -----------------------------------------------------------------------
+
 
     struct MockStorage {
         data: [i32; 3],
@@ -441,6 +432,7 @@ mod tests {
 
     unsafe impl Storage for MockStorage {}
 
+    /// Verifies `Storage::get` bounds checking and `as_slice` on a mock implementor.
     #[test]
     fn test_storage_compile() {
         let storage = MockStorage { data: [1, 2, 3] };
@@ -449,9 +441,7 @@ mod tests {
         assert_eq!(storage.as_slice(), &[1, 2, 3]);
     }
 
-    // -----------------------------------------------------------------------
-    // W7T4 tests
-    // -----------------------------------------------------------------------
+
 
     struct MockStorageMut {
         data: [i32; 3],
@@ -480,6 +470,7 @@ mod tests {
     unsafe impl Storage for MockStorageMut {}
     unsafe impl StorageMut for MockStorageMut {}
 
+    /// Verifies `StorageMut::fill` and `RawStorageMut::as_non_null` on a mock mutable implementor.
     #[test]
     fn test_storage_mut_compile() {
         let mut storage = MockStorageMut { data: [1, 2, 3] };
@@ -489,9 +480,7 @@ mod tests {
         assert_eq!(ptr, storage.as_mut_ptr());
     }
 
-    // -----------------------------------------------------------------------
-    // W7T5 tests
-    // -----------------------------------------------------------------------
+
 
     #[derive(Clone)]
     struct MockOwned {
@@ -597,6 +586,7 @@ mod tests {
     fn assert_storage_owned<S: StorageOwned>() {}
     fn assert_storage_shared<S: StorageShared>() {}
 
+    /// Verifies that mock implementors satisfy the `StorageOwned` and `StorageShared` trait bounds.
     #[test]
     fn test_storage_traits_compile() {
         assert_storage_owned::<MockOwned>();
@@ -604,9 +594,10 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // W7T18 tests — concrete storage type exports
+    // Concrete storage type export tests
     // -----------------------------------------------------------------------
 
+    /// Verifies that the concrete `Owned`, `ViewRepr`, and `ArcRepr` storage types are exported and usable.
     #[test]
     fn test_storage_exports_compile() {
         let owned = Owned::from_vec(vec![1_i32])
@@ -619,6 +610,7 @@ mod tests {
         assert_eq!(shared.get(0), Some(&1));
     }
 
+    /// Verifies that concrete storage types satisfy the `Storage`, `StorageOwned`, `StorageShared`, and `StorageIntoOwned` trait bounds.
     #[test]
     fn test_storage_trait_exports_compile() {
         fn assert_storage<S: Storage>(_: &S) {}
@@ -640,9 +632,10 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // W7T19 integration tests
+    // Integration tests
     // -----------------------------------------------------------------------
 
+    /// Integration test verifying that `Owned`, `ViewRepr`, and `ArcRepr` round-trip data through `as_slice`.
     #[test]
     fn test_storage_module_compiles() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -655,6 +648,7 @@ mod tests {
         assert_eq!(shared.as_slice(), &[1, 2, 3]);
     }
 
+    /// Verifies that the four marker traits (`IsOwned`, `IsView`, `IsViewMut`, `IsShared`) are implemented by the concrete storage types.
     #[test]
     fn test_marker_traits_sealed() {
         fn assert_owned<T: IsOwned>() {}
@@ -668,6 +662,7 @@ mod tests {
         assert_shared::<ArcRepr<i32>>();
     }
 
+    /// Verifies that `StorageIntoOwned::into_owned_storage` works correctly across `Owned`, `ViewRepr`, and `ArcRepr`.
     #[test]
     fn test_storage_into_owned_matrix() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -686,6 +681,7 @@ mod tests {
         assert_eq!(copied_from_shared.as_slice(), &[1, 2, 3]);
     }
 
+    /// Verifies that `ArcRepr::into_owned_storage` produces a detached deep copy that does not alias the shared buffer.
     #[test]
     fn test_arc_into_owned_storage_is_detached_copy() {
         let shared = ArcRepr::try_from(vec![1_i32, 2, 3])
@@ -698,6 +694,7 @@ mod tests {
         assert_eq!(shared.as_slice(), &[1, 2, 3]);
     }
 
+    /// Verifies `Send`/`Sync` bounds for all concrete storage types.
     #[test]
     fn test_storage_thread_safety_matrix_compile() {
         fn assert_send<T: Send>() {}

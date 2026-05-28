@@ -1,4 +1,4 @@
-//! Mutable view storage (W7T15).
+//! Mutable view storage.
 //!
 //! `ViewMutRepr<'a, A>` is an exclusive-borrow storage representation.
 //! Does not implement `Clone` or `Copy`.
@@ -120,7 +120,7 @@ unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
 unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 // Intentionally no `Sync` impl: sharing `&ViewMutRepr` would share an exclusive
-// write capability and violate the aliasing model described in 25-safety §5.1.
+// write capability and violate the aliasing model.
 
 impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     fn into_owned_storage(self) -> Owned<A>
@@ -153,6 +153,7 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 mod tests {
     use super::*;
 
+    /// Mutable view provides exclusive write access.
     #[test]
     fn test_view_mut_exclusive() {
         let mut data = [1_i32, 2, 3];
@@ -177,12 +178,14 @@ mod tests {
         assert_marker(view);
     }
 
+    /// Mutable view implements Send for Send-compatible element types.
     #[test]
     fn test_view_mut_send() {
         fn assert_send<T: Send>() {}
         assert_send::<ViewMutRepr<'_, f64>>();
     }
 
+    /// A mutable view can be sent across threads for exclusive writes.
     #[test]
     fn test_view_mut_cross_thread_write() {
         use crate::dimension::Ix1;

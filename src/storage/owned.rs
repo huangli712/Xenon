@@ -1,4 +1,4 @@
-//! Owned aligned storage (W7T8-W7T11).
+//! Owned aligned storage.
 //!
 //! `Owned<A>` is the owning heap-allocated storage backed by `AlignedBuf<A>`.
 //! Construction goes through `AlignedAlloc` for 64-byte alignment.
@@ -14,7 +14,7 @@ use super::IsOwned;
 use super::{RawStorage, RawStorageMut, Storage, StorageIntoOwned, StorageMut, StorageOwned};
 
 // ---------------------------------------------------------------------------
-// Owned<A> — owning storage (W7T8)
+// Owned<A> — owning storage
 // ---------------------------------------------------------------------------
 
 /// Owned storage with SIMD-friendly 64-byte alignment.
@@ -162,7 +162,7 @@ impl<A> Owned<A> {
 }
 
 // ---------------------------------------------------------------------------
-// W7T9: RawStorage impl for Owned<A>
+// RawStorage impl for Owned<A>
 // ---------------------------------------------------------------------------
 
 impl<A> crate::private::Sealed for Owned<A> {}
@@ -170,7 +170,7 @@ impl<A> crate::private::Sealed for Owned<A> {}
 /// # Safety
 ///
 /// `Owned<A>` implements `RawStorage` because `AlignedBuf<A>` maintains the
-/// storage invariants required by `05-storage.md` §5.3 and §5.5:
+/// storage invariants:
 ///
 /// 1. `data.ptr` is always non-null: real allocation for non-empty non-ZST
 ///    buffers, or `NonNull::dangling()` for empty/ZST buffers.
@@ -194,21 +194,20 @@ unsafe impl<A> RawStorage for Owned<A> {
 }
 
 // ---------------------------------------------------------------------------
-// W7T10: Storage impl for Owned<A>
+// Storage impl for Owned<A>
 // ---------------------------------------------------------------------------
 
 /// # Safety
 ///
 /// `Owned<A>` implements `Storage` because W7T9's `RawStorage` impl exposes
 /// the same base pointer and length maintained by `AlignedBuf<A>`, and
-/// `AlignedBuf` guarantees the `Storage::as_slice` preconditions from
-/// `05-storage.md` §5.5: non-null aligned pointer, one allocation, `len`
+/// `AlignedBuf` guarantees the `Storage::as_slice` preconditions: non-null aligned pointer, one allocation, `len`
 /// initialized elements, `isize::MAX` range limit, and no mutable alias
 /// for the duration of `&self`.
 unsafe impl<A: Element> Storage for Owned<A> {}
 
 // ---------------------------------------------------------------------------
-// W7T11: StorageMut + StorageOwned + Clone + IsOwned for Owned<A>
+// StorageMut + StorageOwned + Clone + IsOwned for Owned<A>
 // ---------------------------------------------------------------------------
 
 /// # Safety
@@ -227,18 +226,15 @@ unsafe impl<A> RawStorageMut for Owned<A> {
 ///
 /// `Owned<A>` implements `StorageMut` because `Owned` has unique ownership of
 /// its `AlignedBuf<A>` allocation. During any `&mut self` borrow there can be
-/// no shared or mutable aliases into the same range, satisfying
-/// `05-storage.md` §5.6 for `get_mut`, `get_unchecked_mut` and `as_mut_slice`
-/// default methods.
+/// no shared or mutable aliases into the same range.
 unsafe impl<A: Element> StorageMut for Owned<A> {}
 
 /// # Safety
 ///
-/// `Owned<A>` satisfies `IsOwned`'s `RawStorage + Sealed` bounds because
-/// W7T9 provides `RawStorage` and `Sealed`.
+/// `Owned<A>` satisfies `IsOwned`'s `RawStorage + Sealed` bounds.
 unsafe impl<A: Element> IsOwned for Owned<A> {}
 
-// Owned<A>: Clone uses deep_clone semantics (W7T11).
+// Owned<A>: Clone uses deep_clone semantics.
 impl<A: Element + Clone> Clone for Owned<A> {
     fn clone(&self) -> Self {
         self.deep_clone()
@@ -270,7 +266,7 @@ impl<A: Element> Owned<A> {
 /// `Owned<A>` implements `StorageOwned` because it has exclusive ownership of
 /// the `AlignedBuf<A>` allocation, supports mutable access through
 /// `StorageMut`, and all owned constructors preserve the `AlignedBuf`
-/// invariants from `05-storage.md` §6.1: non-null aligned pointer, one
+/// invariants: non-null aligned pointer, one
 /// allocation, initialized logical elements, capacity metadata, and no
 /// ZST/empty deallocation.
 unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
@@ -369,7 +365,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
 }
 
 // ---------------------------------------------------------------------------
-// W7T12: into_shared + Send/Sync for Owned<A>
+// into_shared + Send/Sync for Owned<A>
 // ---------------------------------------------------------------------------
 
 impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
@@ -423,7 +419,7 @@ unsafe impl<A: Send> Send for Owned<A> {}
 unsafe impl<A: Sync> Sync for Owned<A> {}
 
 // ---------------------------------------------------------------------------
-// W7T13: TryFrom<Vec<A>> + Default for Owned<A>
+// TryFrom<Vec<A>> + Default for Owned<A>
 // ---------------------------------------------------------------------------
 
 impl<A> Default for Owned<A> {
@@ -445,6 +441,7 @@ mod tests {
     use super::*;
     use crate::error::InvalidShapeKind;
 
+    /// Verifies that `Owned::new` creates empty storage with zero length and capacity.
     #[test]
     fn test_owned_new_empty() {
         let owned = Owned::<f64>::new();
@@ -452,6 +449,7 @@ mod tests {
         assert_eq!(owned.data.capacity(), 0);
     }
 
+    /// Verifies that `Owned::zeros` initializes all elements to zero.
     #[test]
     fn test_owned_zeros() {
         let owned =
@@ -466,6 +464,7 @@ mod tests {
         }
     }
 
+    /// Verifies that `Owned::from_vec` copies vector data into aligned storage.
     #[test]
     fn test_owned_from_vec() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -483,6 +482,7 @@ mod tests {
         );
     }
 
+    /// Verifies that `Owned::zeros` returns `ProductOverflow` when the layout size exceeds `isize::MAX`.
     #[test]
     fn test_owned_zeros_layout_overflow_returns_error() {
         let err = match Owned::<bool>::zeros(isize::MAX as usize) {
@@ -498,6 +498,7 @@ mod tests {
         }
     }
 
+    /// Verifies that storage allocated by `Owned::zeros` satisfies the 64-byte default alignment.
     #[test]
     fn test_owned_alignment_from_zeros() {
         let owned =
@@ -508,6 +509,7 @@ mod tests {
         );
     }
 
+    /// Verifies that storage allocated by `Owned::from_vec` satisfies the 64-byte default alignment.
     #[test]
     fn test_owned_alignment_from_vec() {
         let owned = Owned::from_vec(vec![1.0_f64, 2.0])
@@ -518,7 +520,8 @@ mod tests {
         );
     }
 
-    // W7T9 tests
+    // RawStorage tests
+    /// Verifies that `RawStorage::len` and `as_ptr` report the correct length and element values.
     #[test]
     fn test_owned_raw_storage_len() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -531,6 +534,7 @@ mod tests {
         );
     }
 
+    /// Verifies that `as_ptr` returns a stable, non-empty, 64-byte aligned pointer.
     #[test]
     fn test_owned_raw_storage_ptr() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -543,7 +547,8 @@ mod tests {
         assert!(owned.is_aligned_to(64));
     }
 
-    // W7T10 tests
+    // Storage tests
+    /// Verifies that `Storage::as_slice` exposes the full initialized element slice.
     #[test]
     fn test_owned_storage_as_slice() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -551,6 +556,7 @@ mod tests {
         assert_eq!(owned.as_slice(), &[1, 2, 3]);
     }
 
+    /// Verifies that `Storage::get` returns `Some` for in-bounds indices and `None` otherwise.
     #[test]
     fn test_owned_storage_get() {
         let owned = Owned::from_vec(vec![1.0_f64])
@@ -559,6 +565,7 @@ mod tests {
         assert_eq!(owned.get(1), None);
     }
 
+    /// Verifies that `Storage::get_unchecked` returns the element at the given in-bounds index.
     #[test]
     fn test_owned_storage_get_unchecked() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -566,7 +573,8 @@ mod tests {
         assert_eq!(unsafe { *owned.get_unchecked(2) }, 3);
     }
 
-    // W7T11 tests
+    // StorageMut + Clone tests
+    /// Verifies that `StorageMut::get_mut` allows in-place modification of elements.
     #[test]
     fn test_owned_storage_mut() {
         let mut owned = Owned::from_vec(vec![1_i32, 2])
@@ -577,6 +585,7 @@ mod tests {
         assert_eq!(owned.as_slice(), &[9, 2]);
     }
 
+    /// Verifies that `get_unchecked_mut` and `as_mut_slice` both support mutating elements in place.
     #[test]
     fn test_owned_storage_mut_unchecked_and_slice() {
         let mut owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -588,6 +597,7 @@ mod tests {
         assert_eq!(owned.as_slice(), &[1, 7, 8]);
     }
 
+    /// Verifies that `deep_clone` produces an independent copy whose mutations do not affect the original.
     #[test]
     fn test_owned_clone_deep() {
         let original = Owned::from_vec(vec![1_i32, 2, 3])
@@ -600,6 +610,7 @@ mod tests {
         assert_eq!(cloned.as_slice(), &[9, 2, 3]);
     }
 
+    /// Verifies that `into_vec` converts owned storage back into a `Vec` preserving elements.
     #[test]
     fn test_owned_into_vec() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -607,6 +618,7 @@ mod tests {
         assert_eq!(owned.into_vec(), vec![1, 2, 3]);
     }
 
+    /// Verifies that `try_reserve` grows capacity without changing the logical length.
     #[test]
     fn test_storage_owned_capacity() {
         let mut owned = <Owned<f64> as StorageOwned>::zeros(4);
@@ -618,6 +630,7 @@ mod tests {
         assert_eq!(owned.len(), 4);
     }
 
+    /// Verifies that `StorageOwned::from_elem` and `from_iter` populate storage with the expected elements.
     #[test]
     fn test_storage_owned_from_elem_and_from_iter() {
         let owned = <Owned<i32> as StorageOwned>::from_elem(3, 5);
@@ -626,7 +639,8 @@ mod tests {
         assert_eq!(iter_owned.as_slice(), &[1, 2, 3]);
     }
 
-    // W7T12 tests
+    // into_shared + Send/Sync tests
+    /// Verifies that `into_shared` converts `Owned` into `ArcRepr` while preserving element contents.
     #[test]
     fn test_owned_into_shared() {
         let owned = Owned::from_vec(vec![1_i32, 2])
@@ -635,6 +649,7 @@ mod tests {
         assert_eq!(shared.as_slice(), &[1, 2]);
     }
 
+    /// Verifies that `Owned<i32>` implements `Send` and `Sync`.
     #[test]
     fn test_owned_send_sync() {
         fn assert_send<T: Send>() {}
@@ -643,6 +658,7 @@ mod tests {
         assert_sync::<Owned<i32>>();
     }
 
+    /// Verifies that `Owned` can be moved into another thread and accessed there.
     #[test]
     fn test_owned_cross_thread() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -651,13 +667,15 @@ mod tests {
         assert_eq!(handle.join().expect("thread should not panic"), 3);
     }
 
-    // W7T13 tests
+    // Default + TryFrom tests
+    /// Verifies that `Owned::default` produces empty storage.
     #[test]
     fn test_owned_default() {
         let owned = Owned::<i32>::default();
         assert!(owned.is_empty());
     }
 
+    /// Verifies that `TryFrom<Vec<A>> for Owned` produces aligned storage with the original elements.
     #[test]
     fn test_owned_from_vec_try_from() {
         let v = vec![1i32, 2, 3];

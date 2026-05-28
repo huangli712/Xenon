@@ -1,4 +1,4 @@
-//! Aligned allocator (W7T7).
+//! Aligned allocator.
 //!
 //! Crate-internal 64-byte aligned memory allocator. ZST and `size == 0`
 //! paths are handled by callers; this allocator requires `size > 0`.
@@ -92,6 +92,7 @@ impl AlignedAlloc {
 mod tests {
     use super::*;
 
+    /// Allocates and deallocates 64-byte aligned memory successfully.
     #[test]
     fn test_aligned_alloc_64() {
         let size = 8 * core::mem::size_of::<f64>();
@@ -103,6 +104,7 @@ mod tests {
         }
     }
 
+    /// Allocates zeroed memory and verifies all bytes are zero.
     #[test]
     fn test_aligned_alloc_zeroed() {
         let size = 8 * core::mem::size_of::<u64>();
@@ -116,6 +118,7 @@ mod tests {
         }
     }
 
+    /// Rejects an impossibly large allocation with an error.
     #[test]
     fn test_aligned_alloc_invalid_layout_returns_error() {
         let err = AlignedAlloc::alloc(isize::MAX as usize, AlignedAlloc::DEFAULT_ALIGNMENT)

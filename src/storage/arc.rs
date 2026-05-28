@@ -1,4 +1,4 @@
-//! Arc-based shared storage (W7T16).
+//! Arc-based shared storage.
 //!
 //! `ArcRepr<A>` is a shared read-only storage representation backed by
 //! `Arc<SharedBuf<A>>`. O(1) shallow `Clone` via reference-count bump.
@@ -160,7 +160,7 @@ impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
 }
 
 // ---------------------------------------------------------------------------
-// W7T17: Send/Sync + Default + TryFrom for ArcRepr<A>
+// Send/Sync + Default + TryFrom for ArcRepr<A>
 // ---------------------------------------------------------------------------
 
 // SAFETY: `ArcRepr<A>` shares storage through atomic reference counting.
@@ -192,6 +192,7 @@ mod tests {
     use super::*;
     use super::super::alloc::AlignedAlloc;
 
+    /// Clone is O(1) — both handles share the same pointer.
     #[test]
     fn test_arc_clone_o1() {
         let arc = ArcRepr::from_vec(vec![1_i32, 2, 3])
@@ -203,6 +204,7 @@ mod tests {
         assert_eq!(cloned.as_ptr(), ptr);
     }
 
+    /// Storage is 64-byte aligned after construction.
     #[test]
     fn test_arc_alignment_preserved() {
         let arc = ArcRepr::from_vec(vec![1_i32, 2, 3, 4])
@@ -210,6 +212,7 @@ mod tests {
         assert_eq!((arc.as_ptr() as usize) % AlignedAlloc::DEFAULT_ALIGNMENT, 0);
     }
 
+    /// ZST path works correctly via AlignedBuf.
     #[test]
     fn test_arc_zst() {
         // ArcRepr::from_elem requires A: Element + Clone, which () does not
@@ -219,6 +222,7 @@ mod tests {
         assert_eq!(buf.len(), 1024);
     }
 
+    /// An empty ArcRepr is correctly reported as empty.
     #[test]
     fn test_arc_empty() {
         let arc = ArcRepr::<i32>::from_vec(Vec::new())
@@ -226,19 +230,21 @@ mod tests {
         assert!(arc.is_empty());
     }
 
-    // W7T17 tests
+    /// ArcRepr is Send + Sync for Send + Sync element types.
     #[test]
     fn test_arc_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ArcRepr<i32>>();
     }
 
+    /// Default constructs an empty ArcRepr.
     #[test]
     fn test_arc_default() {
         let arc = ArcRepr::<i32>::default();
         assert!(arc.is_empty());
     }
 
+    /// TryFrom&lt;Vec&gt; wraps data into an ArcRepr.
     #[test]
     fn test_arc_try_from_vec() {
         let arc = ArcRepr::<i32>::try_from(vec![1, 2, 3])
@@ -247,6 +253,7 @@ mod tests {
         assert_eq!(arc.as_slice(), &[1, 2, 3]);
     }
 
+    /// Multiple cloned handles can read concurrently from different threads.
     #[test]
     fn test_arc_concurrent_read() {
         let arc = ArcRepr::from_vec(vec![1_i32, 2, 3])
@@ -263,6 +270,7 @@ mod tests {
         assert_eq!(b.join().expect("thread should not panic"), 6);
     }
 
+    /// Cloned handles see the same data.
     #[test]
     fn test_arc_cloned_handles_preserve_read_only_data() {
         let arc = ArcRepr::from_vec(vec![4_i64, 5])
