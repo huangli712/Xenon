@@ -40,10 +40,11 @@ impl AlignedAlloc {
                 cause: None,
             });
         }
-        let layout = Layout::from_size_align(size, align).map_err(|_| XenonError::Workspace {
-            operation: Cow::Borrowed("AlignedAlloc::alloc"),
-            category: WorkspaceErrorCategory::InvalidLayout { size, align },
-            cause: None,
+        let layout = Layout::from_size_align(size, align)
+            .map_err(|_| XenonError::Workspace {
+                operation: Cow::Borrowed("AlignedAlloc::alloc"),
+                category: WorkspaceErrorCategory::InvalidLayout { size, align },
+                cause: None,
         })?;
         let ptr = unsafe { alloc(layout) };
         NonNull::new(ptr).ok_or(XenonError::Workspace {
@@ -54,7 +55,10 @@ impl AlignedAlloc {
     }
 
     /// Allocates and zero-initializes.
-    pub(crate) fn alloc_zeroed(size: usize, align: usize) -> Result<NonNull<u8>, XenonError> {
+    pub(crate) fn alloc_zeroed(
+        size: usize,
+        align: usize
+    ) -> Result<NonNull<u8>, XenonError> {
         if size == 0 {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
@@ -62,10 +66,11 @@ impl AlignedAlloc {
                 cause: None,
             });
         }
-        let layout = Layout::from_size_align(size, align).map_err(|_| XenonError::Workspace {
-            operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
-            category: WorkspaceErrorCategory::InvalidLayout { size, align },
-            cause: None,
+        let layout = Layout::from_size_align(size, align)
+            .map_err(|_| XenonError::Workspace {
+                operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
+                category: WorkspaceErrorCategory::InvalidLayout { size, align },
+                cause: None,
         })?;
         let ptr = unsafe { alloc_zeroed(layout) };
         NonNull::new(ptr).ok_or(XenonError::Workspace {
@@ -83,7 +88,8 @@ impl AlignedAlloc {
     /// - `size` and `align` must be the same as during allocation
     /// - caller must not use `ptr` after this call
     pub(crate) unsafe fn dealloc(ptr: NonNull<u8>, size: usize, align: usize) {
-        let layout = Layout::from_size_align(size, align).expect("invalid allocation layout");
+        let layout = Layout::from_size_align(size, align)
+            .expect("invalid allocation layout");
         // SAFETY: caller guarantees ptr/size/align match the original allocation
         unsafe {
             dealloc(ptr.as_ptr(), layout);
@@ -114,7 +120,9 @@ mod tests {
         let ptr = AlignedAlloc::alloc_zeroed(size, AlignedAlloc::DEFAULT_ALIGNMENT)
             .expect("zeroed allocation succeeds");
         assert_eq!(ptr.as_ptr() as usize % AlignedAlloc::DEFAULT_ALIGNMENT, 0);
-        let values = unsafe { core::slice::from_raw_parts(ptr.as_ptr() as *const u64, 8) };
+        let values = unsafe {
+            core::slice::from_raw_parts(ptr.as_ptr() as *const u64, 8)
+        };
         assert!(values.iter().all(|value| *value == 0));
         unsafe {
             AlignedAlloc::dealloc(ptr, size, AlignedAlloc::DEFAULT_ALIGNMENT);
