@@ -14,7 +14,7 @@ use super::Numeric;
 ///
 /// Only `f32` and `f64` implement this trait. Integer types do not
 /// satisfy `PartialOrd` as a supertrait (they use `Ord` instead,
-/// constrained via [`OrderedCompareElement`](super::OrderedCompareElement)
+/// constrained via `OrderedCompareElement`
 /// in comparison paths), and complex types are excluded by design.
 ///
 /// # Sealed

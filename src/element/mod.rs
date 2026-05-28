@@ -28,13 +28,13 @@
 //!
 //! | Sub-module | Contents |
 //! |------------|----------|
-//! | [`primitives`](primitives) | `Element` trait + impls for all 7 types |
-//! | [`types`](types) | `ElementType` discriminant + free functions |
-//! | [`numeric`](numeric) | `Numeric` trait + impls |
-//! | [`real`](real) | `RealScalar` trait + impls |
-//! | [`complex`](complex) | `ComplexScalar` trait + impls |
-//! | [`order`](order) | `OrderedCompareElement` marker trait |
-//! | [`checked`](checked) | Checked arithmetic traits |
+//! | `primitives` | `Element` trait + impls for all 7 types |
+//! | `types` | `ElementType` discriminant + free functions |
+//! | `numeric` | `Numeric` trait + impls |
+//! | `real` | `RealScalar` trait + impls |
+//! | `complex` | `ComplexScalar` trait + impls |
+//! | `order` | `OrderedCompareElement` marker trait |
+//! | `checked` | Checked arithmetic traits |
 
 mod types;
 mod order;
