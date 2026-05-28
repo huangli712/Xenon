@@ -35,6 +35,10 @@ impl<A> ArcRepr<A> {
         Self::from_aligned_buf(AlignedBuf::empty())
     }
 
+    /// Wraps an `AlignedBuf` into an `ArcRepr`.
+    ///
+    /// This is the internal constructor shared by all public constructors
+    /// (`from_vec`, `zeros`, `from_elem`, etc.).
     pub(crate) fn from_aligned_buf(buf: AlignedBuf<A>) -> Self {
         Self {
             inner: Arc::new(SharedBuf { buf }),
