@@ -53,6 +53,7 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3};
 
+    /// Empty shape with zero stride is still F-contiguous.
     #[test]
     fn test_f_contig_empty() {
         let shape = Ix2(0, 3);

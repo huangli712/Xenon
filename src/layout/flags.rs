@@ -221,6 +221,7 @@ mod tests {
     use crate::dimension::{Ix0, Ix2, Ix3};
     use crate::layout::compute_f_strides;
 
+    /// Default LayoutFlags has all bits cleared.
     #[test]
     fn test_flags_default_empty() {
         let flags = LayoutFlags::default();
@@ -230,6 +231,7 @@ mod tests {
         assert!(!flags.has_zero_stride());
     }
 
+    /// Setting and then clearing each flag returns to EMPTY.
     #[test]
     fn test_flags_set_clear() {
         let on = LayoutFlags::EMPTY
@@ -247,6 +249,7 @@ mod tests {
         assert_eq!(off, LayoutFlags::EMPTY);
     }
 
+    /// All three flags can be set simultaneously.
     #[test]
     fn test_flags_all_set() {
         let flags = LayoutFlags::EMPTY
@@ -258,6 +261,7 @@ mod tests {
         assert!(flags.has_zero_stride());
     }
 
+    /// BroadcastView takes priority over FContiguous in classify().
     #[test]
     fn test_classify_broadcast_view_priority() {
         let flags = LayoutFlags::EMPTY
@@ -266,12 +270,14 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::BroadcastView);
     }
 
+    /// F_CONTIGUOUS alone classifies as FContiguous.
     #[test]
     fn test_classify_f_contiguous() {
         let flags = LayoutFlags::EMPTY.set_f_contiguous(true);
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
+    /// ALIGNED alone classifies as NonContiguous.
     #[test]
     fn test_classify_non_contiguous() {
         let flags = LayoutFlags::EMPTY.set_aligned(true);
@@ -320,6 +326,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
+    /// Non-empty broadcast view sets HAS_ZERO_STRIDE and clears F_CONTIGUOUS.
     #[test]
     fn test_compute_layout_flags_broadcast_view() {
         let shape = Ix2(5, 4);
@@ -347,6 +354,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
+    /// Transposed strides produce NonContiguous layout.
     #[test]
     fn test_compute_layout_flags_transpose_non_contiguous() {
         let shape = Ix2(3, 2);
@@ -357,6 +365,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
     }
 
+    /// Size-1 axis with arbitrary stride is still F-contiguous.
     #[test]
     fn test_compute_layout_flags_slice_size1_axis() {
         let shape = Ix3(5, 1, 4);
@@ -366,6 +375,7 @@ mod tests {
         assert!(!flags.has_zero_stride());
     }
 
+    /// 0-D scalar is always F-contiguous.
     #[test]
     fn test_compute_layout_flags_scalar() {
         let shape = Ix0;
@@ -376,6 +386,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
+    /// Non-empty tensor with 64-byte-aligned pointer reports aligned.
     #[test]
     fn test_compute_layout_flags_aligned_non_empty() {
         use std::alloc::{Layout, alloc, dealloc};

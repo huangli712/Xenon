@@ -131,6 +131,7 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3};
 
+    /// Strides::new wraps a dimension value.
     #[test]
     fn test_strides_new_ix2() {
         let strides = Strides::new(Ix2(1, 3));
@@ -211,12 +212,14 @@ mod tests {
 
     // --- zero-stride tests ---
 
+    /// has_zero_stride() detects zero-stride axes.
     #[test]
     fn test_zero_stride_detect() {
         assert!(Strides::new(Ix2(1, 0)).has_zero_stride());
         assert!(!Strides::new(Ix2(1, 2)).has_zero_stride());
     }
 
+    /// Non-empty shape with zero stride sets the flag.
     #[test]
     fn test_should_set_zero_stride_flag_broadcast() {
         let shape = Ix2(5, 1);
@@ -224,6 +227,7 @@ mod tests {
         assert!(strides.should_set_zero_stride_flag(&shape));
     }
 
+    /// Empty shape with zero stride does NOT set the flag.
     #[test]
     fn test_should_set_zero_stride_flag_empty() {
         let shape = Ix2(0, 3);
@@ -231,6 +235,7 @@ mod tests {
         assert!(!strides.should_set_zero_stride_flag(&shape));
     }
 
+    /// All-non-zero strides never set the flag.
     #[test]
     fn test_should_set_zero_stride_flag_no_zero() {
         let shape = Ix2(5, 4);

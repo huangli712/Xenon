@@ -29,6 +29,7 @@ pub(crate) fn is_aligned(ptr: *const u8) -> bool {
 mod tests {
     use super::*;
 
+    /// 64-byte-aligned pointer passes all alignment checks.
     #[test]
     fn test_alignment_aligned() {
         use std::alloc::{Layout, alloc, dealloc};
@@ -44,6 +45,7 @@ mod tests {
         }
     }
 
+    /// Unaligned pointer and invalid align arguments return false.
     #[test]
     fn test_alignment_unaligned() {
         let values = [1_u8, 2, 3];
