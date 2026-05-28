@@ -7,16 +7,11 @@ use core::mem::{align_of, size_of};
 
 use crate::element::Element;
 use crate::error::XenonError;
-#[cfg(test)]
-use crate::error::InvalidShapeKind;
-use crate::storage::ArcRepr;
-use crate::storage::RawStorage;
-use crate::storage::Storage;
-use crate::storage::StorageIntoOwned;
-use crate::storage::alloc::AlignedAlloc;
-use crate::storage::buffer::{AlignedBuf, allocation_size};
-use crate::storage::traits::IsOwned;
-use crate::storage::{RawStorageMut, StorageMut, StorageOwned};
+use super::alloc::AlignedAlloc;
+use super::buffer::{AlignedBuf, allocation_size};
+use super::ArcRepr;
+use super::IsOwned;
+use super::{RawStorage, RawStorageMut, Storage, StorageIntoOwned, StorageMut, StorageOwned};
 
 // ---------------------------------------------------------------------------
 // Owned<A> — owning storage (W7T8)
@@ -448,6 +443,7 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::InvalidShapeKind;
 
     #[test]
     fn test_owned_new_empty() {
