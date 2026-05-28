@@ -357,10 +357,7 @@ pub trait StorageIntoOwned: Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Owned;
-    use crate::storage::ViewRepr;
-    use crate::storage::ViewMutRepr;
-    use crate::storage::ArcRepr;
+    use super::super::{Owned, ViewRepr, ViewMutRepr, ArcRepr};
 
     /// Verify that all four marker traits exist and are properly sealed.
     #[test]
