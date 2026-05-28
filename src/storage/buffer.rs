@@ -68,7 +68,6 @@ pub(crate) fn allocation_size<A>(
 /// without performing allocation. The `Drop` implementation releases the
 /// allocation and drops initialized elements when the buffer goes out of
 /// scope.
-
 #[derive(Debug)]
 pub(crate) struct AlignedBuf<A> {
     ptr: NonNull<A>,
@@ -79,6 +78,7 @@ pub(crate) struct AlignedBuf<A> {
 }
 
 impl<A> AlignedBuf<A> {
+    /// Constructs an empty buffer (no allocation, zero length).
     pub(crate) fn empty() -> Self {
         Self {
             ptr: NonNull::dangling(),
@@ -89,6 +89,7 @@ impl<A> AlignedBuf<A> {
         }
     }
 
+    /// Constructs a ZST buffer with the given logical length (no allocation).
     pub(crate) fn zst(len: usize) -> Self {
         debug_assert_eq!(size_of::<A>(), 0);
         Self {
@@ -100,7 +101,14 @@ impl<A> AlignedBuf<A> {
         }
     }
 
-    pub(crate) fn with_capacity_aligned(cap: usize, align: usize) -> Result<Self, XenonError> {
+    /// Allocates an aligned buffer with the given capacity and alignment.
+    ///
+    /// For ZST or zero-capacity requests, returns `zst` or `empty` without
+    /// allocating. The buffer starts with logical length 0.
+    pub(crate) fn with_capacity_aligned(
+        cap: usize,
+        align: usize
+    ) -> Result<Self, XenonError> {
         let align = align.max(align_of::<A>().max(1));
         if size_of::<A>() == 0 {
             return Ok(Self::zst(0));
@@ -207,26 +215,35 @@ impl<A> AlignedBuf<A> {
         }
     }
 
+    /// Returns a const pointer to the start of the data.
     pub(crate) fn as_ptr(&self) -> *const A {
         self.ptr.as_ptr()
     }
 
+    /// Returns a mutable pointer to the start of the data.
     pub(crate) fn as_mut_ptr(&mut self) -> *mut A {
         self.ptr.as_ptr()
     }
 
+    /// Returns a mutable pointer without requiring `&mut self`.
+    ///
+    /// Only safe when the caller has exclusive ownership of the buffer
+    /// (e.g., `Owned<A>`).
     pub(crate) fn as_mut_ptr_unchecked(&self) -> *mut A {
         self.ptr.as_ptr()
     }
 
+    /// Returns the number of initialized elements.
     pub(crate) fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns the allocated capacity in elements.
     pub(crate) fn capacity(&self) -> usize {
         self.cap
     }
 
+    /// Returns the allocation alignment in bytes.
     pub(crate) fn alignment(&self) -> usize {
         self.align
     }
