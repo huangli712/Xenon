@@ -1,9 +1,12 @@
-//! Stride carrier, F-order stride computation, and zero-stride helpers.
+//! Stride storage, F-order computation, and zero-stride detection.
+//!
+//! [`Strides`] carrier, `compute_f_strides` algorithm, and the
+//! `has_zero_stride` / `should_set_zero_stride_flag` helpers are
+//! implemented here.
 
 use std::borrow::Cow;
-
-use crate::dimension::Dimension;
 use crate::error::{InvalidShapeKind, XenonError};
+use crate::dimension::Dimension;
 
 /// Stride carrier; element-offset along each axis, same rank as `D`.
 #[derive(Debug, Clone)]
