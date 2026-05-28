@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
     }
 
-    // === flags_for_f_layout ===
+    // --- flags_for_f_layout ----------------------------------------------------
 
     #[test]
     fn test_flags_for_f_layout_aligned_no_broadcast() {
@@ -296,7 +296,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::BroadcastView);
     }
 
-    // === compute_layout_flags ===
+    // --- compute_layout_flags --------------------------------------------------
 
     fn dangling_u8() -> *const u8 {
         core::ptr::NonNull::<u8>::dangling().as_ptr()

@@ -1,8 +1,6 @@
-//! Stride storage, F-order computation, and zero-stride detection.
-//!
-//! [`Strides`] carrier, `Strides::f_contiguous` algorithm, and the
-//! `has_zero_stride` / `should_set_zero_stride_flag` helpers are
-//! implemented here.
+//! [`Strides`] stores per-axis element-offsets for tensor layouts.
+//! `Strides::f_contiguous` computes canonical F-order strides, with
+//! `has_zero_stride` / `should_set_zero_stride_flag` for broadcast detection.
 
 use std::borrow::Cow;
 use crate::error::{InvalidShapeKind, XenonError};
@@ -41,7 +39,8 @@ impl<D: Dimension> Strides<D> {
 
     /// Compute default F-contiguous strides for the given shape.
     ///
-    /// Algorithm:
+    /// # Algorithm
+    ///
     /// ```text
     /// strides[0] = 1;
     /// for i in 1..N: strides[i] = strides[i-1].checked_mul(shape[i-1])?
@@ -128,37 +127,39 @@ mod tests {
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
+    // --- Strides::f_contiguous ----------------------------------------------
+
+    /// F-contiguous strides for [5] are [1].
     #[test]
     fn test_f_strides_1d() {
-        // F-contiguous strides computed from shape dimensions.
         let strides = Strides::f_contiguous(&Ix1(5)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1]);
     }
 
+    /// F-contiguous strides for [3, 4] are [1, 3].
     #[test]
     fn test_f_strides_2d() {
-        // F-contiguous strides for [3, 4] are [1, 3].
         let strides = Strides::f_contiguous(&Ix2(3, 4)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
+    /// F-contiguous strides for [2, 3, 4] are [1, 2, 6].
     #[test]
     fn test_f_strides_3d() {
-        // F-contiguous strides for [2, 3, 4] are [1, 2, 6].
         let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
     }
 
+    /// 0-D scalar produces empty strides.
     #[test]
     fn test_f_strides_scalar() {
-        // 0-D scalar produces empty strides.
         let strides = Strides::f_contiguous(&Ix0).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[] as &[usize]);
     }
 
+    /// Overflow of cumulative product → InvalidShape::ProductOverflow.
     #[test]
     fn test_f_strides_overflow() {
-        // Overflow of cumulative product → InvalidShape::ProductOverflow.
         let shape = Ix2(usize::MAX, usize::MAX);
         let err = Strides::f_contiguous(&shape).expect_err("expected overflow error");
         match err {
@@ -170,18 +171,20 @@ mod tests {
         }
     }
 
+    // --- Strides::try_stride / iter -----------------------------------------
+
+    /// try_stride returns Ok(value) for valid axis.
     #[test]
     fn test_strides_try_stride_ok() {
-        // try_stride returns Ok(value) for valid axis.
         let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
         assert_eq!(strides.try_stride(0).expect("valid axis"), 1);
         assert_eq!(strides.try_stride(1).expect("valid axis"), 2);
         assert_eq!(strides.try_stride(2).expect("valid axis"), 6);
     }
 
+    /// try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
     #[test]
     fn test_strides_try_stride_out_of_bounds() {
-        // try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
         let strides = Strides::f_contiguous(&Ix2(3, 4)).expect("valid test shape");
         let err = strides
             .try_stride(2)
@@ -192,15 +195,15 @@ mod tests {
         }
     }
 
+    /// iter yields stride values in axis order.
     #[test]
     fn test_strides_iter() {
-        // iter yields stride values in axis order.
         let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
         let collected: Vec<usize> = strides.iter().copied().collect();
         assert_eq!(collected, vec![1, 2, 6]);
     }
 
-    // --- zero-stride tests ---
+    // --- zero-stride tests --------------------------------------------------
 
     /// has_zero_stride() detects zero-stride axes.
     #[test]
