@@ -3,11 +3,11 @@
 //! Crate-internal 64-byte aligned memory allocator. ZST and `size == 0`
 //! paths are handled by callers; this allocator requires `size > 0`.
 
+use core::ptr::NonNull;
+use std::borrow::Cow;
 use std::alloc::{Layout, alloc, alloc_zeroed, dealloc};
 
-use core::ptr::NonNull;
-
-use crate::error::{WorkspaceErrorCategory, XenonError};
+use crate::error::{XenonError, WorkspaceErrorCategory};
 
 /// Aligned memory allocator.
 pub(crate) struct AlignedAlloc;
@@ -29,22 +29,25 @@ impl AlignedAlloc {
     ///
     /// For ZST or zero-sized allocations, callers must skip this allocator
     /// and use `NonNull::dangling()` directly.
-    pub(crate) fn alloc(size: usize, align: usize) -> Result<NonNull<u8>, XenonError> {
+    pub(crate) fn alloc(
+        size: usize,
+        align: usize
+    ) -> Result<NonNull<u8>, XenonError> {
         if size == 0 {
             return Err(XenonError::Workspace {
-                operation: std::borrow::Cow::Borrowed("AlignedAlloc::alloc"),
+                operation: Cow::Borrowed("AlignedAlloc::alloc"),
                 category: WorkspaceErrorCategory::AllocFailed { size, align },
                 cause: None,
             });
         }
         let layout = Layout::from_size_align(size, align).map_err(|_| XenonError::Workspace {
-            operation: std::borrow::Cow::Borrowed("AlignedAlloc::alloc"),
+            operation: Cow::Borrowed("AlignedAlloc::alloc"),
             category: WorkspaceErrorCategory::InvalidLayout { size, align },
             cause: None,
         })?;
         let ptr = unsafe { alloc(layout) };
         NonNull::new(ptr).ok_or(XenonError::Workspace {
-            operation: std::borrow::Cow::Borrowed("AlignedAlloc::alloc"),
+            operation: Cow::Borrowed("AlignedAlloc::alloc"),
             category: WorkspaceErrorCategory::AllocFailed { size, align },
             cause: None,
         })
@@ -54,19 +57,19 @@ impl AlignedAlloc {
     pub(crate) fn alloc_zeroed(size: usize, align: usize) -> Result<NonNull<u8>, XenonError> {
         if size == 0 {
             return Err(XenonError::Workspace {
-                operation: std::borrow::Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
+                operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
                 category: WorkspaceErrorCategory::AllocFailed { size, align },
                 cause: None,
             });
         }
         let layout = Layout::from_size_align(size, align).map_err(|_| XenonError::Workspace {
-            operation: std::borrow::Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
+            operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
             category: WorkspaceErrorCategory::InvalidLayout { size, align },
             cause: None,
         })?;
         let ptr = unsafe { alloc_zeroed(layout) };
         NonNull::new(ptr).ok_or(XenonError::Workspace {
-            operation: std::borrow::Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
+            operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
             category: WorkspaceErrorCategory::AllocFailed { size, align },
             cause: None,
         })
