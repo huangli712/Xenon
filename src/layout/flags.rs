@@ -1,12 +1,13 @@
-//! Layout flags and state classification.
+//! Layout flags, state classification, pointer alignment checks, and
+//! the `compute_layout_flags` central entry point.
 //!
 //! Bitfield constants, query/setter methods, `LayoutFlags::classify()`
-//! fast-path constructor, and `compute_layout_flags` central entry point
-//! are implemented here.
+//! fast-path constructor, `is_aligned` / `is_aligned_to`, and
+//! `compute_layout_flags` are implemented here.
 
 use crate::dimension::Dimension;
 use super::contiguous::is_f_contiguous;
-use super::strides::{is_aligned, should_set_zero_stride_flag, Strides};
+use super::strides::{should_set_zero_stride_flag, Strides};
 
 /// 8-bit packed layout flags. Concrete bit layout in `06-layout §5.1`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -160,6 +161,29 @@ impl LayoutFlags {
             .set_aligned(aligned)
             .set_has_zero_stride(is_broadcast_zero_stride)
     }
+}
+
+/// Check whether `ptr` satisfies the alignment requirement
+/// (`06-layout §5.9`).
+///
+/// Returns `false` for `align == 0` or non-power-of-two `align`; never
+/// panics. The pointer is inspected only as an integer address (modulo
+/// `align`); it is **not** dereferenced, and is permitted to be dangling
+/// (e.g., for empty tensors; see §6.5).
+#[inline]
+pub(crate) fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
+    if align == 0 || !align.is_power_of_two() {
+        return false;
+    }
+    (ptr as usize).is_multiple_of(align)
+}
+
+/// Check whether the logical first-element pointer is 64-byte aligned
+/// (cache-line size; the minimum useful for most SIMD paths).
+/// See `06-layout §5.9`.
+#[inline]
+pub(crate) fn is_aligned(ptr: *const u8) -> bool {
+    is_aligned_to(ptr, 64)
 }
 
 /// Central entry for computing `LayoutFlags` from `shape + strides + ptr`
@@ -378,6 +402,32 @@ mod tests {
         unsafe {
             dealloc(ptr, layout);
         }
+    }
+
+    // === §5.9 / §8.2 alignment ===
+
+    #[test]
+    fn test_alignment_aligned() {
+        use std::alloc::{Layout, alloc, dealloc};
+        let layout = Layout::from_size_align(256, 64).expect("valid layout");
+        let ptr = unsafe { alloc(layout) };
+        assert!(!ptr.is_null(), "allocator returned null");
+        assert!(is_aligned(ptr));
+        assert!(is_aligned_to(ptr, 64));
+        assert!(is_aligned_to(ptr, 32));
+        assert!(is_aligned_to(ptr, 1));
+        unsafe {
+            dealloc(ptr, layout);
+        }
+    }
+
+    #[test]
+    fn test_alignment_unaligned() {
+        let values = [1_u8, 2, 3];
+        let ptr = unsafe { values.as_ptr().add(1) };
+        assert!(!is_aligned_to(ptr, 64));
+        assert!(!is_aligned_to(values.as_ptr(), 0));
+        assert!(!is_aligned_to(values.as_ptr(), 3));
     }
 }
 

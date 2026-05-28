@@ -1,8 +1,7 @@
 //! Stride carrier and helpers.
 //!
 //! Full implementations:
-//! - `compute_f_strides`          → here (W6T6)
-//! - `is_aligned` / `is_aligned_to` → W6T9
+//! - `compute_f_strides` → here (W6T6)
 
 use std::borrow::Cow;
 
@@ -127,7 +126,7 @@ pub fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonErr
     Strides::from_slice(&values)
 }
 
-// === Zero-stride detection (W6T8) and alignment checks (W6T9) ===
+// === Zero-stride detection (W6T8) ===
 
 /// Flag-assignment guard for `HAS_ZERO_STRIDE`.
 ///
@@ -141,29 +140,6 @@ pub(crate) fn should_set_zero_stride_flag<D: Dimension>(shape: &D, strides: &Str
         return false;
     }
     shape.slice().iter().all(|&e| e > 0)
-}
-
-/// Check whether the logical-first pointer satisfies the alignment
-/// requirement (`06-layout §5.9`).
-///
-/// Returns `false` for `align == 0` or non-power-of-two `align`; never
-/// panics. The pointer is inspected only as an integer address (modulo
-/// `align`); it is **not** dereferenced, and is permitted to be dangling
-/// (e.g., for empty tensors; see §6.5).
-#[inline]
-pub fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
-    if align == 0 || !align.is_power_of_two() {
-        return false;
-    }
-    (ptr as usize).is_multiple_of(align)
-}
-
-/// Check whether the logical first-element pointer is 64-byte aligned
-/// (cache-line size; the minimum useful for most SIMD paths).
-/// See `06-layout §5.9`.
-#[inline]
-pub fn is_aligned(ptr: *const u8) -> bool {
-    is_aligned_to(ptr, 64)
 }
 
 #[cfg(test)]
@@ -278,32 +254,4 @@ mod tests {
         assert!(!should_set_zero_stride_flag(&shape, &strides));
     }
 
-    // --- §8.2 alignment tests (W6T9) ---
-
-    #[test]
-    fn test_alignment_aligned() {
-        use std::alloc::{Layout, alloc, dealloc};
-        let layout = Layout::from_size_align(256, 64).expect("valid layout");
-        // SAFETY: layout is non-zero size with valid align.
-        let ptr = unsafe { alloc(layout) };
-        assert!(!ptr.is_null(), "allocator returned null");
-        assert!(is_aligned(ptr));
-        assert!(is_aligned_to(ptr, 64));
-        assert!(is_aligned_to(ptr, 32));
-        assert!(is_aligned_to(ptr, 1));
-        // SAFETY: ptr was obtained from `alloc(layout)`.
-        unsafe {
-            dealloc(ptr, layout);
-        }
-    }
-
-    #[test]
-    fn test_alignment_unaligned() {
-        let values = [1_u8, 2, 3];
-        // SAFETY: `.add(1)` stays within the allocation of `values`.
-        let ptr = unsafe { values.as_ptr().add(1) };
-        assert!(!is_aligned_to(ptr, 64));
-        assert!(!is_aligned_to(values.as_ptr(), 0));
-        assert!(!is_aligned_to(values.as_ptr(), 3));
-    }
 }
