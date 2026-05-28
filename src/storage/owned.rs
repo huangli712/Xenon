@@ -199,7 +199,7 @@ unsafe impl<A> RawStorage for Owned<A> {
 
 /// # Safety
 ///
-/// `Owned<A>` implements `Storage` because W7T9's `RawStorage` impl exposes
+/// `Owned<A>` implements `Storage` because the `RawStorage` impl exposes
 /// the same base pointer and length maintained by `AlignedBuf<A>`, and
 /// `AlignedBuf` guarantees the `Storage::as_slice` preconditions: non-null aligned pointer, one allocation, `len`
 /// initialized elements, `isize::MAX` range limit, and no mutable alias
@@ -215,7 +215,7 @@ unsafe impl<A: Element> Storage for Owned<A> {}
 /// `Owned<A>` implements `RawStorageMut` because it uniquely owns the
 /// `AlignedBuf<A>` allocation. `&mut self` gives exclusive access to the
 /// `len` initialized elements, and `data.as_mut_ptr()` is the same stable,
-/// non-null, aligned base pointer established by W7T9.
+/// non-null, aligned base pointer established by the `RawStorage` impl.
 unsafe impl<A> RawStorageMut for Owned<A> {
     fn as_mut_ptr(&mut self) -> *mut A {
         self.data.as_mut_ptr()
