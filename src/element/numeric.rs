@@ -1,35 +1,38 @@
-//! Numeric element trait.
+//! Numeric element trait and primitive implementations.
 //!
 //! `Numeric` extends [`Element`](crate::element::Element) with arithmetic
-//! operators and a unified conjugate entry point.
+//! operators (`Add`, `Sub`, `Mul`, `Div`, `Neg`) and a unified `conjugate()`
+//! entry point.
 
-use crate::element::Element;
+use core::ops::{Add, Div, Mul, Neg, Sub};
+
+use super::Element;
 
 use crate::complex::Complex;
 
 /// Numeric element trait.
 ///
-/// `Numeric` extends [`Element`] with arithmetic operators (`Add`, `Sub`,
-/// `Mul`, `Div`, `Neg`) and a unified `conjugate()` entry point. Real and
-/// integer types return `self` from `conjugate()`; complex types compute the
-/// mathematical conjugate in their own impl blocks.
+/// `Numeric` extends [`Element`] with all five arithmetic operators and
+/// a unified `conjugate()` method. For real and integer types, `conjugate()`
+/// is the identity; for `Complex<f32>` and `Complex<f64>`, it returns the
+/// mathematical conjugate (negating the imaginary part).
+///
+/// Implemented by `{i32, i64, f32, f64, Complex<f32>, Complex<f64>}`.
+/// `bool` is excluded because it does not form a ring under addition.
 ///
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait Numeric:
-    Element
-    + core::ops::Add<Output = Self>
-    + core::ops::Sub<Output = Self>
-    + core::ops::Mul<Output = Self>
-    + core::ops::Div<Output = Self>
-    + core::ops::Neg<Output = Self>
+    Element + Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self> + Neg<Output = Self>
 {
     /// Returns the conjugate of `self`.
     ///
     /// For real and integer types this is the identity operation.
     fn conjugate(self) -> Self;
 }
+
+// ── Numeric impls ─────────────────────────────────────────────────────────
 
 impl Numeric for i32 {
     #[inline]
@@ -59,6 +62,7 @@ impl Numeric for f64 {
     }
 }
 
+/// `Complex<f32>`: conjugate negates the imaginary part.
 impl Numeric for Complex<f32> {
     #[inline]
     fn conjugate(self) -> Self {
@@ -66,6 +70,7 @@ impl Numeric for Complex<f32> {
     }
 }
 
+/// `Complex<f64>`: conjugate negates the imaginary part.
 impl Numeric for Complex<f64> {
     #[inline]
     fn conjugate(self) -> Self {
@@ -79,9 +84,9 @@ mod tests {
     use crate::complex::Complex;
     use crate::element::ComplexScalar;
 
-    /// Verifies that the `Numeric` API surface (arithmetic ops + conjugate)
-    /// is well-formed and reachable through a generic `N: Numeric` bound.
-    /// Exercises integer, float, and complex implementations.
+    /// Verifies that the `Numeric` API surface (all five arithmetic ops
+    /// plus `conjugate`) is well‑formed through a generic `N: Numeric`
+    /// bound. Exercises integer, float, and complex types.
     #[test]
     fn test_numeric_contract() {
         fn check<N: Numeric>(a: N, b: N) -> N {
@@ -102,7 +107,8 @@ mod tests {
         );
     }
 
-    /// Exercises i32 Element::zero, Element::one, and Numeric::conjugate.
+    /// Verifies `i32` `Element::zero`, `Element::one`, and
+    /// `Numeric::conjugate`.
     #[test]
     fn test_i32_zero_one() {
         assert_eq!(i32::zero(), 0);
@@ -110,7 +116,7 @@ mod tests {
         assert_eq!(<i32 as Numeric>::conjugate(-7), -7);
     }
 
-    /// Verifies i32 arithmetic operators (add, sub, mul, div, neg).
+    /// Verifies `i32` arithmetic operators.
     #[test]
     fn test_i32_arithmetic() {
         let a = 10i32;
@@ -122,7 +128,7 @@ mod tests {
         assert_eq!(-a, -10);
     }
 
-    /// Exercises i64 Element and Numeric trait methods.
+    /// Verifies `i64` `Element` and `Numeric` trait methods.
     #[test]
     fn test_i64_zero_one() {
         assert_eq!(i64::zero(), 0);
@@ -134,8 +140,8 @@ mod tests {
         assert_eq!(<i64 as Numeric>::conjugate(7), 7);
     }
 
-    /// Verifies Complex&lt;f64&gt; Numeric::conjugate, ComplexScalar::norm,
-    /// and Element::zero.
+    /// Verifies `Complex<f64>` `Numeric::conjugate`,
+    /// `ComplexScalar::norm`, and `Element::zero`.
     #[test]
     fn test_complex_f64_conj_and_norm() {
         let value = Complex::new(3.0f64, 4.0f64);
