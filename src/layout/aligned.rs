@@ -28,11 +28,11 @@ pub(crate) fn is_aligned(ptr: *const u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::alloc::{Layout, alloc, dealloc};
 
     /// 64-byte-aligned pointer passes all alignment checks.
     #[test]
     fn test_alignment_aligned() {
-        use std::alloc::{Layout, alloc, dealloc};
         let layout = Layout::from_size_align(256, 64).expect("valid layout");
         let ptr = unsafe { alloc(layout) };
         assert!(!ptr.is_null(), "allocator returned null");
