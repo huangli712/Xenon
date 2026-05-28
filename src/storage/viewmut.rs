@@ -3,6 +3,10 @@
 //! `ViewMutRepr<'a, A>` is an exclusive-borrow storage representation.
 //! Does not implement `Clone` or `Copy`.
 
+use crate::private::Sealed;
+
+use core::marker::PhantomData;
+
 use crate::storage::Owned;
 use crate::storage::RawStorage;
 use crate::storage::RawStorageMut;
@@ -18,10 +22,10 @@ use crate::storage::traits::IsViewMut;
 pub struct ViewMutRepr<'a, A> {
     ptr: *mut A,
     len: usize,
-    _marker: core::marker::PhantomData<&'a mut A>,
+    _marker: PhantomData<&'a mut A>,
 }
 
-impl<'a, A> crate::private::Sealed for ViewMutRepr<'a, A> {}
+impl<'a, A> Sealed for ViewMutRepr<'a, A> {}
 
 impl<'a, A> ViewMutRepr<'a, A> {
     /// Creates a `ViewMutRepr` from a raw mutable pointer and length.
@@ -36,7 +40,7 @@ impl<'a, A> ViewMutRepr<'a, A> {
         Self {
             ptr,
             len,
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -45,7 +49,7 @@ impl<'a, A> ViewMutRepr<'a, A> {
         Self {
             ptr: slice.as_mut_ptr(),
             len: slice.len(),
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -70,7 +74,7 @@ impl<'a, A> ViewMutRepr<'a, A> {
             // SAFETY: start <= end <= len, so start is within bounds
             ptr: unsafe { self.ptr.add(start) },
             len: end - start,
-            _marker: core::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 }
