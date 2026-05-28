@@ -1,5 +1,5 @@
-//! Layout flags, state classification, and the
-//! `compute_layout_flags` central entry point.
+//! Layout flags, state classification, and the `compute_layout_flags`
+//! central entry point.
 //!
 //! Bitfield constants, query/setter methods, `LayoutFlags::classify()`
 //! fast-path constructor, and `compute_layout_flags` are implemented here.
@@ -23,15 +23,15 @@ pub struct LayoutFlags(u8);
 pub enum LayoutState {
     /// Fortran-contiguous: first stride = 1, F-order progression.
     FContiguous,
+
     /// Arbitrary non-broadcast view that is not F-contiguous.
     NonContiguous,
+
     /// Non-empty view with at least one zero-stride axis (broadcast).
     BroadcastView,
 }
 
 impl LayoutFlags {
-    // === Constants ===
-
     /// Empty flags — all bits cleared.
     pub const EMPTY: Self = Self(0);
 
@@ -45,8 +45,6 @@ impl LayoutFlags {
     /// zero strides (`product(shape) > 0`), never for empty-array
     /// degenerate metadata.
     pub const HAS_ZERO_STRIDE: Self = Self(0b0000_1000);
-
-    // === Query methods ===
 
     /// Returns `true` if the F-order contiguity flag is set.
     #[inline]
@@ -65,8 +63,6 @@ impl LayoutFlags {
     pub const fn has_zero_stride(self) -> bool {
         (self.0 & Self::HAS_ZERO_STRIDE.0) != 0
     }
-
-    // === Setter methods (const, builder pattern) ===
 
     /// Sets or clears the F-order contiguity flag.
     #[inline]
@@ -98,21 +94,18 @@ impl LayoutFlags {
         }
     }
 
-    // === LayoutState classification ===
-
     /// Classifies the current layout into a `LayoutState` variant.
     ///
     /// Priority: `BroadcastView` → `FContiguous` → `NonContiguous`.
     ///
     /// # Invariant
     ///
-    /// Correct **only** for `LayoutFlags` produced by
-    /// `compute_layout_flags(shape, strides, ptr)`: that entry
-    /// point is the sole authority that sets `HAS_ZERO_STRIDE` and
-    /// guarantees `HAS_ZERO_STRIDE` is set iff
-    /// `any(stride == 0) && product(shape) > 0`. As a consequence,
-    /// `classify` does NOT (and cannot — it has no `shape` argument)
-    /// re-check the `product(shape) > 0` half of the rule.
+    /// Correct only for `LayoutFlags` produced by `compute_layout_flags()`: that
+    /// entry point is the sole authority that sets `HAS_ZERO_STRIDE` and guarantees
+    /// `HAS_ZERO_STRIDE` is set if `any(stride == 0) && product(shape) > 0`.
+    ///
+    /// As a consequence, `classify()` does NOT (and cannot — it has no `shape`
+    /// argument) re-check the `product(shape) > 0` half of the rule.
     #[inline]
     pub const fn classify(self) -> LayoutState {
         if self.has_zero_stride() {
@@ -124,10 +117,7 @@ impl LayoutFlags {
         }
     }
 
-    // === Constructor ===
-
-    /// Compute canonical `LayoutFlags` for an already-validated F-order
-    /// layout.
+    /// Compute canonical `LayoutFlags` for an already-validated F-order layout.
     ///
     /// Fast path: use only when the caller has already established that
     /// the layout is F-order (e.g., immediately after a successful
@@ -157,11 +147,10 @@ impl LayoutFlags {
 
 /// Central entry for computing `LayoutFlags` from `shape + strides + ptr`.
 ///
-/// This function is the **single source of truth** for the
-/// `HAS_ZERO_STRIDE` bit and for the F-order / alignment flags as cached
-/// in `TensorBase`. Downstream callers (construction / broadcast /
-/// transpose / slice paths) MUST route through this function rather than
-/// recomputing flags themselves.
+/// This function is the **single source of truth** for the `HAS_ZERO_STRIDE`
+/// bit and for the F-order / alignment flags as cached in `TensorBase`.
+/// Downstream callers (construction / broadcast / transpose / slice paths)
+/// MUST route through this function rather than recomputing flags themselves.
 ///
 /// # Preconditions
 ///
@@ -179,19 +168,23 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
     strides: &Strides<D>,
     ptr: *const A,
 ) -> LayoutFlags {
-    // Step 1: HAS_ZERO_STRIDE := any(stride==0) && product(shape) > 0.
+    // Step 1:
+    //
+    // HAS_ZERO_STRIDE := any(stride==0) && product(shape) > 0.
     let is_broadcast_zero_stride = strides.should_set_zero_stride_flag(shape);
 
-    // Step 2: F_CONTIGUOUS := !is_broadcast_zero_stride
-    //                          && is_f_contiguous(shape, strides).
+    // Step 2:
+    //
+    // F_CONTIGUOUS := !is_broadcast_zero_stride && is_f_contiguous(shape, strides).
     //
     // Empty-array degenerate metadata (product == 0) keeps
-    // `is_broadcast_zero_stride == false` and can therefore still be
-    // F_CONTIGUOUS.
+    // `is_broadcast_zero_stride == false` and can therefore still be F_CONTIGUOUS.
     let f_contig = !is_broadcast_zero_stride && is_f_contiguous(shape, strides);
 
-    // Step 3: empty tensors report ALIGNED = true regardless
-    // of the dangling pointer; otherwise inspect the address.
+    // Step 3:
+    // 
+    // empty tensors report ALIGNED = true regardless of the dangling pointer;
+    // otherwise inspect the address.
     let is_empty = shape.slice().contains(&0);
     let aligned = if is_empty {
         true
@@ -209,7 +202,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix2, Ix3};
-    use crate::layout::Strides;
+    use super::Strides;
 
     /// Default LayoutFlags has all bits cleared.
     #[test]
@@ -276,9 +269,9 @@ mod tests {
 
     // --- flags_for_f_layout ----------------------------------------------------
 
+    /// Construction path: known F-order + aligned + no broadcast.
     #[test]
     fn test_flags_for_f_layout_aligned_no_broadcast() {
-        // Construction path: known F-order + aligned + no broadcast.
         let flags = LayoutFlags::flags_for_f_layout(/*aligned=*/ true, /*broadcast=*/ false);
         assert!(flags.is_f_contiguous());
         assert!(flags.is_aligned());
@@ -286,10 +279,9 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
+    /// Broadcast zero-stride clears F_CONTIGUOUS regardless of F-order.
     #[test]
     fn test_flags_for_f_layout_broadcast_clears_f_contig() {
-        // When caller declares broadcast zero stride, the fast path
-        // MUST clear F_CONTIGUOUS regardless of the F-order assumption.
         let flags = LayoutFlags::flags_for_f_layout(true, true);
         assert!(!flags.is_f_contiguous());
         assert!(flags.has_zero_stride());
@@ -302,9 +294,9 @@ mod tests {
         core::ptr::NonNull::<u8>::dangling().as_ptr()
     }
 
+    /// Normal construction path: F-order strides ⇒ F-contiguous flags.
     #[test]
     fn test_compute_layout_flags_construction_f_order() {
-        // Strides::f_contiguous ⇒ is_f_contiguous == true.
         let shape = Ix3(2, 3, 4);
         let strides = Strides::f_contiguous(&shape).expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
@@ -327,6 +319,7 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::BroadcastView);
     }
 
+    /// Empty shape with degenerate zero stride keeps F_CONTIGUOUS.
     #[test]
     fn test_compute_layout_flags_empty_degenerate_zero_stride() {
         let shape = Ix2(0, 3);
