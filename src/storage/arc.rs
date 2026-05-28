@@ -204,14 +204,17 @@ unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 impl<A> Default for ArcRepr<A> {
+    /// Returns an empty `ArcRepr` with no allocated storage.
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl<A: Element + Copy> TryFrom<Vec<A>> for ArcRepr<A> {
-    type Error = crate::error::XenonError;
+    type Error = XenonError;
 
+    /// Converts a `Vec` into an `ArcRepr` by copying elements into an
+    /// aligned buffer.
     fn try_from(value: Vec<A>) -> Result<Self, Self::Error> {
         Self::from_vec(value)
     }
@@ -220,7 +223,7 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for ArcRepr<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::alloc::AlignedAlloc;
+    use crate::storage::alloc::AlignedAlloc;
 
     /// Clone is O(1) — both handles share the same pointer.
     #[test]
