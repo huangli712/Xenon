@@ -1,65 +1,47 @@
-//! Element type discriminants, free functions, and marker traits.
-//!
-//! # Supported element types
-//!
-//! The closed set of element types consists of 7 members:
-//!
-//! | Type | `Element` | `Numeric` | `RealScalar` | `ComplexScalar` |
-//! |------|-----------|-----------|--------------|-----------------|
-//! | `i32` | ✓ | ✓ | | |
-//! | `i64` | ✓ | ✓ | | |
-//! | `f32` | ✓ | ✓ | ✓ | |
-//! | `f64` | ✓ | ✓ | ✓ | |
-//! | `Complex<f32>` | ✓ | ✓ | | ✓ |
-//! | `Complex<f64>` | ✓ | ✓ | | ✓ |
-//! | `bool` | ✓ | | | |
-//!
-//! # `usize` is NOT an element type
-//!
-//! `usize` is used for indexing, shape metadata, and dimension
-//! expressions only. It does not implement `Element` because:
-//!
-//! * It lacks an additive inverse (no negative values), which prevents
-//!   it from forming the algebraic structure required by `Element`.
-//! * `Element` types require `zero()` and `one()` identities; `usize`
-//!   has no consistent negation semantics in this context.
+//! Element type discriminant and free lookup functions.
 
 use core::fmt::{Display, Formatter};
-
-use crate::element::primitives::Element;
-
-// ── ElementType ───────────────────────────────────────────────────────────
+use super::Element;
 
 /// Compile-time enumerated discriminant for every supported element type.
 ///
-/// Each variant carries an explicit `#[repr(u8)]` value for FFI use.
-/// The enum is `#[non_exhaustive]` so that downstream code must handle
-/// future additions.
+/// Each variant carries an explicit `#[repr(u8)]` value for FFI use,
+/// providing a stable ABI mapping from Rust element types to C-compatible
+/// integer tags. The enum is `#[non_exhaustive]` so that downstream code
+/// must handle future additions (e.g., new numeric types or complex
+/// precision levels).
+///
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ElementType {
     /// Boolean: `true` or `false`.
     Bool = 0,
+
     /// 32-bit signed integer.
     I32 = 1,
+
     /// 64-bit signed integer.
     I64 = 2,
+
     /// 32-bit IEEE-754 floating-point.
     F32 = 3,
+
     /// 64-bit IEEE-754 floating-point.
     F64 = 4,
+
     /// Single-precision complex number: `Complex<f32>`.
     Complex32 = 5,
+
     /// Double-precision complex number: `Complex<f64>`.
     Complex64 = 6,
 }
 
 impl ElementType {
-    /// Canonical, human-readable name for each variant.
+    /// Returns the canonical, human-readable name for this variant.
     ///
-    /// These strings match `Element::ELEMENT_TYPE_NAME` for the
-    /// corresponding concrete types.
+    /// Each name matches the corresponding `Element::ELEMENT_TYPE_NAME`
+    /// string for the concrete type.
     pub const fn name(self) -> &'static str {
         match self {
             ElementType::Bool => "bool",
@@ -72,19 +54,27 @@ impl ElementType {
         }
     }
 
-    /// Returns the discriminant for the element type `A`.
+    /// Returns the compile-time discriminant for element type `A`.
+    ///
+    /// This is a zero-cost generic dispatch: `ElementType::of::<A>()`
+    /// resolves to the `A::ELEMENT_TYPE` associated constant and is
+    /// eligible for const evaluation.
     pub const fn of<A: Element>() -> Self {
         A::ELEMENT_TYPE
     }
 }
 
 impl Display for ElementType {
+    /// Formats `ElementType` using its [`name`](ElementType::name).
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.name())
     }
 }
 
 /// Returns the `ElementType` discriminant for `A`.
+///
+/// This is a free-function equivalent of [`ElementType::of`].
+/// Both resolve to `A::ELEMENT_TYPE` and are zero-cost const functions.
 pub const fn element_type_of<A: Element>() -> ElementType {
     A::ELEMENT_TYPE
 }
@@ -94,8 +84,8 @@ mod tests {
     use super::*;
     use crate::complex::Complex;
 
-    /// Verifies ElementType::name() returns the correct string for each
-    /// variant.
+    /// Verifies `ElementType::name()` returns the correct string for
+    /// every variant, covering all 7 closed element types.
     #[test]
     fn test_element_type_name_round_trip() {
         assert_eq!(ElementType::Bool.name(), "bool");
@@ -107,6 +97,8 @@ mod tests {
         assert_eq!(ElementType::Complex64.name(), "Complex<f64>");
     }
 
+    /// Verifies `#[repr(u8)]` discriminant values match the design spec:
+    /// `Bool=0` through `Complex64=6`.
     #[test]
     fn test_element_type_discriminants() {
         assert_eq!(ElementType::Bool as u8, 0);
@@ -118,7 +110,8 @@ mod tests {
         assert_eq!(ElementType::Complex64 as u8, 6);
     }
 
-    /// Verifies ElementType::of::&lt;A&gt;() resolves to the correct variant.
+    /// Verifies `ElementType::of::<A>()` resolves to the correct variant
+    /// through the `A::ELEMENT_TYPE` associated constant.
     #[test]
     fn test_element_type_of_dispatch() {
         assert_eq!(ElementType::of::<i32>(), ElementType::I32);
@@ -127,13 +120,14 @@ mod tests {
         assert_eq!(ElementType::of::<Complex<f64>>(), ElementType::Complex64);
     }
 
-    /// Verifies element_type_of() free function.
+    /// Verifies the free function `element_type_of::<A>()` returns the
+    /// same result as `ElementType::of::<A>()`.
     #[test]
     fn test_free_functions_dispatch() {
         assert_eq!(element_type_of::<f32>(), ElementType::F32);
     }
 
-    /// Verifies Display impl for ElementType.
+    /// Verifies the `Display` impl delegates to [`ElementType::name`].
     #[test]
     fn test_element_type_display() {
         assert_eq!(format!("{}", ElementType::Bool), "bool");

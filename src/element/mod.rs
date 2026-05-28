@@ -1,9 +1,40 @@
 //! Element type hierarchy — closed set of 7 types with sealed traits.
 //!
-//! The module defines the `Element` base trait, `ElementType` discriminant,
-//! and specialised sub-traits (`Numeric`, `RealScalar`, `ComplexScalar`,
-//! `CastTo`, `CheckedAdd`, etc.). Arithmetic contracts, type conversion,
-//! and concrete primitive implementations are provided by sub-modules.
+//! # Supported element types
+//!
+//! The closed set of element types consists of 7 members:
+//!
+//! | Type | `Element` | `Numeric` | `RealScalar` | `ComplexScalar` |
+//! |------|-----------|-----------|--------------|-----------------|
+//! | `i32` | ✓ | ✓ | | |
+//! | `i64` | ✓ | ✓ | | |
+//! | `f32` | ✓ | ✓ | ✓ | |
+//! | `f64` | ✓ | ✓ | ✓ | |
+//! | `Complex<f32>` | ✓ | ✓ | | ✓ |
+//! | `Complex<f64>` | ✓ | ✓ | | ✓ |
+//! | `bool` | ✓ | | | |
+//!
+//! # `usize` is NOT an element type
+//!
+//! `usize` is reserved for indexing, shape metadata, and dimension
+//! expressions. It does not implement `Element` because:
+//!
+//! * It lacks an additive inverse (no negative values), preventing
+//!   it from forming the algebraic structure required by `Element`.
+//! * `Element` types require `zero()` and `one()` identities; `usize`
+//!   has no consistent negation semantics in this context.
+//!
+//! # Sub-modules
+//!
+//! | Sub-module | Contents |
+//! |------------|----------|
+//! | [`primitives`](primitives) | `Element` trait + impls for all 7 types |
+//! | [`types`](types) | `ElementType` discriminant + free functions |
+//! | [`numeric`](numeric) | `Numeric` trait + impls |
+//! | [`real`](real) | `RealScalar` trait + impls |
+//! | [`complex`](complex) | `ComplexScalar` trait + impls |
+//! | [`order`](order) | `OrderedCompareElement` marker trait |
+//! | [`checked`](checked) | Checked arithmetic traits |
 
 mod types;
 mod order;
