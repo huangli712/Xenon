@@ -108,7 +108,7 @@ impl<D: Dimension> Strides<D> {
 /// Returns `XenonError::InvalidShape { kind: ProductOverflow, .. }` if the
 /// cumulative product overflows `usize`. The error is recoverable; this
 /// function MUST NOT panic.
-pub fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonError> {
+pub(crate) fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonError> {
     let axes = shape.slice();
     let mut values = vec![0_usize; axes.len()];
     let mut cumulative: usize = 1;

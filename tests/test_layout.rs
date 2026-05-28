@@ -11,7 +11,7 @@
 //! W29Tx) — not by W6T10.
 
 use xenon::dimension::{Ix2, Ix3};
-use xenon::layout::{LayoutFlags, LayoutState, Strides, compute_f_strides, is_f_contiguous};
+use xenon::layout::{LayoutFlags, LayoutState, Strides, is_f_contiguous};
 
 #[test]
 fn external_f_strides_symmetry() {
@@ -19,22 +19,22 @@ fn external_f_strides_symmetry() {
     let cases: [&dyn Fn() -> bool; 4] = [
         &|| {
             let shape = Ix3(2, 3, 4);
-            let s = compute_f_strides(&shape).expect("valid test shape");
+            let s = Strides::f_contiguous(&shape).expect("valid test shape");
             s.as_slice() == [1, 2, 6] && is_f_contiguous(&shape, &s)
         },
         &|| {
             let shape = Ix2(3, 1);
-            let s = compute_f_strides(&shape).expect("valid test shape");
+            let s = Strides::f_contiguous(&shape).expect("valid test shape");
             is_f_contiguous(&shape, &s)
         },
         &|| {
             let shape = Ix2(1, 3);
-            let s = compute_f_strides(&shape).expect("valid test shape");
+            let s = Strides::f_contiguous(&shape).expect("valid test shape");
             is_f_contiguous(&shape, &s)
         },
         &|| {
             let shape = Ix2(4, 5);
-            let s = compute_f_strides(&shape).expect("valid test shape");
+            let s = Strides::f_contiguous(&shape).expect("valid test shape");
             s.as_slice() == [1, 4] && is_f_contiguous(&shape, &s)
         },
     ];

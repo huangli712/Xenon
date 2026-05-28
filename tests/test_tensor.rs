@@ -4,7 +4,7 @@
 //! the public crate API surface.
 
 use xenon::dimension::{Ix0, Ix1, Ix2, IxDyn};
-use xenon::layout::{LayoutState, Strides, compute_f_strides};
+use xenon::layout::{LayoutState, Strides};
 use xenon::tensor;
 use xenon::tensor::{
     AccessSemantics, AliasClass, ArcTensor, ArcTensor1, ArcTensor2, ArcTensorD, DataLocation,
@@ -72,7 +72,7 @@ fn test_type_aliases_compile() {
 fn test_tensor_shape_2d() {
     let data = [0_i32; 12];
     let shape = Ix2(3, 4);
-    let strides = compute_f_strides(&shape).expect("valid shape");
+    let strides = Strides::f_contiguous(&shape).expect("valid shape");
     // SAFETY: data outlives tensor; layout is canonical F-order.
     let tensor: TensorView2<'_, i32> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
@@ -92,7 +92,7 @@ fn test_tensor_shape_2d() {
 fn test_tensor0_scalar() {
     let data = [5_f64];
     let shape: Ix0 = Ix0;
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorView<'_, f64, Ix0> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
             .expect("Ix0 scalar tensor must construct");
@@ -105,7 +105,7 @@ fn test_tensor0_scalar() {
 fn test_tensor_empty_dim() {
     let data = Vec::<f64>::new();
     let shape = Ix2(0, 3);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorView2<'_, f64> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
             .expect("empty tensor must construct");
@@ -119,7 +119,7 @@ fn test_tensor_empty_dim() {
 fn test_tensor_single_element() {
     let data = [42_i32];
     let shape = Ix2(1, 1);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorView2<'_, i32> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
             .expect("1x1 tensor must construct");
@@ -132,7 +132,7 @@ fn test_tensor_single_element() {
 fn test_tensor_non_zero_offset() {
     let data = [10_i32, 20, 30, 40, 50];
     let shape = Ix1(3);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     // View elements [20, 30, 40] with offset = 1.
     let tensor: TensorView<'_, i32, Ix1> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 1) }
@@ -186,7 +186,7 @@ fn test_tensor_broadcast_zero_stride() {
 fn test_storage_kind_view() {
     let data = [1_i32, 2, 3, 4];
     let shape = Ix2(2, 2);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorView2<'_, i32> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
             .expect("valid");
@@ -198,7 +198,7 @@ fn test_storage_kind_view() {
 fn test_storage_kind_view_mut() {
     let mut data = vec![1_i32, 2, 3, 4];
     let shape = Ix2(2, 2);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorViewMut2<'_, i32> =
         unsafe { TensorBase::from_raw_parts_mut(data.as_mut_ptr(), 4, shape, strides, 0) }
             .expect("valid");
@@ -228,7 +228,7 @@ fn test_storage_kind_shared_via_arc() {
 fn test_view_shares_data() {
     let mut data = vec![1_i32, 2, 3, 4];
     let shape = Ix2(2, 2);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let mut tensor: TensorViewMut2<'_, i32> =
         unsafe { TensorBase::from_raw_parts_mut(data.as_mut_ptr(), 4, shape, strides, 0) }
             .expect("valid");
@@ -253,7 +253,7 @@ fn test_view_shares_data() {
 fn test_view_mut_writes_back() {
     let mut data = vec![1_i32, 2, 3, 4];
     let shape = Ix2(2, 2);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let mut tensor: TensorViewMut2<'_, i32> =
         unsafe { TensorBase::from_raw_parts_mut(data.as_mut_ptr(), 4, shape, strides, 0) }
             .expect("valid");
@@ -269,7 +269,7 @@ fn test_view_mut_writes_back() {
 fn test_from_raw_parts_invalid_range() {
     let data = [1_i32, 2, 3];
     let shape = Ix2(2, 2);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     // storage_len = 3 but logical access range needs 4.
     let result: xenon::Result<TensorView2<'_, i32>> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) };
@@ -283,7 +283,7 @@ fn test_from_raw_parts_invalid_range() {
 fn test_tensor_data_location() {
     let data = [1_i32];
     let shape = Ix2(1, 1);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorView2<'_, i32> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
             .expect("valid");
@@ -297,7 +297,7 @@ fn test_tensor_data_location() {
 fn test_tensor_ndim_dynamic() {
     let data = [0_i32; 24];
     let shape: IxDyn = IxDyn::from_slice(&[2, 3, 4]);
-    let strides = compute_f_strides(&shape).expect("valid");
+    let strides = Strides::f_contiguous(&shape).expect("valid");
     let tensor: TensorViewD<'_, i32> =
         unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
             .expect("valid");
