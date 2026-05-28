@@ -382,8 +382,7 @@ mod tests {
         assert_eq!(0, 0);
     }
 
-
-
+    /// An empty mock to verify `RawStorage` trait methods compile and behave correctly.
     struct MockEmpty;
 
     impl Sealed for MockEmpty {}
@@ -400,7 +399,8 @@ mod tests {
         }
     }
 
-    /// Verifies `RawStorage` default methods (`is_empty`, `is_aligned`) on an empty mock implementor.
+    /// Verifies `RawStorage` default methods (`is_empty`, `is_aligned`)
+    /// on an empty mock implementor.
     #[test]
     fn test_raw_storage_compile() {
         let storage = MockEmpty;
@@ -410,8 +410,7 @@ mod tests {
         assert!(!storage.is_aligned());
     }
 
-
-
+    /// A mock implementing `RawStorage` + `Storage` backed by a fixed-size array.
     struct MockStorage {
         data: [i32; 3],
     }
@@ -432,7 +431,8 @@ mod tests {
 
     unsafe impl Storage for MockStorage {}
 
-    /// Verifies `Storage::get` bounds checking and `as_slice` on a mock implementor.
+    /// Verifies `Storage::get` bounds checking and `as_slice`
+    /// on a mock implementor.
     #[test]
     fn test_storage_compile() {
         let storage = MockStorage { data: [1, 2, 3] };
@@ -441,8 +441,7 @@ mod tests {
         assert_eq!(storage.as_slice(), &[1, 2, 3]);
     }
 
-
-
+    /// A mock implementing `RawStorageMut` + `StorageMut` backed by a fixed-size array.
     struct MockStorageMut {
         data: [i32; 3],
     }
@@ -470,7 +469,8 @@ mod tests {
     unsafe impl Storage for MockStorageMut {}
     unsafe impl StorageMut for MockStorageMut {}
 
-    /// Verifies `StorageMut::fill` and `RawStorageMut::as_non_null` on a mock mutable implementor.
+    /// Verifies `StorageMut::fill` and `RawStorageMut::as_non_null`
+    /// on a mock mutable implementor.
     #[test]
     fn test_storage_mut_compile() {
         let mut storage = MockStorageMut { data: [1, 2, 3] };
@@ -480,13 +480,13 @@ mod tests {
         assert_eq!(ptr, storage.as_mut_ptr());
     }
 
-
-
+    /// A mock implementing `StorageOwned` backed by a Vec.
     #[derive(Clone)]
     struct MockOwned {
         data: Vec<i32>,
     }
 
+    /// A mock implementing `StorageShared` backed by a Vec.
     #[derive(Clone)]
     struct MockShared {
         data: Vec<i32>,
@@ -583,10 +583,13 @@ mod tests {
     unsafe impl Storage for MockShared {}
     unsafe impl StorageShared for MockShared {}
 
+    /// Compile-time helper asserting a type satisfies `StorageOwned`.
     fn assert_storage_owned<S: StorageOwned>() {}
+    /// Compile-time helper asserting a type satisfies `StorageShared`.
     fn assert_storage_shared<S: StorageShared>() {}
 
-    /// Verifies that mock implementors satisfy the `StorageOwned` and `StorageShared` trait bounds.
+    /// Verifies that mock implementors satisfy the `StorageOwned`
+    /// and `StorageShared` trait bounds.
     #[test]
     fn test_storage_traits_compile() {
         assert_storage_owned::<MockOwned>();
@@ -597,7 +600,8 @@ mod tests {
     // Concrete storage type export tests
     // -----------------------------------------------------------------------
 
-    /// Verifies that the concrete `Owned`, `ViewRepr`, and `ArcRepr` storage types are exported and usable.
+    /// Verifies that the concrete `Owned`, `ViewRepr`, and `ArcRepr`
+    /// storage types are exported and usable.
     #[test]
     fn test_storage_exports_compile() {
         let owned = Owned::from_vec(vec![1_i32])
@@ -610,7 +614,8 @@ mod tests {
         assert_eq!(shared.get(0), Some(&1));
     }
 
-    /// Verifies that concrete storage types satisfy the `Storage`, `StorageOwned`, `StorageShared`, and `StorageIntoOwned` trait bounds.
+    /// Verifies that concrete storage types satisfy the `Storage`,
+    /// `StorageOwned`, `StorageShared`, and `StorageIntoOwned` trait bounds.
     #[test]
     fn test_storage_trait_exports_compile() {
         fn assert_storage<S: Storage>(_: &S) {}
@@ -635,7 +640,8 @@ mod tests {
     // Integration tests
     // -----------------------------------------------------------------------
 
-    /// Integration test verifying that `Owned`, `ViewRepr`, and `ArcRepr` round-trip data through `as_slice`.
+    /// Integration test verifying that `Owned`, `ViewRepr`, and `ArcRepr`
+    /// round-trip data through `as_slice`.
     #[test]
     fn test_storage_module_compiles() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -648,7 +654,8 @@ mod tests {
         assert_eq!(shared.as_slice(), &[1, 2, 3]);
     }
 
-    /// Verifies that the four marker traits (`IsOwned`, `IsView`, `IsViewMut`, `IsShared`) are implemented by the concrete storage types.
+    /// Verifies that the four marker traits (`IsOwned`, `IsView`,
+    /// `IsViewMut`, `IsShared`) are implemented by the concrete storage types.
     #[test]
     fn test_marker_traits_sealed() {
         fn assert_owned<T: IsOwned>() {}
@@ -662,7 +669,8 @@ mod tests {
         assert_shared::<ArcRepr<i32>>();
     }
 
-    /// Verifies that `StorageIntoOwned::into_owned_storage` works correctly across `Owned`, `ViewRepr`, and `ArcRepr`.
+    /// Verifies that `StorageIntoOwned::into_owned_storage` works
+    /// correctly across `Owned`, `ViewRepr`, and `ArcRepr`.
     #[test]
     fn test_storage_into_owned_matrix() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -681,7 +689,8 @@ mod tests {
         assert_eq!(copied_from_shared.as_slice(), &[1, 2, 3]);
     }
 
-    /// Verifies that `ArcRepr::into_owned_storage` produces a detached deep copy that does not alias the shared buffer.
+    /// Verifies that `ArcRepr::into_owned_storage` produces a detached
+    /// deep copy that does not alias the shared buffer.
     #[test]
     fn test_arc_into_owned_storage_is_detached_copy() {
         let shared = ArcRepr::try_from(vec![1_i32, 2, 3])
