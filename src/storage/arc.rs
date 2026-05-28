@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use crate::private::Sealed;
 use crate::error::XenonError;
 use crate::element::Element;
 
@@ -143,6 +144,8 @@ unsafe impl<A: Element> RawStorage for ArcRepr<A> {
     }
 }
 
+impl<A> Sealed for ArcRepr<A> {}
+
 // SAFETY: ArcRepr exposes only shared read-only access to the initialized
 // AlignedBuf<A> range described by RawStorage.
 unsafe impl<A: Element> Storage for ArcRepr<A> {}
@@ -151,7 +154,6 @@ unsafe impl<A: Element> Storage for ArcRepr<A> {}
 // Cloning only bumps the Arc refcount and never exposes mutable access.
 unsafe impl<A: Element> StorageShared for ArcRepr<A> {}
 
-impl<A> crate::private::Sealed for ArcRepr<A> {}
 // SAFETY: ArcRepr satisfies RawStorage and Sealed, and represents Xenon's
 // shared read-only storage category.
 unsafe impl<A: Element> IsShared for ArcRepr<A> {}
