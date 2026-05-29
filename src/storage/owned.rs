@@ -236,6 +236,8 @@ impl<A: Element> Owned<A> {
 
 // Owned<A>: Clone uses deep_clone semantics.
 impl<A: Element + Clone> Clone for Owned<A> {
+    /// Performs a deep copy via [`StorageOwned::deep_clone`], allocating
+    /// a new buffer and copying all elements.
     fn clone(&self) -> Self {
         self.deep_clone()
     }
@@ -243,25 +245,21 @@ impl<A: Element + Clone> Clone for Owned<A> {
 
 impl<A> Sealed for Owned<A> {}
 
-/// # Safety
-///
-/// `Owned<A>` satisfies `IsOwned`'s `RawStorage + Sealed` bounds.
+// SAFETY: Owned<A> satisfies IsOwned's RawStorage + Sealed bounds.
 unsafe impl<A: Element> IsOwned for Owned<A> {}
 
-/// # Safety
-///
-/// `Owned<A>` implements `RawStorage` because `AlignedBuf<A>` maintains the
-/// storage invariants:
-///
-/// 1. `data.ptr` is always non-null: real allocation for non-empty non-ZST
-///    buffers, or `NonNull::dangling()` for empty/ZST buffers.
-/// 2. `data.ptr` satisfies `data.align`, and `data.align >= align_of::<A>()`.
-/// 3. The `len` initialized elements are within one allocation owned by
-///    `AlignedBuf`, never spanning multiple allocations.
-/// 4. `AlignedBuf` constructors reject `len * size_of::<A>()` overflow, so the
-///    backing range satisfies the `isize::MAX` bound used by slice creation.
-/// 5. `as_ptr()` forwards the stable base pointer stored in `AlignedBuf`; tensor
-///    offsets are handled by `TensorBase`, not by storage.
+// SAFETY: Owned<A> implements RawStorage because AlignedBuf<A> maintains the
+// storage invariants:
+//
+// 1. data.ptr is always non-null: real allocation for non-empty non-ZST
+//    buffers, or NonNull::dangling() for empty/ZST buffers.
+// 2. data.ptr satisfies data.align, and data.align >= align_of::<A>().
+// 3. The len initialized elements are within one allocation owned by
+//    AlignedBuf, never spanning multiple allocations.
+// 4. AlignedBuf constructors reject len*size_of::<A>() overflow, so the
+//    backing range satisfies the isize::MAX bound used by slice creation.
+// 5. as_ptr() forwards the stable base pointer stored in AlignedBuf; tensor
+//    offsets are handled by TensorBase, not by storage.
 unsafe impl<A> RawStorage for Owned<A> {
     type Elem = A;
 
@@ -696,5 +694,26 @@ mod tests {
         let owned = Owned::try_from(v).expect("from_vec succeeds");
         assert_eq!(owned.as_slice(), &[1, 2, 3]);
         assert_eq!(owned.as_ptr().align_offset(64), 0);
+    }
+
+    /// `Owned::from_elem` produces aligned storage with the expected repeated value.
+    #[test]
+    fn test_owned_from_elem_direct() {
+        let owned =
+            Owned::<i32>::from_elem(5, 42)
+            .expect("from_elem should succeed for small i32 input");
+        assert_eq!(owned.len(), 5);
+        assert_eq!(owned.as_slice(), &[42, 42, 42, 42, 42]);
+        assert_eq!(owned.as_ptr().align_offset(64), 0);
+    }
+
+    /// `Owned::zeros` with a non-trivial type (i32) verifies zero-initialized elements.
+    #[test]
+    fn test_owned_zeros_non_float() {
+        let owned =
+            Owned::<i32>::zeros(4)
+            .expect("zeros should succeed for small i32 input");
+        assert_eq!(owned.len(), 4);
+        assert_eq!(owned.as_slice(), &[0, 0, 0, 0]);
     }
 }
