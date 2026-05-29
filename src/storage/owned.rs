@@ -11,7 +11,7 @@ use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, allocation_size};
 use super::ArcRepr;
 use super::IsOwned;
-use super::{RawStorage, RawStorageMut, Storage, StorageIntoOwned, StorageMut, StorageOwned};
+use super::{RawStorage, Storage, StorageIntoOwned, StorageMut, StorageOwned};
 
 // ---------------------------------------------------------------------------
 // Owned<A> — owning storage
@@ -212,22 +212,16 @@ unsafe impl<A: Element> Storage for Owned<A> {}
 
 /// # Safety
 ///
-/// `Owned<A>` implements `RawStorageMut` because it uniquely owns the
-/// `AlignedBuf<A>` allocation. `&mut self` gives exclusive access to the
-/// `len` initialized elements, and `data.as_mut_ptr()` is the same stable,
-/// non-null, aligned base pointer established by the `RawStorage` impl.
-unsafe impl<A> RawStorageMut for Owned<A> {
+/// `Owned<A>` implements `StorageMut` because it uniquely owns the
+/// `AlignedBuf<A>` allocation. During any `&mut self` borrow there can be no
+/// shared or mutable aliases into the same range, and `data.as_mut_ptr()` is
+/// the same stable, non-null, aligned base pointer established by the
+/// `RawStorage` impl.
+unsafe impl<A: Element> StorageMut for Owned<A> {
     fn as_mut_ptr(&mut self) -> *mut A {
         self.data.as_mut_ptr()
     }
 }
-
-/// # Safety
-///
-/// `Owned<A>` implements `StorageMut` because `Owned` has unique ownership of
-/// its `AlignedBuf<A>` allocation. During any `&mut self` borrow there can be
-/// no shared or mutable aliases into the same range.
-unsafe impl<A: Element> StorageMut for Owned<A> {}
 
 /// # Safety
 ///

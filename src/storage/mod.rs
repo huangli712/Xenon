@@ -41,7 +41,7 @@ pub use arc::ArcRepr;
 pub use owned::Owned;
 pub use traits::{
     IsOwned, IsShared, IsView, IsViewMut,
-    RawStorage, RawStorageMut, Storage, StorageIntoOwned, StorageMut,
+    RawStorage, Storage, StorageIntoOwned, StorageMut,
     StorageOwned, StorageShared,
 };
 pub use view::{View, ViewRepr};

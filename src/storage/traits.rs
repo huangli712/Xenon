@@ -4,15 +4,15 @@
 //! This module defines the complete storage trait hierarchy:
 //!
 //! ```text
-//!                      Sealed
-//!                        │
-//!                    RawStorage
-//!                   ╱          ╲
-//!             Storage        RawStorageMut
-//!            ╱      ╲          ╱
-//! StorageShared      StorageMut
-//!                    │
-//!              StorageOwned
+//!                 Sealed
+//!                   │
+//!               RawStorage
+//!                   │
+//!               Storage
+//!              ╱      ╲
+//!   StorageShared   StorageMut
+//!                       │
+//!                 StorageOwned
 //! ```
 //!
 //! Marker traits (bound on [`RawStorage`]):
@@ -20,8 +20,6 @@
 //!
 //! Standalone conversion trait (bound on [`Storage`]):
 //!   [`StorageIntoOwned`]
-
-use core::ptr::NonNull;
 
 use crate::private::Sealed;
 
@@ -178,53 +176,25 @@ pub unsafe trait Storage: RawStorage + Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// RawStorageMut + StorageMut — mutable storage access
+// StorageMut — mutable storage access
 // ---------------------------------------------------------------------------
-
-/// Raw pointer access for mutable storage.
-///
-/// # Safety
-///
-/// Implementors must ensure the pointer returned by `as_mut_ptr()` remains
-/// valid for the storage's lifetime and that no other mutable references
-/// to the same data exist (aliasing rules).
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait RawStorageMut: RawStorage + Sealed {
-    /// Returns a raw mutable pointer to the start of the data.
-    fn as_mut_ptr(&mut self) -> *mut Self::Elem;
-
-    /// Converts the storage to a NonNull pointer.
-    ///
-    /// # Safety
-    ///
-    /// For empty storage, this returns `NonNull::dangling()` as a sentinel.
-    /// Callers must check `self.len() > 0` before dereferencing the result.
-    unsafe fn as_non_null(&mut self) -> NonNull<Self::Elem> {
-        if self.len() == 0 {
-            NonNull::dangling()
-        } else {
-            // SAFETY: caller ensures the storage is non-empty; RawStorageMut
-            // contract guarantees as_mut_ptr() is valid and non-null.
-            unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
-        }
-    }
-}
 
 /// Safe read-write access to storage.
 ///
 /// # Safety
 ///
-/// Implementors must uphold the contracts of both [`Storage`] and
-/// [`RawStorageMut`], and guarantee exclusive mutable access to the
+/// Implementors must uphold the [`Storage`] contract, guarantee that
+/// `as_mut_ptr()` returns a valid base pointer with no other mutable or
+/// shared aliases, and guarantee exclusive mutable access to the
 /// storage-visible range for the duration of `&mut self`.
 ///
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait StorageMut: Storage + RawStorageMut + Sealed {
+pub unsafe trait StorageMut: Storage + Sealed {
+    /// Returns a raw mutable pointer to the start of the data.
+    fn as_mut_ptr(&mut self) -> *mut Self::Elem;
+
     /// Returns a mutable reference to the element at the given index.
     fn get_mut(&mut self, index: usize) -> Option<&mut Self::Elem> {
         if index < self.len() {
@@ -450,7 +420,7 @@ mod tests {
         assert_eq!(storage.as_slice(), &[1, 2, 3]);
     }
 
-    /// A mock implementing `RawStorageMut` + `StorageMut` backed by a fixed-size array.
+    /// A mock implementing `StorageMut` backed by a fixed-size array.
     struct MockStorageMut {
         data: [i32; 3],
     }
@@ -469,24 +439,22 @@ mod tests {
         }
     }
 
-    unsafe impl RawStorageMut for MockStorageMut {
+    unsafe impl Storage for MockStorageMut {}
+
+    unsafe impl StorageMut for MockStorageMut {
         fn as_mut_ptr(&mut self) -> *mut Self::Elem {
             self.data.as_mut_ptr()
         }
     }
 
-    unsafe impl Storage for MockStorageMut {}
-    unsafe impl StorageMut for MockStorageMut {}
-
-    /// Verifies `StorageMut::fill` and `RawStorageMut::as_non_null`
+    /// Verifies `StorageMut::fill` and `as_mut_ptr`
     /// on a mock mutable implementor.
     #[test]
     fn test_storage_mut_compile() {
         let mut storage = MockStorageMut { data: [1, 2, 3] };
         storage.fill(7);
         assert_eq!(storage.as_slice(), &[7, 7, 7]);
-        let ptr = unsafe { storage.as_non_null().as_ptr() };
-        assert_eq!(ptr, storage.as_mut_ptr());
+        assert_eq!(storage.as_mut_ptr(), storage.data.as_mut_ptr());
     }
 
     /// A mock implementing `StorageOwned` backed by a Vec.
@@ -516,14 +484,13 @@ mod tests {
         }
     }
 
-    unsafe impl RawStorageMut for MockOwned {
+    unsafe impl Storage for MockOwned {}
+
+    unsafe impl StorageMut for MockOwned {
         fn as_mut_ptr(&mut self) -> *mut Self::Elem {
             self.data.as_mut_ptr()
         }
     }
-
-    unsafe impl Storage for MockOwned {}
-    unsafe impl StorageMut for MockOwned {}
 
     unsafe impl StorageOwned for MockOwned {
         fn zeros(len: usize) -> Self

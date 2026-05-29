@@ -9,7 +9,6 @@ use core::marker::PhantomData;
 
 use crate::storage::Owned;
 use crate::storage::RawStorage;
-use crate::storage::RawStorageMut;
 use crate::storage::Storage;
 use crate::storage::StorageIntoOwned;
 use crate::storage::StorageMut;
@@ -98,17 +97,14 @@ unsafe impl<'a, A> RawStorage for ViewMutRepr<'a, A> {
 // RawStorage and can expose shared reads for the duration of &self.
 unsafe impl<'a, A> Storage for ViewMutRepr<'a, A> {}
 
-// SAFETY: &mut self guarantees exclusive mutable access to the same valid
-// storage-visible range tracked by ptr/len.
-unsafe impl<'a, A> RawStorageMut for ViewMutRepr<'a, A> {
+// SAFETY: ViewMutRepr grants exclusive mutable access over an exclusive
+// borrow, so mutable references and slices derived from it are unique, and
+// `&mut self` guarantees the storage-visible range tracked by ptr/len.
+unsafe impl<'a, A> StorageMut for ViewMutRepr<'a, A> {
     fn as_mut_ptr(&mut self) -> *mut A {
         self.ptr
     }
 }
-
-// SAFETY: ViewMutRepr combines Storage + RawStorageMut over an exclusive
-// mutable borrow, so mutable references and slices derived from it are unique.
-unsafe impl<'a, A> StorageMut for ViewMutRepr<'a, A> {}
 // SAFETY: ViewMutRepr satisfies RawStorage and Sealed, and represents Xenon's
 // exclusive mutable borrowed storage category.
 unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
