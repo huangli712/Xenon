@@ -223,10 +223,12 @@ mod tests {
         assert_eq!(y.iter().filter(|v| v.re.is_nan()).count(), 2);
     }
 
-    fn assert_set_eq_i32<S, D>(actual: &crate::tensor::TensorBase<S, D>, expected: &[i32])
+    /// Asserts that `actual` contains exactly the elements in `expected`
+    /// as a multiset, regardless of order.
+    fn assert_set_eq_i32<S, D>(actual: &TensorBase<S, D>, expected: &[i32])
     where
-        S: crate::storage::Storage<Elem = i32>,
-        D: crate::dimension::Dimension,
+        S: Storage<Elem = i32>,
+        D: Dimension,
     {
         assert_eq!(actual.len(), expected.len(), "length mismatch");
         for e in expected {
@@ -237,7 +239,8 @@ mod tests {
         }
     }
 
-    /// Verifies `unique` on a 2D tensor flattens to 1D with deduplicated elements.
+    /// Verifies `unique` on a 2D tensor flattens to 1D with
+    /// deduplicated elements.
     #[test]
     fn test_unique_2d() {
         let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 1, 3, 2, 3])
@@ -257,7 +260,8 @@ mod tests {
         assert_set_eq_i32(&y, &[1, 2, 3]);
     }
 
-    /// Verifies `unique` on a tensor with all elements repeated produces the correct distinct set.
+    /// Verifies `unique` on a tensor with all elements repeated produces
+    /// the correct distinct set.
     #[test]
     fn test_unique_set_equality() {
         let x = Tensor1::from_shape_vec(Ix1(6), vec![3_i32, 1, 2, 3, 2, 1])
