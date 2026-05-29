@@ -92,10 +92,10 @@ pub unsafe trait IsShared: RawStorage + Sealed {}
 ///
 /// # Safety
 ///
-/// Implementors must uphold: `as_ptr()` remains valid for the
-/// storage lifetime, repeated calls return the same address, the pointer is
-/// non-null and properly aligned, the `len()` range is initialized within one
-/// allocation, and the total range does not exceed `isize::MAX`.
+/// Implementors must uphold: `as_ptr()` remains valid for the storage
+/// lifetime, repeated calls return the same address, the pointer is
+/// non-null and properly aligned, the `len()` range is initialized within
+/// one allocation, and the total range does not exceed `isize::MAX`.
 ///
 /// # Sealed
 ///
