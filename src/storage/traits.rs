@@ -411,6 +411,27 @@ mod tests {
         assert!(!storage.is_aligned());
     }
 
+    /// `is_aligned_to` returns `false` (not panic) for `align == 0` or
+    /// non-power-of-two, and `true` for a matching alignment.
+    #[test]
+    fn test_is_aligned_to_boundary_cases() {
+        let storage = MockStorage { data: [1, 2, 3] };
+
+        // align == 0 → false (documented: no panic)
+        assert!(!storage.is_aligned_to(0));
+
+        // non-power-of-two → false (documented: no panic)
+        assert!(!storage.is_aligned_to(3));
+        assert!(!storage.is_aligned_to(6));
+
+        // The stack-allocated i32 array is 4-aligned; match succeeds.
+        assert!(storage.is_aligned_to(4));
+
+        // 1 and 2 are trivially satisfied.
+        assert!(storage.is_aligned_to(1));
+        assert!(storage.is_aligned_to(2));
+    }
+
     /// A mock implementing `RawStorage` + `Storage` backed by a fixed-size array.
     struct MockStorage {
         data: [i32; 3],
@@ -440,6 +461,18 @@ mod tests {
         assert_eq!(storage.get(1), Some(&2));
         assert_eq!(storage.get(3), None);
         assert_eq!(storage.as_slice(), &[1, 2, 3]);
+    }
+
+    /// `get_unchecked` returns a reference without bounds checking.
+    #[test]
+    fn test_get_unchecked() {
+        let storage = MockStorage { data: [10, 20, 30] };
+
+        let first = unsafe { storage.get_unchecked(0) };
+        assert_eq!(*first, 10);
+
+        let last = unsafe { storage.get_unchecked(2) };
+        assert_eq!(*last, 30);
     }
 
     /// A mock implementing `StorageMut` backed by a fixed-size array.
@@ -477,6 +510,31 @@ mod tests {
         storage.fill(7);
         assert_eq!(storage.as_slice(), &[7, 7, 7]);
         assert_eq!(storage.as_mut_ptr(), storage.data.as_mut_ptr());
+    }
+
+    /// `get_mut` returns `Some` for in-bounds and `None` for OOB;
+    /// `get_unchecked_mut` skips bounds checking.
+    #[test]
+    fn test_get_mut_and_get_unchecked_mut() {
+        let mut storage = MockStorageMut { data: [5, 10, 15] };
+
+        // get_mut — in-bounds
+        let slot = storage.get_mut(1);
+        assert_eq!(slot, Some(&mut 10));
+        if let Some(v) = slot {
+            *v = 99;
+        }
+        assert_eq!(storage.as_slice(), &[5, 99, 15]);
+
+        // get_mut — OOB
+        assert!(storage.get_mut(3).is_none());
+        assert!(storage.get_mut(4).is_none());
+
+        // get_unchecked_mut — in-bounds (caller guarantees index < len)
+        let slot = unsafe { storage.get_unchecked_mut(0) };
+        *slot = 77;
+        // data was mutated through the unchecked reference
+        assert_eq!(storage.as_slice(), &[77, 99, 15]);
     }
 
     /// A mock implementing `StorageOwned` backed by a Vec.
@@ -593,6 +651,40 @@ mod tests {
     fn test_storage_traits_compile() {
         assert_storage_owned::<MockOwned>();
         assert_storage_shared::<MockShared>();
+    }
+
+    /// `MockOwned` runtime behaviour: `zeros`, `from_elem`, `from_iter`,
+    /// `into_vec`, `capacity`, `try_reserve`.
+    #[test]
+    fn test_owned_mock_runtime() {
+        // zeros: correct count, all default
+        let storage = MockOwned::zeros(3);
+        assert_eq!(storage.len(), 3);
+        assert_eq!(storage.as_slice(), &[0, 0, 0]);
+
+        // from_elem: correct count, all given value
+        let storage = MockOwned::from_elem(4, 7);
+        assert_eq!(storage.len(), 4);
+        assert_eq!(storage.as_slice(), &[7, 7, 7, 7]);
+
+        // from_iter
+        let storage = MockOwned::from_iter([3, 1, 4]);
+        assert_eq!(storage.as_slice(), &[3, 1, 4]);
+
+        // into_vec round-trip
+        assert_eq!(storage.into_vec(), vec![3, 1, 4]);
+
+        // capacity / try_reserve
+        let mut storage = MockOwned::from_elem(2, 0);
+        assert!(storage.capacity() >= 2);
+        assert!(storage.try_reserve(8).is_ok());
+        assert!(storage.capacity() >= 8);
+
+        // deep_clone
+        let original = MockOwned::from_elem(2, 42);
+        let cloned = original.deep_clone();
+        assert_eq!(original.as_slice(), cloned.as_slice());
+        assert_ne!(original.as_ptr(), cloned.as_ptr());
     }
 
     // -----------------------------------------------------------------------
