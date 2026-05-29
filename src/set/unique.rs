@@ -99,17 +99,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::set::UniqueElement as PubUniqueElement;
+    use crate::dimension::{Ix1, Ix2, IxDyn};
+    use crate::tensor::{Tensor, Tensor1};
 
-    /// Verifies that `UniqueElement` is publicly exported from the `set` module.
-    #[test]
-    fn test_set_module_exports_unique_element() {
-        fn assert_unique<T: PubUniqueElement>() {}
-        assert_unique::<i32>();
-        assert_unique::<f64>();
-    }
-
-    /// Verifies `unique_eq` for `i32` — equal values return `true`, unequal return `false`.
+    /// Verifies `unique_eq` for `i32` — equal values return `true`,
+    /// unequal return `false`.
     #[test]
     fn test_unique_eq_basic_i32() {
         assert!(42_i32.unique_eq(&42));
@@ -128,9 +122,6 @@ mod tests {
         let nan = f32::NAN;
         assert!(!nan.unique_eq(&nan));
     }
-
-    use crate::dimension::{Ix1, Ix2, IxDyn};
-    use crate::tensor::{Tensor, Tensor1};
 
     /// Verifies `unique` on a 1D `i32` tensor returns deduplicated elements.
     #[test]
@@ -152,7 +143,8 @@ mod tests {
         assert_eq!(unique_impl(&x).len(), 0);
     }
 
-    /// Verifies `unique` on `f32` tensor with `NaN` retains each distinct `NaN` entry.
+    /// Verifies `unique` on `f32` tensor with `NaN` retains
+    /// each distinct `NaN` entry.
     #[test]
     fn test_unique_nan_preserved_f32() {
         let x = Tensor1::from_shape_vec(Ix1(3), vec![f32::NAN, f32::NAN, 1.0])
@@ -162,7 +154,8 @@ mod tests {
         assert_eq!(y.iter().filter(|v| !v.is_nan()).count(), 1);
     }
 
-    /// Verifies `unique` on `f32` tensor deduplicates `-0.0` and `0.0` as a single element.
+    /// Verifies `unique` on `f32` tensor deduplicates `-0.0` and `0.0`
+    /// as a single element.
     #[test]
     fn test_unique_signed_zero_equal_f32() {
         let x = Tensor1::from_shape_vec(Ix1(2), vec![-0.0_f32, 0.0])
@@ -170,7 +163,8 @@ mod tests {
         assert_eq!(unique_impl(&x).len(), 1);
     }
 
-    /// Verifies `unique` on `f64` tensor with `NaN` retains each distinct `NaN` entry.
+    /// Verifies `unique` on `f64` tensor with `NaN` retains each distinct
+    /// `NaN` entry.
     #[test]
     fn test_unique_nan_preserved_f64() {
         let x = Tensor1::from_shape_vec(Ix1(3), vec![f64::NAN, f64::NAN, 1.0])
@@ -180,7 +174,8 @@ mod tests {
         assert_eq!(y.iter().filter(|v| !v.is_nan()).count(), 1);
     }
 
-    /// Verifies `unique` on `f64` tensor deduplicates `-0.0` and `0.0` as a single element.
+    /// Verifies `unique` on `f64` tensor deduplicates `-0.0` and `0.0` as
+    /// a single element.
     #[test]
     fn test_unique_signed_zero_equal_f64() {
         let x = Tensor1::from_shape_vec(Ix1(2), vec![-0.0_f64, 0.0])
@@ -188,7 +183,8 @@ mod tests {
         assert_eq!(unique_impl(&x).len(), 1);
     }
 
-    /// Verifies `unique` on `Complex<f64>` tensor with duplicate values returns deduplicated result.
+    /// Verifies `unique` on `Complex<f64>` tensor with duplicate values
+    /// returns deduplicated result.
     #[test]
     fn test_unique_basic_complex() {
         let values = vec![
@@ -204,7 +200,8 @@ mod tests {
         assert!(y.iter().any(|v| *v == Complex::new(3.0_f64, 4.0)));
     }
 
-    /// Verifies `unique` deduplicates `Complex` values with signed-zero components as equal.
+    /// Verifies `unique` deduplicates `Complex` values with signed-zero
+    /// components as equal.
     #[test]
     fn test_unique_complex_componentwise() {
         let values = vec![Complex::new(0.0_f64, -0.0), Complex::new(-0.0_f64, 0.0)];
