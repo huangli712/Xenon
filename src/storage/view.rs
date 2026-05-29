@@ -12,7 +12,19 @@ use super::IsView;
 use super::Owned;
 use super::{RawStorage, Storage, StorageIntoOwned};
 
-/// Immutable view over borrowed data.
+/// Immutable borrowed read-only view storage.
+///
+/// `ViewRepr` stores a raw pointer and element count with a `PhantomData<&'a A>`
+/// lifetime marker — no allocation, no reference counting. `Copy` and `Clone`
+/// are O(1) metadata-only operations. The public API is read-only; mutable
+/// access requires converting to [`Owned`] via
+/// [`StorageIntoOwned::into_owned_storage`] (O(n) deep copy).
+///
+/// # Thread Safety
+///
+/// `ViewRepr<'a, A>` is `Send` and `Sync` when `A: Sync`, allowing
+/// cross-thread shared reads without requiring `A: Send` (the view itself
+/// contains no owned `A` values).
 #[derive(Debug, Clone, Copy)]
 pub struct ViewRepr<'a, A> {
     ptr: *const A,
