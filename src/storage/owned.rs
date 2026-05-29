@@ -146,7 +146,9 @@ impl<A> Owned<A> {
         let ptr = AlignedAlloc::alloc_zeroed(size, align)?;
         // SAFETY: alloc_zeroed returned valid zeroed memory for len elements
         Ok(Self {
-            data: unsafe { AlignedBuf::from_raw_parts(ptr.as_ptr() as *mut A, len, len, align) },
+            data: unsafe {
+                AlignedBuf::from_raw_parts(ptr.as_ptr() as *mut A, len, len, align)
+            },
         })
     }
 
