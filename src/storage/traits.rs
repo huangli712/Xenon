@@ -4,15 +4,20 @@
 //! This module defines the complete storage trait hierarchy:
 //!
 //! ```text
-//!                 Sealed
-//!                   │
-//!               RawStorage
-//!                   │
+//!                Sealed
+//!                  │
+//!                  │
+//!              RawStorage
+//!                  │
+//!                  │
 //!               Storage
-//!              ╱      ╲
-//!   StorageShared   StorageMut
-//!                       │
-//!                 StorageOwned
+//!                  │
+//!         ┌────────┴────────┐
+//!         │                 │
+//!   StorageShared       StorageMut
+//!                           │
+//!                           │
+//!                      StorageOwned
 //! ```
 //!
 //! Marker traits (bound on [`RawStorage`]):
