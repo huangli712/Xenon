@@ -299,20 +299,25 @@ unsafe impl<A: Element> StorageMut for Owned<A> {
 // non-null aligned pointer, one allocation, initialized logical elements,
 // capacity metadata, and no ZST/empty deallocation.
 unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
+    /// Allocates zero-filled storage via [`Owned::zeros`].
     fn zeros(len: usize) -> Self
     where
         Self::Elem: Default,
     {
-        <Owned<A>>::zeros(len).expect("allocation failed during StorageOwned::zeros")
+        <Owned<A>>::zeros(len)
+            .expect("allocation failed during StorageOwned::zeros")
     }
 
+    /// Allocates storage filled with clones of `value` via [`Owned::from_elem`].
     fn from_elem(len: usize, value: Self::Elem) -> Self
     where
         Self::Elem: Clone,
     {
-        <Owned<A>>::from_elem(len, value).expect("allocation failed during StorageOwned::from_elem")
+        <Owned<A>>::from_elem(len, value)
+            .expect("allocation failed during StorageOwned::from_elem")
     }
 
+    /// Constructs storage from a `Vec` via [`Owned::from_vec`].
     fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, XenonError>
     where
         Self::Elem: Copy,
@@ -320,11 +325,14 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         <Owned<A>>::from_vec(vec)
     }
 
+    /// Constructs storage from an iterator via [`Owned::from_vec_moved`].
     fn from_iter<I: IntoIterator<Item = Self::Elem>>(iter: I) -> Self {
         let data: Vec<Self::Elem> = iter.into_iter().collect();
-        <Owned<A>>::from_vec_moved(data).expect("allocation failed during StorageOwned::from_iter")
+        <Owned<A>>::from_vec_moved(data)
+            .expect("allocation failed during StorageOwned::from_iter")
     }
 
+    /// Moves elements out of the aligned buffer into a `Vec`.
     fn into_vec(self) -> Vec<Self::Elem> {
         let mut this = core::mem::ManuallyDrop::new(self);
         let mut out = Vec::with_capacity(this.data.len());
@@ -346,6 +354,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         out
     }
 
+    /// Creates an independent deep copy of the storage.
     fn deep_clone(&self) -> Self {
         let mut cloned = <Owned<A>>::with_capacity(self.len())
             .expect("allocation failed during StorageOwned::deep_clone");
@@ -365,10 +374,12 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         cloned
     }
 
+    /// Returns the allocated capacity.
     fn capacity(&self) -> usize {
         self.data.capacity()
     }
 
+    /// Grows the storage to at least `new_capacity` elements.
     fn try_reserve(&mut self, new_capacity: usize) -> Result<(), XenonError> {
         if new_capacity <= self.capacity() {
             return Ok(());
