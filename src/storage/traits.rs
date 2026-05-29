@@ -692,6 +692,27 @@ mod tests {
         assert_storage_shared::<MockShared>();
     }
 
+    /// `MockShared` runtime behaviour: construction, `as_slice`,
+    /// `get`, `Clone`, and independent handles.
+    #[test]
+    fn test_shared_mock_runtime() {
+        let shared = MockShared {
+            data: vec![1, 2, 3],
+        };
+
+        // as_slice returns the full data
+        assert_eq!(shared.as_slice(), &[1, 2, 3]);
+
+        // get returns correct elements
+        assert_eq!(shared.get(0), Some(&1));
+        assert_eq!(shared.get(2), Some(&3));
+        assert_eq!(shared.get(3), None);
+
+        // clone — both handles report same data
+        let cloned = shared.clone();
+        assert_eq!(cloned.as_slice(), shared.as_slice());
+    }
+
     // -----------------------------------------------------------------------
     // Concrete storage type export tests
     // -----------------------------------------------------------------------
