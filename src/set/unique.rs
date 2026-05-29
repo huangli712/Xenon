@@ -20,36 +20,42 @@ pub trait UniqueElement: crate::private::Sealed + Element {
 }
 
 impl UniqueElement for i32 {
+    /// Equality via normalised integer comparison.
     fn unique_eq(&self, other: &Self) -> bool {
         self == other
     }
 }
 
 impl UniqueElement for i64 {
+    /// Equality via normalised integer comparison.
     fn unique_eq(&self, other: &Self) -> bool {
         self == other
     }
 }
 
 impl UniqueElement for f32 {
+    /// Equality via IEEE 754 comparison (treats `-0.0` equal to `0.0`, `NaN` unequal to itself).
     fn unique_eq(&self, other: &Self) -> bool {
         self == other
     }
 }
 
 impl UniqueElement for f64 {
+    /// Equality via IEEE 754 comparison (treats `-0.0` equal to `0.0`, `NaN` unequal to itself).
     fn unique_eq(&self, other: &Self) -> bool {
         self == other
     }
 }
 
 impl UniqueElement for Complex<f32> {
+    /// Component-wise equality (NaN components cause inequality).
     fn unique_eq(&self, other: &Self) -> bool {
         self.re == other.re && self.im == other.im
     }
 }
 
 impl UniqueElement for Complex<f64> {
+    /// Component-wise equality (NaN components cause inequality).
     fn unique_eq(&self, other: &Self) -> bool {
         self.re == other.re && self.im == other.im
     }
