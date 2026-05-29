@@ -617,41 +617,13 @@ mod tests {
         }
     }
 
-    /// A mock implementing `StorageShared` backed by a Vec.
-    #[derive(Clone)]
-    struct MockShared {
-        data: Vec<i32>,
-    }
-
-    impl Sealed for MockShared {}
-
-    unsafe impl RawStorage for MockShared {
-        type Elem = i32;
-
-        fn as_ptr(&self) -> *const Self::Elem {
-            self.data.as_ptr()
-        }
-
-        fn len(&self) -> usize {
-            self.data.len()
-        }
-    }
-
-    unsafe impl Storage for MockShared {}
-    unsafe impl StorageShared for MockShared {}
-
     /// Compile-time helper asserting a type satisfies `StorageOwned`.
     fn assert_storage_owned<S: StorageOwned>() {}
 
-    /// Compile-time helper asserting a type satisfies `StorageShared`.
-    fn assert_storage_shared<S: StorageShared>() {}
-
-    /// Verifies that mock implementors satisfy the `StorageOwned`
-    /// and `StorageShared` trait bounds.
+    /// Verifies that `MockOwned` satisfies the `StorageOwned` trait bound.
     #[test]
-    fn test_storage_traits_compile() {
+    fn test_mock_owned_satisfies_storage_owned() {
         assert_storage_owned::<MockOwned>();
-        assert_storage_shared::<MockShared>();
     }
 
     /// `MockOwned` runtime behaviour: `zeros`, `from_elem`, `from_iter`,
@@ -686,6 +658,38 @@ mod tests {
         let cloned = original.deep_clone();
         assert_eq!(original.as_slice(), cloned.as_slice());
         assert_ne!(original.as_ptr(), cloned.as_ptr());
+    }
+
+    /// A mock implementing `StorageShared` backed by a Vec.
+    #[derive(Clone)]
+    struct MockShared {
+        data: Vec<i32>,
+    }
+
+    impl Sealed for MockShared {}
+
+    unsafe impl RawStorage for MockShared {
+        type Elem = i32;
+
+        fn as_ptr(&self) -> *const Self::Elem {
+            self.data.as_ptr()
+        }
+
+        fn len(&self) -> usize {
+            self.data.len()
+        }
+    }
+
+    unsafe impl Storage for MockShared {}
+    unsafe impl StorageShared for MockShared {}
+
+    /// Compile-time helper asserting a type satisfies `StorageShared`.
+    fn assert_storage_shared<S: StorageShared>() {}
+
+    /// Verifies that `MockShared` satisfies the `StorageShared` trait bound.
+    #[test]
+    fn test_mock_shared_satisfies_storage_shared() {
+        assert_storage_shared::<MockShared>();
     }
 
     // -----------------------------------------------------------------------
