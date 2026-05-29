@@ -29,6 +29,8 @@
 use crate::private::Sealed;
 use crate::error::XenonError;
 
+use super::Owned;
+
 // ---------------------------------------------------------------------------
 // Marker traits (IsOwned, IsView, IsViewMut, IsShared)
 // ---------------------------------------------------------------------------
@@ -319,7 +321,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone + Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// StorageShared
+// StorageShared — shared read-only storage access
 // ---------------------------------------------------------------------------
 
 /// Marker trait for shared read-only storage.
@@ -336,7 +338,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone + Sealed {
 pub unsafe trait StorageShared: Storage + Clone + Sealed {}
 
 // ---------------------------------------------------------------------------
-// StorageIntoOwned
+// StorageIntoOwned — conversion into owned storage
 // ---------------------------------------------------------------------------
 
 /// Storage types that can be converted into an owned tensor by consuming self.
@@ -349,7 +351,7 @@ pub trait StorageIntoOwned: Storage {
     ///
     /// This is a storage-layer method. Tensor-level `into_owned()` handles
     /// shape, strides, and offset logic separately.
-    fn into_owned_storage(self) -> crate::storage::Owned<Self::Elem>
+    fn into_owned_storage(self) -> Owned<Self::Elem>
     where
         Self::Elem: Clone;
 }
