@@ -190,11 +190,43 @@ impl<A> Owned<A> {
     }
 }
 
+impl<A: Element> Owned<A> {
+    /// Moves elements from a `Vec` into a fresh aligned allocation without
+    /// requiring `Copy`.
+    fn from_vec_moved(data: Vec<A>) -> Result<Self, XenonError> {
+        let len = data.len();
+        let mut owned = Self::with_capacity(len)?;
+        for (index, value) in data.into_iter().enumerate() {
+            // SAFETY: capacity >= len, ptr valid for len elements
+            unsafe {
+                core::ptr::write(owned.data.as_mut_ptr().add(index), value);
+            }
+        }
+        // SAFETY: all len elements initialized
+        unsafe {
+            owned.data.set_len(len);
+        }
+        Ok(owned)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // RawStorage impl for Owned<A>
 // ---------------------------------------------------------------------------
 
+// Owned<A>: Clone uses deep_clone semantics.
+impl<A: Element + Clone> Clone for Owned<A> {
+    fn clone(&self) -> Self {
+        self.deep_clone()
+    }
+}
+
 impl<A> Sealed for Owned<A> {}
+
+/// # Safety
+///
+/// `Owned<A>` satisfies `IsOwned`'s `RawStorage + Sealed` bounds.
+unsafe impl<A: Element> IsOwned for Owned<A> {}
 
 /// # Safety
 ///
@@ -249,38 +281,6 @@ unsafe impl<A: Element> Storage for Owned<A> {}
 unsafe impl<A: Element> StorageMut for Owned<A> {
     fn as_mut_ptr(&mut self) -> *mut A {
         self.data.as_mut_ptr()
-    }
-}
-
-/// # Safety
-///
-/// `Owned<A>` satisfies `IsOwned`'s `RawStorage + Sealed` bounds.
-unsafe impl<A: Element> IsOwned for Owned<A> {}
-
-// Owned<A>: Clone uses deep_clone semantics.
-impl<A: Element + Clone> Clone for Owned<A> {
-    fn clone(&self) -> Self {
-        self.deep_clone()
-    }
-}
-
-impl<A: Element> Owned<A> {
-    /// Moves elements from a `Vec` into a fresh aligned allocation without
-    /// requiring `Copy`.
-    fn from_vec_moved(data: Vec<A>) -> Result<Self, XenonError> {
-        let len = data.len();
-        let mut owned = Self::with_capacity(len)?;
-        for (index, value) in data.into_iter().enumerate() {
-            // SAFETY: capacity >= len, ptr valid for len elements
-            unsafe {
-                core::ptr::write(owned.data.as_mut_ptr().add(index), value);
-            }
-        }
-        // SAFETY: all len elements initialized
-        unsafe {
-            owned.data.set_len(len);
-        }
-        Ok(owned)
     }
 }
 
