@@ -454,7 +454,8 @@ mod tests {
     use super::*;
     use crate::error::InvalidShapeKind;
 
-    /// Verifies that `Owned::new` creates empty storage with zero length and capacity.
+    /// Verifies that `Owned::new` creates empty storage with zero length
+    /// and capacity.
     #[test]
     fn test_owned_new_empty() {
         let owned = Owned::<f64>::new();
@@ -465,8 +466,8 @@ mod tests {
     /// Verifies that `Owned::zeros` initializes all elements to zero.
     #[test]
     fn test_owned_zeros() {
-        let owned =
-            Owned::<f64>::zeros(100).expect("Owned::zeros should succeed for small f64 input");
+        let owned = Owned::<f64>::zeros(100)
+            .expect("Owned::zeros should succeed for small f64 input");
         assert_eq!(owned.data.len(), 100);
         for index in 0..owned.data.len() {
             assert_eq!(
@@ -495,7 +496,8 @@ mod tests {
         );
     }
 
-    /// Verifies that `Owned::zeros` returns `ProductOverflow` when the layout size exceeds `isize::MAX`.
+    /// Verifies that `Owned::zeros` returns `ProductOverflow` when the layout
+    /// size exceeds `isize::MAX`.
     #[test]
     fn test_owned_zeros_layout_overflow_returns_error() {
         let err = match Owned::<bool>::zeros(isize::MAX as usize) {
@@ -511,18 +513,20 @@ mod tests {
         }
     }
 
-    /// Verifies that storage allocated by `Owned::zeros` satisfies the 64-byte default alignment.
+    /// Verifies that storage allocated by `Owned::zeros` satisfies the
+    /// 64-byte default alignment.
     #[test]
     fn test_owned_alignment_from_zeros() {
-        let owned =
-            Owned::<f64>::zeros(8).expect("Owned::zeros should succeed for small f64 input");
+        let owned = Owned::<f64>::zeros(8)
+            .expect("Owned::zeros should succeed for small f64 input");
         assert_eq!(
             (owned.data.as_ptr() as usize) % Owned::<f64>::DEFAULT_ALIGNMENT,
             0
         );
     }
 
-    /// Verifies that storage allocated by `Owned::from_vec` satisfies the 64-byte default alignment.
+    /// Verifies that storage allocated by `Owned::from_vec` satisfies the
+    /// 64-byte default alignment.
     #[test]
     fn test_owned_alignment_from_vec() {
         let owned = Owned::from_vec(vec![1.0_f64, 2.0])
@@ -533,8 +537,8 @@ mod tests {
         );
     }
 
-    // RawStorage tests
-    /// Verifies that `RawStorage::len` and `as_ptr` report the correct length and element values.
+    /// Verifies that `RawStorage::len` and `as_ptr` report the correct
+    /// length and element values.
     #[test]
     fn test_owned_raw_storage_len() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
