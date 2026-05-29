@@ -92,10 +92,12 @@ unsafe impl<'a, A> IsView for ViewRepr<'a, A> {}
 unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {
     type Elem = A;
 
+    /// Returns the base pointer to the borrowed data.
     fn as_ptr(&self) -> *const A {
         self.ptr
     }
 
+    /// Returns the number of elements in the view.
     fn len(&self) -> usize {
         self.len
     }
@@ -106,6 +108,10 @@ unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {
 unsafe impl<'a, A> Storage for ViewRepr<'a, A> {}
 
 impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
+    /// Copies the borrowed data into a fresh `Owned` buffer (O(n)).
+    ///
+    /// Elements are cloned one-by-one into a new 64-byte aligned allocation.
+    /// The result is independent of the original borrowed data.
     fn into_owned_storage(self) -> Owned<A>
     where
         Self::Elem: Clone,
