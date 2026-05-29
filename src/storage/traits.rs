@@ -120,7 +120,9 @@ pub unsafe trait RawStorage: Sealed {
     /// Returns `false` for `align == 0` or `align` that is not a power of two,
     /// rather than panicking.
     fn is_aligned_to(&self, align: usize) -> bool {
-        align != 0 && align.is_power_of_two() && (self.as_ptr() as usize).is_multiple_of(align)
+        align != 0
+            && align.is_power_of_two()
+            && (self.as_ptr() as usize).is_multiple_of(align)
     }
 
     /// Checks if the storage satisfies the current default alignment (64 bytes).
