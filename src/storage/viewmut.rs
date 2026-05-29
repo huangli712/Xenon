@@ -102,10 +102,12 @@ unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
 unsafe impl<'a, A> RawStorage for ViewMutRepr<'a, A> {
     type Elem = A;
 
+    /// Returns the base pointer to the borrowed mutable data.
     fn as_ptr(&self) -> *const A {
         self.ptr as *const A
     }
 
+    /// Returns the number of elements in the mutable view.
     fn len(&self) -> usize {
         self.len
     }
