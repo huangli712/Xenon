@@ -3,6 +3,7 @@
 //! `ViewMutRepr<'a, A>` is an exclusive-borrow storage representation.
 //! Does not implement `Clone` or `Copy`.
 
+use core::ptr::write;
 use core::marker::PhantomData;
 
 use crate::private::Sealed;
@@ -144,7 +145,7 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
         for i in 0..self.len {
             // SAFETY: i < len, both src and dst pointers are valid
             unsafe {
-                core::ptr::write(buf.as_mut_ptr().add(i), (*self.ptr.add(i)).clone());
+                write(buf.as_mut_ptr().add(i), (*self.ptr.add(i)).clone());
             }
             // Increment length after each successful write so that
             // a panic during a later clone() will still drop the
@@ -156,6 +157,10 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
         Owned { data: buf }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Send for ViewMutRepr<'a, A>
+// ---------------------------------------------------------------------------
 
 // SAFETY: `ViewMutRepr` represents an exclusive mutable borrow of a logical
 // tensor region. Moving it to another thread transfers that exclusive access;
