@@ -136,6 +136,10 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Send/Sync for ViewRepr<'a, A>
+// ---------------------------------------------------------------------------
+
 // SAFETY: `ViewRepr` is a borrowed read-only view. Moving it to another
 // thread only moves shared access to `A` values, which is sound exactly when
 // `A: Sync`. The lifetime `'a` still prevents outliving the borrowed storage.
@@ -148,6 +152,8 @@ unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dimension::Ix1;
+    use crate::tensor::Tensor1;
 
     /// Creates a view from a slice and verifies data access.
     #[test]
@@ -190,9 +196,6 @@ mod tests {
     /// View can be sent across threads for shared reads.
     #[test]
     fn test_view_cross_thread() {
-        use crate::dimension::Ix1;
-        use crate::tensor::Tensor1;
-
         let tensor = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
             .expect("Tensor1::from_shape_vec should succeed for valid shape");
         std::thread::scope(|scope| {
@@ -205,9 +208,6 @@ mod tests {
     /// Multiple threads can concurrently read through a view.
     #[test]
     fn test_view_read_only_across_threads() {
-        use crate::dimension::Ix1;
-        use crate::tensor::Tensor1;
-
         let tensor = Tensor1::from_shape_vec(Ix1(2), vec![10_i32, 20])
             .expect("Tensor1::from_shape_vec should succeed for valid shape");
         std::thread::scope(|scope| {
