@@ -9,7 +9,8 @@ use crate::private::Sealed;
 
 use super::buffer::AlignedBuf;
 use super::IsView;
-use super::{Owned, RawStorage, Storage, StorageIntoOwned};
+use super::Owned;
+use super::{RawStorage, Storage, StorageIntoOwned};
 
 /// Immutable view over borrowed data.
 #[derive(Debug, Clone, Copy)]
