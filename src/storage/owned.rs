@@ -3,8 +3,8 @@
 //! `Owned<A>` is the owning heap-allocated storage backed by `AlignedBuf<A>`.
 //! Construction goes through `AlignedAlloc` for 64-byte alignment.
 
-use core::mem::{align_of, size_of};
-use core::ptr::{copy_nonoverlapping, write};
+use core::mem::{align_of, size_of, ManuallyDrop};
+use core::ptr::{copy_nonoverlapping, drop_in_place, read, write};
 
 use crate::element::Element;
 use crate::error::XenonError;
@@ -334,12 +334,12 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
 
     /// Moves elements out of the aligned buffer into a `Vec`.
     fn into_vec(self) -> Vec<Self::Elem> {
-        let mut this = core::mem::ManuallyDrop::new(self);
+        let mut this = ManuallyDrop::new(self);
         let mut out = Vec::with_capacity(this.data.len());
         for index in 0..this.data.len() {
             // SAFETY: index < len, element is initialized
             unsafe {
-                out.push(core::ptr::read(this.data.as_ptr().add(index)));
+                out.push(read(this.data.as_ptr().add(index)));
             }
         }
         // All elements have been moved out. Prevent AlignedBuf::Drop
@@ -349,7 +349,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         // SAFETY: all elements have been moved out. Only the allocation
         // metadata remains, which is safe to drop (frees aligned memory).
         unsafe {
-            core::ptr::drop_in_place(&mut this.data as *mut AlignedBuf<A>);
+            drop_in_place(&mut this.data as *mut AlignedBuf<A>);
         }
         out
     }
@@ -390,7 +390,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
             unsafe {
                 write(
                     grown.data.as_mut_ptr().add(index),
-                    core::ptr::read(self.data.as_ptr().add(index)),
+                    read(self.data.as_ptr().add(index)),
                 );
             }
         }
