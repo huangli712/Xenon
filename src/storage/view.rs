@@ -151,6 +151,8 @@ unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
     use super::*;
     use crate::dimension::Ix1;
     use crate::tensor::Tensor1;
@@ -198,7 +200,7 @@ mod tests {
     fn test_view_cross_thread() {
         let tensor = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
             .expect("Tensor1::from_shape_vec should succeed for valid shape");
-        std::thread::scope(|scope| {
+        thread::scope(|scope| {
             let view = tensor.view();
             let handle = scope.spawn(move || view.len());
             assert_eq!(handle.join().expect("thread should not panic"), 3);
@@ -210,7 +212,7 @@ mod tests {
     fn test_view_read_only_across_threads() {
         let tensor = Tensor1::from_shape_vec(Ix1(2), vec![10_i32, 20])
             .expect("Tensor1::from_shape_vec should succeed for valid shape");
-        std::thread::scope(|scope| {
+        thread::scope(|scope| {
             let view = tensor.view();
             let handle = scope.spawn(move || view.iter().copied().sum::<i32>());
             assert_eq!(handle.join().expect("thread should not panic"), 30);
