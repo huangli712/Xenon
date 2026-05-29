@@ -123,6 +123,8 @@ mod tests {
         assert!(!nan.unique_eq(&nan));
     }
 
+    // -- unique_eq trait-level tests -----------------------------------------
+
     /// Verifies `unique` on a 1D `i32` tensor returns deduplicated elements.
     #[test]
     fn test_unique_basic_i32() {
@@ -223,6 +225,25 @@ mod tests {
         assert_eq!(y.iter().filter(|v| v.re.is_nan()).count(), 2);
     }
 
+    /// Verifies `unique` on `Complex<f32>` tensor with duplicate values
+    /// returns deduplicated result.
+    #[test]
+    fn test_unique_basic_complex_f32() {
+        let values = vec![
+            Complex::new(1.0_f32, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(1.0, 2.0),
+        ];
+        let x = Tensor1::from_shape_vec(Ix1(values.len()), values)
+            .expect("test input shape matches data length");
+        let y = unique_impl(&x);
+        assert_eq!(y.len(), 2);
+        assert!(y.iter().any(|v| *v == Complex::new(1.0_f32, 2.0)));
+        assert!(y.iter().any(|v| *v == Complex::new(3.0_f32, 4.0)));
+    }
+
+    // -- unique_impl internal tests ------------------------------------------
+
     /// Asserts that `actual` contains exactly the elements in `expected`
     /// as a multiset, regardless of order.
     fn assert_set_eq_i32<S, D>(actual: &TensorBase<S, D>, expected: &[i32])
@@ -238,6 +259,8 @@ mod tests {
             );
         }
     }
+
+    // -- unique() public API tests -------------------------------------------
 
     /// Verifies `unique` on a 2D tensor flattens to 1D with
     /// deduplicated elements.
@@ -363,5 +386,15 @@ mod tests {
             .expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[0, 1, 2, 3]);
+    }
+
+    /// Verifies `unique` on a tensor view returns deduplicated elements.
+    #[test]
+    fn test_unique_on_view() {
+        let x = Tensor1::from_shape_vec(Ix1(4), vec![1_i32, 2, 1, 2])
+            .expect("test input shape matches data length");
+        let v = x.view();
+        let y = v.unique();
+        assert_set_eq_i32(&y, &[1, 2]);
     }
 }
