@@ -3,18 +3,15 @@
 //! `ViewMutRepr<'a, A>` is an exclusive-borrow storage representation.
 //! Does not implement `Clone` or `Copy`.
 
-use crate::private::Sealed;
-
 use core::marker::PhantomData;
 
-use crate::storage::Owned;
-use crate::storage::RawStorage;
-use crate::storage::Storage;
-use crate::storage::StorageIntoOwned;
-use crate::storage::StorageMut;
-use crate::storage::ViewRepr;
-use crate::storage::buffer::AlignedBuf;
-use crate::storage::traits::IsViewMut;
+use crate::private::Sealed;
+
+use super::buffer::AlignedBuf;
+use super::IsViewMut;
+use super::Owned;
+use super::ViewRepr;
+use super::{RawStorage, Storage, StorageMut, StorageIntoOwned};
 
 /// Mutable view over exclusively borrowed data.
 #[derive(Debug)]
