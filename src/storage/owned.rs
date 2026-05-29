@@ -7,6 +7,8 @@ use core::mem::{align_of, size_of};
 
 use crate::element::Element;
 use crate::error::XenonError;
+use crate::private::Sealed;
+
 use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, allocation_size};
 use super::ArcRepr;
@@ -165,7 +167,7 @@ impl<A> Owned<A> {
 // RawStorage impl for Owned<A>
 // ---------------------------------------------------------------------------
 
-impl<A> crate::private::Sealed for Owned<A> {}
+impl<A> Sealed for Owned<A> {}
 
 /// # Safety
 ///
