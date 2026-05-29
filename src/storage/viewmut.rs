@@ -187,6 +187,81 @@ mod tests {
         assert_eq!(view.as_slice(), &[1, 5, 3]);
     }
 
+    /// Constructs a mutable view via `from_raw_parts_mut` and verifies
+    /// data access and mutation.
+    #[test]
+    fn test_view_mut_from_raw_parts_mut() {
+        let mut data = [10_i32, 20, 30];
+        let mut view =
+            unsafe { ViewMutRepr::from_raw_parts_mut(data.as_mut_ptr(), data.len()) };
+        assert_eq!(view.as_slice(), &[10, 20, 30]);
+        view.fill(0);
+        assert_eq!(data, [0, 0, 0]);
+    }
+
+    /// `view()` creates a read-only reborrow from a mutable view.
+    #[test]
+    fn test_view_mut_view() {
+        let mut data = [3_i32, 1, 4];
+        let view_mut = ViewMutRepr::from_mut_slice(&mut data);
+        let ro = view_mut.view();
+        assert_eq!(ro.as_slice(), &[3, 1, 4]);
+    }
+
+    /// `view_mut()` returns a valid sub-range; panics when start > end or
+    /// end > len.
+    #[test]
+    fn test_view_mut_sub_view() {
+        let mut data = [5_i32, 10, 15, 20];
+        let mut view = ViewMutRepr::from_mut_slice(&mut data);
+
+        let mut sub = view.view_mut(1, 3);
+        assert_eq!(sub.as_slice(), &[10, 15]);
+
+        sub.fill(99);
+        // drop sub-view to release the mutable borrow before reading back
+        drop(sub);
+        assert_eq!(view.as_slice(), &[5, 99, 99, 20]);
+
+        // empty sub-view
+        let empty = view.view_mut(2, 2);
+        assert!(empty.is_empty());
+    }
+
+    /// `view_mut()` panics when start > end.
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn test_view_mut_sub_view_panics_on_inverted_range() {
+        let mut data = [1_i32, 2];
+        let mut view = ViewMutRepr::from_mut_slice(&mut data);
+        let _ = view.view_mut(2, 1);
+    }
+
+    /// `view_mut()` panics when end > len.
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn test_view_mut_sub_view_panics_on_oob() {
+        let mut data = [1_i32, 2];
+        let mut view = ViewMutRepr::from_mut_slice(&mut data);
+        let _ = view.view_mut(0, 3);
+    }
+
+    /// `into_owned_storage` produces a detached deep copy.
+    #[test]
+    fn test_view_mut_into_owned_storage() {
+        let mut data = [7_i32, 8, 9];
+        let view = ViewMutRepr::from_mut_slice(&mut data);
+        let mut owned = view.into_owned_storage();
+
+        assert_eq!(owned.as_slice(), &[7, 8, 9]);
+
+        owned.as_mut_slice()[0] = 99;
+
+        // mutated copy does not affect original data
+        assert_eq!(owned.as_slice(), &[99, 8, 9]);
+        assert_eq!(data, [7, 8, 9]);
+    }
+
     /// Compile-time assertion: ViewMutRepr must NOT implement Clone.
     /// If it did, the blanket impl for `T: Clone` would conflict.
     #[test]
