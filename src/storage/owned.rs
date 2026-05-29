@@ -112,7 +112,9 @@ impl<A> Owned<A> {
         drop(data);
         // SAFETY: ptr was allocated by AlignedAlloc; len elements initialized
         Ok(Self {
-            data: unsafe { AlignedBuf::from_raw_parts(typed_ptr, len, len, align) },
+            data: unsafe {
+                AlignedBuf::from_raw_parts(typed_ptr, len, len, align)
+            },
         })
     }
 
