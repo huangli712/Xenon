@@ -130,10 +130,10 @@ pub use crate::storage::{
 
 pub use crate::storage::{
     Storage,
-    StorageIntoOwned,
     StorageMut,
     StorageOwned,
     StorageShared,
+    StorageIntoOwned,
 };
 
 // Error types and Result alias
