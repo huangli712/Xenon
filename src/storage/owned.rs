@@ -405,6 +405,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
 }
 
 impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
+    /// Returns self (O(1)) — `Owned` already owns its data.
     fn into_owned_storage(self) -> Owned<A>
     where
         Self::Elem: Clone,
@@ -413,6 +414,8 @@ impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Send/Sync for Owned<A>
 // ---------------------------------------------------------------------------
 
 // SAFETY: `Owned<A>` has exclusive ownership of its allocation and moving it to
@@ -430,6 +433,7 @@ unsafe impl<A: Sync> Sync for Owned<A> {}
 // ---------------------------------------------------------------------------
 
 impl<A> Default for Owned<A> {
+    /// Returns an empty `Owned` with no allocated storage.
     fn default() -> Self {
         Self::new()
     }
@@ -438,6 +442,8 @@ impl<A> Default for Owned<A> {
 impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
     type Error = crate::error::XenonError;
 
+    /// Converts a `Vec` into `Owned` by copying elements into an aligned
+    /// buffer.
     fn try_from(value: Vec<A>) -> Result<Self, Self::Error> {
         Self::from_vec(value)
     }
