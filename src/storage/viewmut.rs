@@ -24,7 +24,8 @@ pub struct ViewMutRepr<'a, A> {
     _marker: PhantomData<&'a mut A>,
 }
 
-impl<'a, A> Sealed for ViewMutRepr<'a, A> {}
+/// Short alias for [`ViewMutRepr`].
+pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 
 impl<'a, A> ViewMutRepr<'a, A> {
     /// Creates a `ViewMutRepr` from a raw mutable pointer and length.
@@ -78,6 +79,12 @@ impl<'a, A> ViewMutRepr<'a, A> {
     }
 }
 
+impl<'a, A> Sealed for ViewMutRepr<'a, A> {}
+
+// SAFETY: ViewMutRepr satisfies RawStorage and Sealed, and represents Xenon's
+// exclusive mutable borrowed storage category.
+unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
+
 // SAFETY: ViewMutRepr is created only from an exclusive mutable borrow or an
 // unsafe raw-parts constructor whose caller guarantees a non-null, aligned,
 // initialized single-allocation range valid for 'a.
@@ -105,19 +112,9 @@ unsafe impl<'a, A> StorageMut for ViewMutRepr<'a, A> {
         self.ptr
     }
 }
-// SAFETY: ViewMutRepr satisfies RawStorage and Sealed, and represents Xenon's
-// exclusive mutable borrowed storage category.
-unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
-
-// SAFETY: `ViewMutRepr` represents an exclusive mutable borrow of a logical
-// tensor region. Moving it to another thread transfers that exclusive access;
-// it does not create aliases. Moving contained element access across threads is
-// sound exactly when `A: Send`.
-unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 // Intentionally no `Sync` impl: sharing `&ViewMutRepr` would share an exclusive
 // write capability and violate the aliasing model.
-
 impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     fn into_owned_storage(self) -> Owned<A>
     where
@@ -142,8 +139,11 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     }
 }
 
-/// Short alias for [`ViewMutRepr`].
-pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
+// SAFETY: `ViewMutRepr` represents an exclusive mutable borrow of a logical
+// tensor region. Moving it to another thread transfers that exclusive access;
+// it does not create aliases. Moving contained element access across threads is
+// sound exactly when `A: Send`.
+unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 #[cfg(test)]
 mod tests {
