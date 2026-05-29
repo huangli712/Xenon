@@ -315,7 +315,8 @@ mod tests {
         assert_set_eq_i32(&y, &[42]);
     }
 
-    /// Verifies `unique` on a tensor where all elements are identical returns one element.
+    /// Verifies `unique` on a tensor where all elements are identical
+    /// returns one element.
     #[test]
     fn test_unique_all_same() {
         let x = Tensor1::from_shape_vec(Ix1(5), vec![7_i32; 5])
@@ -324,20 +325,22 @@ mod tests {
         assert_set_eq_i32(&y, &[7]);
     }
 
-    /// Verifies `unique` on a 5D `IxDyn` tensor flattens to 1D with deduplicated elements.
+    /// Verifies `unique` on a 5D `IxDyn` tensor flattens to 1D with
+    /// deduplicated elements.
     #[test]
     fn test_unique_high_rank_ixdyn() {
         let shape = vec![2_usize, 1, 2, 1, 2];
         let data: Vec<i32> = vec![1, 2, 1, 2, 3, 1, 3, 2];
         let x =
-            Tensor::<i32, IxDyn>::from_shape_vec(crate::dimension::IxDyn::from_slice(&shape), data)
+            Tensor::<i32, IxDyn>::from_shape_vec(IxDyn::from_slice(&shape), data)
                 .expect("test input shape matches data length");
         let y = x.unique();
         assert_eq!(y.ndim(), 1);
         assert_set_eq_i32(&y, &[1, 2, 3]);
     }
 
-    /// Verifies `unique` on `i64` tensor with `MIN` and `MAX` values returns deduplicated result.
+    /// Verifies `unique` on `i64` tensor with `MIN` and `MAX` values
+    /// returns deduplicated result.
     #[test]
     fn test_unique_extreme_i64_values() {
         let x =
