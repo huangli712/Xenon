@@ -543,14 +543,7 @@ mod tests {
         data: Vec<i32>,
     }
 
-    /// A mock implementing `StorageShared` backed by a Vec.
-    #[derive(Clone)]
-    struct MockShared {
-        data: Vec<i32>,
-    }
-
     impl Sealed for MockOwned {}
-    impl Sealed for MockShared {}
 
     unsafe impl RawStorage for MockOwned {
         type Elem = i32;
@@ -623,6 +616,14 @@ mod tests {
             Ok(())
         }
     }
+
+    /// A mock implementing `StorageShared` backed by a Vec.
+    #[derive(Clone)]
+    struct MockShared {
+        data: Vec<i32>,
+    }
+
+    impl Sealed for MockShared {}
 
     unsafe impl RawStorage for MockShared {
         type Elem = i32;
