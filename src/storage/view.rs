@@ -83,6 +83,9 @@ impl<'a, A> ViewRepr<'a, A> {
 }
 
 impl<'a, A> Sealed for ViewRepr<'a, A> {}
+
+// SAFETY: ViewRepr satisfies RawStorage and Sealed, and represents Xenon's
+// immutable borrowed view storage category.
 unsafe impl<'a, A> IsView for ViewRepr<'a, A> {}
 
 // SAFETY: ptr is non-null, aligned, within one allocation; len is known.
@@ -98,6 +101,8 @@ unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {
     }
 }
 
+// SAFETY: ViewRepr exposes only shared read-only access to the initialized
+// range described by RawStorage.
 unsafe impl<'a, A> Storage for ViewRepr<'a, A> {}
 
 impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
