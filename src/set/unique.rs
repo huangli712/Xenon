@@ -34,14 +34,16 @@ impl UniqueElement for i64 {
 }
 
 impl UniqueElement for f32 {
-    /// Equality via IEEE 754 comparison (treats `-0.0` equal to `0.0`, `NaN` unequal to itself).
+    /// Equality via IEEE 754 comparison
+    /// (treats `-0.0` equal to `0.0`, `NaN` unequal to itself).
     fn unique_eq(&self, other: &Self) -> bool {
         self == other
     }
 }
 
 impl UniqueElement for f64 {
-    /// Equality via IEEE 754 comparison (treats `-0.0` equal to `0.0`, `NaN` unequal to itself).
+    /// Equality via IEEE 754 comparison
+    /// (treats `-0.0` equal to `0.0`, `NaN` unequal to itself).
     fn unique_eq(&self, other: &Self) -> bool {
         self == other
     }
@@ -61,6 +63,9 @@ impl UniqueElement for Complex<f64> {
     }
 }
 
+/// Internal deduplication logic: iterates element values, collecting
+/// those that do not compare equal to any previously seen element.
+/// Returns a 1D owned tensor of unique elements in encounter order.
 pub(crate) fn unique_impl<S, D, A>(tensor: &TensorBase<S, D>) -> Tensor<A, Ix1>
 where
     S: Storage<Elem = A>,
@@ -73,7 +78,8 @@ where
             out.push(value);
         }
     }
-    Tensor::from_shape_vec(Ix1(out.len()), out).expect("unique output shape matches data length")
+    Tensor::from_shape_vec(Ix1(out.len()), out)
+        .expect("unique output shape matches data length")
 }
 
 impl<S, D, A> TensorBase<S, D>
