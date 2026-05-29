@@ -15,7 +15,7 @@ use crate::element::Element;
 use super::buffer::{AlignedBuf, SharedBuf};
 use super::IsShared;
 use super::Owned;
-use super::{StorageIntoOwned, RawStorage, Storage, StorageShared};
+use super::{RawStorage, Storage, StorageShared, StorageIntoOwned};
 
 /// Shared read-only storage with atomic reference counting.
 ///
@@ -130,6 +130,12 @@ impl<A> Clone for ArcRepr<A> {
     }
 }
 
+impl<A> Sealed for ArcRepr<A> {}
+
+// SAFETY: ArcRepr satisfies RawStorage and Sealed, and represents Xenon's
+// shared read-only storage category.
+unsafe impl<A: Element> IsShared for ArcRepr<A> {}
+
 // SAFETY: ArcRepr owns a single Arc<SharedBuf<A>> whose AlignedBuf<A>
 // maintains a non-null, aligned, fully initialized range of len elements
 // within one allocation. as_ptr/len forward that stable storage-visible range.
@@ -147,8 +153,6 @@ unsafe impl<A: Element> RawStorage for ArcRepr<A> {
     }
 }
 
-impl<A> Sealed for ArcRepr<A> {}
-
 // SAFETY: ArcRepr exposes only shared read-only access to the initialized
 // AlignedBuf<A> range described by RawStorage.
 unsafe impl<A: Element> Storage for ArcRepr<A> {}
@@ -156,10 +160,6 @@ unsafe impl<A: Element> Storage for ArcRepr<A> {}
 // SAFETY: ArcRepr is the crate-controlled shared read-only storage mode.
 // Cloning only bumps the Arc refcount and never exposes mutable access.
 unsafe impl<A: Element> StorageShared for ArcRepr<A> {}
-
-// SAFETY: ArcRepr satisfies RawStorage and Sealed, and represents Xenon's
-// shared read-only storage category.
-unsafe impl<A: Element> IsShared for ArcRepr<A> {}
 
 impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
     /// Copies the shared data into a fresh `Owned` buffer (O(n)).
