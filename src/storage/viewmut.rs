@@ -214,13 +214,15 @@ mod tests {
     fn test_view_mut_sub_view() {
         let mut data = [5_i32, 10, 15, 20];
         let mut view = ViewMutRepr::from_mut_slice(&mut data);
-
-        let mut sub = view.view_mut(1, 3);
-        assert_eq!(sub.as_slice(), &[10, 15]);
-
-        sub.fill(99);
-        // drop sub-view to release the mutable borrow before reading back
-        drop(sub);
+        // `view_mut()` borrows `&mut self`, so the returned sub-view
+        // prevents further access to the original `view`. Wrap the sub-view
+        // in a block so the borrow ends at the closing brace, freeing
+        // `view` for the subsequent `as_slice()` assertion.
+        {
+            let mut sub = view.view_mut(1, 3);
+            assert_eq!(sub.as_slice(), &[10, 15]);
+            sub.fill(99);
+        }
         assert_eq!(view.as_slice(), &[5, 99, 99, 20]);
 
         // empty sub-view
