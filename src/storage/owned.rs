@@ -11,15 +11,27 @@ use crate::private::Sealed;
 
 use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, allocation_size};
-use super::ArcRepr;
 use super::IsOwned;
-use super::{RawStorage, Storage, StorageIntoOwned, StorageMut, StorageOwned};
+use super::ArcRepr;
+use super::{RawStorage, Storage, StorageMut, StorageOwned, StorageIntoOwned};
 
-// ---------------------------------------------------------------------------
-// Owned<A> — owning storage
-// ---------------------------------------------------------------------------
-
-/// Owned storage with SIMD-friendly 64-byte alignment.
+/// Owning heap-allocated storage with SIMD-friendly 64-byte alignment.
+///
+/// `Owned` wraps an [`AlignedBuf`] that manages a single heap allocation with
+/// guaranteed 64-byte (AVX-512 cache line) alignment. Construction goes through
+/// [`AlignedAlloc`] for the aligned allocation and zero-filled variants.
+///
+/// Cloning is a deep copy (O(n)) — each clone allocates its own buffer via
+/// [`StorageOwned::deep_clone`]. Zero-copy shared access is available through
+/// [`into_shared`](Self::into_shared), which moves the underlying buffer into an
+/// [`ArcRepr`]. Conversion to owned storage via
+/// [`StorageIntoOwned::into_owned_storage`] is O(1) (returns self).
+///
+/// # Thread Safety
+///
+/// `Owned<A>` is `Send` when `A: Send` (moving the sole owner across threads
+/// transfers the allocation) and `Sync` when `A: Sync` (shared access from
+/// `&Owned<A>` exposes only shared element reads).
 #[derive(Debug)]
 pub struct Owned<A> {
     pub(crate) data: AlignedBuf<A>,
