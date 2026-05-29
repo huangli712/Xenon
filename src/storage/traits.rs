@@ -3,11 +3,23 @@
 //!
 //! This module defines the complete storage trait hierarchy:
 //!
-//! - Marker traits: `IsOwned`, `IsView`, `IsViewMut`, `IsShared`
-//! - Core trait hierarchy:
-//!   `RawStorage` → `Storage` / `RawStorageMut` → `StorageMut` →
-//!   `StorageOwned` / `StorageShared`
-//! - Conversion trait: `StorageIntoOwned`
+//! ```text
+//!                      Sealed
+//!                        │
+//!                    RawStorage
+//!                   ╱          ╲
+//!             Storage        RawStorageMut
+//!            ╱      ╲          ╱
+//! StorageShared      StorageMut
+//!                    │
+//!              StorageOwned
+//! ```
+//!
+//! Marker traits (bound on [`RawStorage`]):
+//!   `IsOwned`, `IsView`, `IsViewMut`, `IsShared`
+//!
+//! Standalone conversion trait (bound on [`Storage`]):
+//!   [`StorageIntoOwned`]
 
 use core::ptr::NonNull;
 
