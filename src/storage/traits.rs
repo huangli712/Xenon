@@ -27,6 +27,7 @@
 //!   [`StorageIntoOwned`]
 
 use crate::private::Sealed;
+use crate::error::XenonError;
 
 // ---------------------------------------------------------------------------
 // Marker traits (IsOwned, IsView, IsViewMut, IsShared)
@@ -232,7 +233,9 @@ pub unsafe trait StorageMut: Storage + Sealed {
         // SAFETY: `StorageMut`'s unsafe supertrait contract guarantees an
         // exclusive, aligned, fully initialized range of `len()` elements
         // starting at `as_mut_ptr()`.
-        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+        unsafe {
+            core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len())
+        }
     }
 
     /// Fills the entire storage-visible backing range with the given value.
@@ -247,7 +250,7 @@ pub unsafe trait StorageMut: Storage + Sealed {
 }
 
 // ---------------------------------------------------------------------------
-// StorageOwned + StorageShared + StorageIntoOwned
+// StorageOwned — owning storage with allocation and conversion
 // ---------------------------------------------------------------------------
 
 /// Storage that owns data.
@@ -283,7 +286,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone + Sealed {
     ///   exceeds `isize::MAX`.
     /// - `XenonError::AllocationFailed` if the underlying allocator
     ///   cannot satisfy the request.
-    fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, crate::error::XenonError>
+    fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, XenonError>
     where
         Self::Elem: Copy;
 
@@ -312,8 +315,12 @@ pub unsafe trait StorageOwned: StorageMut + Clone + Sealed {
     ///   exceeds `isize::MAX`.
     /// - `XenonError::AllocationFailed` if the underlying allocator
     ///   cannot satisfy the request.
-    fn try_reserve(&mut self, new_capacity: usize) -> Result<(), crate::error::XenonError>;
+    fn try_reserve(&mut self, new_capacity: usize) -> Result<(), XenonError>;
 }
+
+// ---------------------------------------------------------------------------
+// StorageShared
+// ---------------------------------------------------------------------------
 
 /// Marker trait for shared read-only storage.
 ///
@@ -327,6 +334,10 @@ pub unsafe trait StorageOwned: StorageMut + Clone + Sealed {
 /// shared read-only storage mode whose aliasing and thread-safety
 /// invariants are controlled by this crate.
 pub unsafe trait StorageShared: Storage + Clone + Sealed {}
+
+// ---------------------------------------------------------------------------
+// StorageIntoOwned
+// ---------------------------------------------------------------------------
 
 /// Storage types that can be converted into an owned tensor by consuming self.
 ///
@@ -518,7 +529,7 @@ mod tests {
             }
         }
 
-        fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, crate::error::XenonError>
+        fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, XenonError>
         where
             Self::Elem: Copy,
         {
@@ -543,7 +554,7 @@ mod tests {
             self.data.capacity()
         }
 
-        fn try_reserve(&mut self, new_capacity: usize) -> Result<(), crate::error::XenonError> {
+        fn try_reserve(&mut self, new_capacity: usize) -> Result<(), XenonError> {
             if new_capacity > self.capacity() {
                 self.data.reserve(new_capacity - self.capacity());
             }
