@@ -30,19 +30,31 @@
 //! split exclusive access into non-overlapping chunks before crossing threads.
 
 mod alloc;
-mod arc;
 mod buffer;
-mod owned;
 mod traits;
+
+mod owned;
 mod view;
 mod viewmut;
+mod arc;
 
-pub use arc::ArcRepr;
-pub use owned::Owned;
 pub use traits::{
-    IsOwned, IsShared, IsView, IsViewMut,
-    RawStorage, Storage, StorageIntoOwned, StorageMut,
-    StorageOwned, StorageShared,
+    IsOwned,
+    IsView,
+    IsViewMut,
+    IsShared,
 };
-pub use view::{View, ViewRepr};
-pub use viewmut::{ViewMut, ViewMutRepr};
+
+pub use traits::{
+    RawStorage,
+    Storage,
+    StorageMut,
+    StorageOwned,
+    StorageShared,
+    StorageIntoOwned,
+};
+
+pub use owned::Owned;
+pub use view::{ViewRepr, View};
+pub use viewmut::{ViewMutRepr, ViewMut};
+pub use arc::ArcRepr;
