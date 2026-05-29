@@ -13,7 +13,21 @@ use super::Owned;
 use super::ViewRepr;
 use super::{RawStorage, Storage, StorageMut, StorageIntoOwned};
 
-/// Mutable view over exclusively borrowed data.
+/// Exclusive mutable borrowed view storage.
+///
+/// `ViewMutRepr` stores a raw mutable pointer and element count with a
+/// `PhantomData<&'a mut A>` lifetime marker — no allocation, no reference
+/// counting. Does not implement `Clone` or `Copy` because the exclusive borrow
+/// guarantees unique ownership of the data. Mutable access is provided through
+/// [`StorageMut`]; conversion to owned storage is available via
+/// [`StorageIntoOwned::into_owned_storage`] (O(n) deep copy).
+///
+/// # Thread Safety
+///
+/// `ViewMutRepr<'a, A>` is `Send` when `A: Send`, allowing transfer of the
+/// exclusive write capability to another thread. It intentionally does NOT
+/// implement `Sync` — sharing `&ViewMutRepr` across threads would create
+/// multiple write-capable aliases, violating the exclusive borrow contract.
 #[derive(Debug)]
 pub struct ViewMutRepr<'a, A> {
     ptr: *mut A,
