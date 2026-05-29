@@ -18,9 +18,9 @@ use super::{RawStorage, Storage, StorageMut, StorageOwned, StorageIntoOwned};
 
 /// Owning heap-allocated storage with SIMD-friendly 64-byte alignment.
 ///
-/// `Owned` wraps an [`AlignedBuf`] that manages a single heap allocation with
+/// `Owned` wraps an `AlignedBuf` that manages a single heap allocation with
 /// guaranteed 64-byte (AVX-512 cache line) alignment. Construction goes through
-/// [`AlignedAlloc`] for the aligned allocation and zero-filled variants.
+/// `AlignedAlloc` for the aligned allocation and zero-filled variants.
 ///
 /// Cloning is a deep copy (O(n)) — each clone allocates its own buffer via
 /// [`StorageOwned::deep_clone`]. Zero-copy shared access is available through
@@ -325,7 +325,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         <Owned<A>>::from_vec(vec)
     }
 
-    /// Constructs storage from an iterator via [`Owned::from_vec_moved`].
+    /// Constructs storage from an iterator via `Owned::from_vec_moved`.
     fn from_iter<I: IntoIterator<Item = Self::Elem>>(iter: I) -> Self {
         let data: Vec<Self::Elem> = iter.into_iter().collect();
         <Owned<A>>::from_vec_moved(data)
