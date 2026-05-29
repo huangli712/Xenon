@@ -207,7 +207,9 @@ impl<A> Owned<A> {
         align: usize
     ) -> Self {
         Self {
-            data: unsafe { AlignedBuf::from_raw_parts(ptr, len, cap, align) },
+            data: unsafe {
+                AlignedBuf::from_raw_parts(ptr, len, cap, align)
+            },
         }
     }
 }
@@ -231,10 +233,6 @@ impl<A: Element> Owned<A> {
         Ok(owned)
     }
 }
-
-// ---------------------------------------------------------------------------
-// RawStorage impl for Owned<A>
-// ---------------------------------------------------------------------------
 
 // Owned<A>: Clone uses deep_clone semantics.
 impl<A: Element + Clone> Clone for Owned<A> {
