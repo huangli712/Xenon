@@ -274,40 +274,30 @@ unsafe impl<A> RawStorage for Owned<A> {
     }
 }
 
-/// # Safety
-///
-/// `Owned<A>` implements `Storage` because the `RawStorage` impl exposes
-/// the same base pointer and length maintained by `AlignedBuf<A>`, and
-/// `AlignedBuf` guarantees the `Storage::as_slice` preconditions: non-null aligned pointer, one allocation, `len`
-/// initialized elements, `isize::MAX` range limit, and no mutable alias
-/// for the duration of `&self`.
+// SAFETY: Owned<A> implements Storage because the RawStorage impl exposes
+// the same base pointer and length maintained by AlignedBuf<A>, and
+// AlignedBuf guarantees the Storage::as_slice preconditions: non-null aligned
+// pointer, one allocation, len initialized elements, isize::MAX range limit,
+// and no mutable alias for the duration of &self.
 unsafe impl<A: Element> Storage for Owned<A> {}
 
-// ---------------------------------------------------------------------------
-// StorageMut + StorageOwned + Clone + IsOwned for Owned<A>
-// ---------------------------------------------------------------------------
-
-/// # Safety
-///
-/// `Owned<A>` implements `StorageMut` because it uniquely owns the
-/// `AlignedBuf<A>` allocation. During any `&mut self` borrow there can be no
-/// shared or mutable aliases into the same range, and `data.as_mut_ptr()` is
-/// the same stable, non-null, aligned base pointer established by the
-/// `RawStorage` impl.
+// SAFETY: Owned<A> implements StorageMut because it uniquely owns the
+// AlignedBuf<A> allocation. During any &mut self borrow there can be no
+// shared or mutable aliases into the same range, and data.as_mut_ptr() is
+// the same stable, non-null, aligned base pointer established by the
+// RawStorage impl.
 unsafe impl<A: Element> StorageMut for Owned<A> {
+    /// Returns the raw mutable pointer to the owned data.
     fn as_mut_ptr(&mut self) -> *mut A {
         self.data.as_mut_ptr()
     }
 }
 
-/// # Safety
-///
-/// `Owned<A>` implements `StorageOwned` because it has exclusive ownership of
-/// the `AlignedBuf<A>` allocation, supports mutable access through
-/// `StorageMut`, and all owned constructors preserve the `AlignedBuf`
-/// invariants: non-null aligned pointer, one
-/// allocation, initialized logical elements, capacity metadata, and no
-/// ZST/empty deallocation.
+// SAFETY: Owned<A> implements StorageOwned because it has exclusive ownership
+// of the AlignedBuf<A> allocation, supports mutable access through
+// StorageMut, and all owned constructors preserve the AlignedBuf invariants:
+// non-null aligned pointer, one allocation, initialized logical elements,
+// capacity metadata, and no ZST/empty deallocation.
 unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
     fn zeros(len: usize) -> Self
     where
