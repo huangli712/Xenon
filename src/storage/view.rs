@@ -22,8 +22,6 @@ pub struct ViewRepr<'a, A> {
 /// Short alias for [`ViewRepr`].
 pub type View<'a, A> = ViewRepr<'a, A>;
 
-impl<'a, A> Sealed for ViewRepr<'a, A> {}
-
 impl<'a, A> ViewRepr<'a, A> {
     /// Creates a `ViewRepr` from a raw pointer and length.
     ///
@@ -71,6 +69,9 @@ impl<'a, A> ViewRepr<'a, A> {
     }
 }
 
+impl<'a, A> Sealed for ViewRepr<'a, A> {}
+unsafe impl<'a, A> IsView for ViewRepr<'a, A> {}
+
 // SAFETY: ptr is non-null, aligned, within one allocation; len is known.
 unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {
     type Elem = A;
@@ -85,16 +86,6 @@ unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {
 }
 
 unsafe impl<'a, A> Storage for ViewRepr<'a, A> {}
-unsafe impl<'a, A> IsView for ViewRepr<'a, A> {}
-
-// SAFETY: `ViewRepr` is a borrowed read-only view. Moving it to another
-// thread only moves shared access to `A` values, which is sound exactly when
-// `A: Sync`. The lifetime `'a` still prevents outliving the borrowed storage.
-unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
-
-// SAFETY: Sharing `&ViewRepr` across threads permits only shared reads of
-// `A` through the original borrow. Shared reads are thread-safe when `A: Sync`.
-unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
     fn into_owned_storage(self) -> Owned<A>
@@ -119,6 +110,15 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
         Owned { data: buf }
     }
 }
+
+// SAFETY: `ViewRepr` is a borrowed read-only view. Moving it to another
+// thread only moves shared access to `A` values, which is sound exactly when
+// `A: Sync`. The lifetime `'a` still prevents outliving the borrowed storage.
+unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
+
+// SAFETY: Sharing `&ViewRepr` across threads permits only shared reads of
+// `A` through the original borrow. Shared reads are thread-safe when `A: Sync`.
+unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 #[cfg(test)]
 mod tests {
