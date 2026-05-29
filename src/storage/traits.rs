@@ -24,7 +24,7 @@
 //!   `IsOwned`, `IsView`, `IsViewMut`, `IsShared`
 //!
 //! Standalone conversion trait (bound on [`Storage`]):
-//!   [`StorageIntoOwned`]
+//!   `StorageIntoOwned`
 
 use crate::private::Sealed;
 use crate::error::XenonError;
@@ -360,6 +360,7 @@ pub trait StorageIntoOwned: Storage {
 mod tests {
     use super::*;
     use super::super::{Owned, ViewRepr, ViewMutRepr, ArcRepr};
+    use core::ptr::NonNull;
 
     /// Verify that all four marker traits exist and are properly sealed.
     #[test]
@@ -381,7 +382,8 @@ mod tests {
         assert_eq!(0, 0);
     }
 
-    /// An empty mock to verify `RawStorage` trait methods compile and behave correctly.
+    /// An empty mock to verify `RawStorage` trait methods compile and
+    /// behave correctly.
     struct MockEmpty;
 
     impl Sealed for MockEmpty {}
@@ -390,7 +392,7 @@ mod tests {
         type Elem = f64;
 
         fn as_ptr(&self) -> *const Self::Elem {
-            core::ptr::NonNull::<Self::Elem>::dangling().as_ptr()
+            NonNull::<Self::Elem>::dangling().as_ptr()
         }
 
         fn len(&self) -> usize {
@@ -581,6 +583,7 @@ mod tests {
 
     /// Compile-time helper asserting a type satisfies `StorageOwned`.
     fn assert_storage_owned<S: StorageOwned>() {}
+
     /// Compile-time helper asserting a type satisfies `StorageShared`.
     fn assert_storage_shared<S: StorageShared>() {}
 
