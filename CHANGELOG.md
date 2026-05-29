@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.14] — 2026-05-29
+
+### Added
+
+- Module-level doc and `///` doc comments to all test functions in `set/unique.rs`.
+- Doc comments to all `UniqueElement` impls (`unique_eq`).
+- Doc comments to `unique_impl` and `assert_set_eq_i32` helper.
+- Test: `unique` on `Complex<f32>` values.
+- Test: `unique` on tensor view.
+
+### Removed
+
+- Redundant `test_set_module_exports_unique_element` test.
+- Stale section separator comments and task-tracking references from `unique.rs`.
+
+### Changed
+
+- Consolidated test imports in `unique.rs` using pre-imported short paths.
+- Replaced fully-qualified `crate::dimension::IxDyn` with imported `IxDyn`.
+- Converted `///` SAFETY doc comments to `//` in `owned.rs`.
+
+### Fixed
+
+- Escaped angle brackets in `unique.rs` module doc to prevent HTML parsing.
+
 ## [v0.0.13] — 2026-05-29
 
 ### Added
