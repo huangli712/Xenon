@@ -211,8 +211,8 @@ mod tests {
         assert_eq!(y.len(), 1);
     }
 
-    /// Verifies `unique` on `Complex` with `NaN` components retains all entries
-    /// because `NaN` components cause inequality.
+    /// Verifies `unique` on `Complex` with `NaN` components retains all
+    /// entries because `NaN` components cause inequality.
     #[test]
     fn test_unique_complex_nan_preserved() {
         let values = vec![Complex::new(f64::NAN, 1.0), Complex::new(f64::NAN, 1.0)];
