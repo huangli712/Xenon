@@ -177,7 +177,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 category: WorkspaceErrorCategory::TypedViewRejected {
                     detail: TypedViewRejection::ZeroSizedType,
                 },
-                cause: None,
+                
             });
         }
         let byte_len =
@@ -191,7 +191,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                             elem_size: core::mem::size_of::<T>(),
                         },
                     },
-                    cause: None,
+                    
                 })?;
         if byte_len > self.len {
             return Err(XenonError::workspace_split_oob(OP, byte_len, self.len));
@@ -206,7 +206,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                         actual: actual_addr % core::mem::align_of::<T>(),
                     },
                 },
-                cause: None,
+                
             });
         }
         // SAFETY: bounds and alignment checked above; `MaybeUninit<T>` permits
@@ -246,7 +246,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 category: WorkspaceErrorCategory::TypedViewRejected {
                     detail: TypedViewRejection::ZeroSizedType,
                 },
-                cause: None,
+                
             });
         }
         let byte_len =
@@ -260,7 +260,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                             elem_size: core::mem::size_of::<T>(),
                         },
                     },
-                    cause: None,
+                    
                 })?;
         if byte_len > self.len {
             return Err(XenonError::workspace_split_oob(OP, byte_len, self.len));
@@ -275,7 +275,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                         actual: actual_addr % core::mem::align_of::<T>(),
                     },
                 },
-                cause: None,
+                
             });
         }
         // SAFETY: bounds and alignment checked; caller's `# Safety` covers

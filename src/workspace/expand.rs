@@ -69,7 +69,7 @@ impl Workspace {
                     size: new_capacity,
                     align: self.alignment,
                 },
-                cause: None,
+                
             })?;
 
         // SAFETY: layout is valid (checked above).
@@ -80,7 +80,7 @@ impl Workspace {
                 size: new_capacity,
                 align: self.alignment,
             },
-            cause: None,
+            
         })?;
 
         // Implementation detail: bytes MAY be copied during growth, but this

@@ -195,9 +195,6 @@ fn test_workspace_error_boundary_mapping() {
             current: xenon::error::WorkspaceBorrowState::None,
         },
         WorkspaceErrorCategory::SplitOutOfBounds { mid: 0, len: 0 },
-        WorkspaceErrorCategory::SplitCountInvariant {
-            detail: std::borrow::Cow::Borrowed("test"),
-        },
         WorkspaceErrorCategory::GrowOverflow {
             current_capacity: usize::MAX,
             additional: 1,

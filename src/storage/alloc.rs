@@ -37,20 +37,20 @@ impl AlignedAlloc {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed("AlignedAlloc::alloc"),
                 category: WorkspaceErrorCategory::AllocFailed { size, align },
-                cause: None,
+                
             });
         }
         let layout = Layout::from_size_align(size, align)
             .map_err(|_| XenonError::Workspace {
                 operation: Cow::Borrowed("AlignedAlloc::alloc"),
                 category: WorkspaceErrorCategory::InvalidLayout { size, align },
-                cause: None,
+                
         })?;
         let ptr = unsafe { alloc(layout) };
         NonNull::new(ptr).ok_or(XenonError::Workspace {
             operation: Cow::Borrowed("AlignedAlloc::alloc"),
             category: WorkspaceErrorCategory::AllocFailed { size, align },
-            cause: None,
+            
         })
     }
 
@@ -63,20 +63,20 @@ impl AlignedAlloc {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
                 category: WorkspaceErrorCategory::AllocFailed { size, align },
-                cause: None,
+                
             });
         }
         let layout = Layout::from_size_align(size, align)
             .map_err(|_| XenonError::Workspace {
                 operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
                 category: WorkspaceErrorCategory::InvalidLayout { size, align },
-                cause: None,
+                
         })?;
         let ptr = unsafe { alloc_zeroed(layout) };
         NonNull::new(ptr).ok_or(XenonError::Workspace {
             operation: Cow::Borrowed("AlignedAlloc::alloc_zeroed"),
             category: WorkspaceErrorCategory::AllocFailed { size, align },
-            cause: None,
+            
         })
     }
 

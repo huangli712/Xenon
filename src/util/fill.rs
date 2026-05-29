@@ -48,7 +48,6 @@ pub(crate) fn fill_try_read_only_err(tag: StorageKindTag) -> XenonError {
         expected: StorageKindTag::Owned,
         actual: tag,
         shape: None,
-        conversion: None,
     }
 }
 

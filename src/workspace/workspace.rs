@@ -79,7 +79,7 @@ impl Workspace {
                     size: capacity,
                     align: alignment,
                 },
-                cause: None,
+                
             });
         }
         let size = capacity.max(1);
@@ -90,7 +90,7 @@ impl Workspace {
                     size: capacity,
                     align: alignment,
                 },
-                cause: None,
+                
             }
         })?;
         let ptr = if size == 0 {
@@ -105,7 +105,7 @@ impl Workspace {
                         size,
                         align: alignment,
                     },
-                    cause: None,
+                    
                 }
             })?
         };

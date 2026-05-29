@@ -6,7 +6,6 @@
 
 use core::fmt::{self, Debug, Display, Formatter};
 use std::borrow::Cow;
-use std::boxed::Box;
 use std::error::Error;
 use std::vec::Vec;
 
@@ -261,13 +260,6 @@ pub enum WorkspaceErrorCategory {
         len: usize,
     },
 
-    /// Internal split-count atomic invariant was violated (e.g., underflow
-    /// or leak detected in debug).
-    SplitCountInvariant {
-        /// Human-readable description of the violated invariant.
-        detail: Cow<'static, str>,
-    },
-
     /// Capacity grow overflow.
     ///
     /// `current_capacity` is the currently available byte length of the
@@ -306,9 +298,6 @@ impl Display for WorkspaceErrorCategory {
             },
             Self::SplitOutOfBounds { mid, len } => {
                 write!(f, "split out of bounds (mid={mid}, len={len})")
-            },
-            Self::SplitCountInvariant { detail } => {
-                write!(f, "split-count invariant violated: {detail}")
             },
             Self::GrowOverflow { current_capacity, additional } => {
                 write!(f, "grow overflow: capacity={current_capacity} + additional={additional}")
@@ -655,38 +644,6 @@ impl Display for StorageKindTag {
     }
 }
 
-/// Kind of storage conversion attempted (used as `conversion` field in
-/// `XenonError::InvalidStorageMode`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageConversionKind {
-    /// Conversion to owned storage.
-    ToOwned,
-
-    /// Conversion into owned storage (consuming self).
-    IntoOwned,
-
-    /// Transposition operation.
-    Transpose,
-
-    /// Mutable slice operation.
-    SliceMut,
-
-    /// Broadcast-to-shape operation.
-    BroadcastTo,
-}
-
-impl Display for StorageConversionKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ToOwned => write!(f, "to owned"),
-            Self::IntoOwned => write!(f, "into owned"),
-            Self::Transpose => write!(f, "transpose"),
-            Self::SliceMut => write!(f, "slice mut"),
-            Self::BroadcastTo => write!(f, "broadcast to"),
-        }
-    }
-}
-
 /// Kind for `XenonError::InvalidShape`.
 ///
 /// Marked `#[non_exhaustive]` to allow new shape-validation kinds in future
@@ -706,22 +663,6 @@ pub enum InvalidShapeKind {
         /// Actual element count provided.
         actual: usize,
     },
-
-    /// Provided constructor input rank exceeds the static-rank support
-    /// policy (`Ix0..=Ix6`) on a non-`try_from_dyn` path — for example,
-    /// when an internal `IntoDimension` / `Tensor::from_shape_vec` pipeline
-    /// receives a shape vector with `provided_ndim > 6`.
-    ///
-    /// **Excludes** `Dimension::try_from_dyn(IxDyn(...))` rank-mismatch
-    /// path, which returns `XenonError::DimensionMismatch`; that path is a
-    /// dimension-conversion mismatch, not a constructor rank-policy
-    /// violation.
-    RankExceedsStaticMax {
-        /// Number of dimensions provided.
-        provided_ndim: usize,
-        /// Maximum number of dimensions supported by the static rank.
-        max_ndim: usize,
-    },
 }
 
 impl Display for InvalidShapeKind {
@@ -730,9 +671,6 @@ impl Display for InvalidShapeKind {
             Self::ProductOverflow => write!(f, "product overflow"),
             Self::ElementCountMismatch { expected, actual } => {
                 write!(f, "element count mismatch: expected {expected}, got {actual}")
-            },
-            Self::RankExceedsStaticMax { provided_ndim, max_ndim } => {
-                write!(f, "rank exceeds static max: {provided_ndim} > {max_ndim}")
             },
         }
     }
@@ -794,18 +732,6 @@ pub enum XenonError {
         attempted_target_shape: Option<Vec<usize>>,
         /// Axis along which broadcasting was attempted, if applicable.
         axis: Option<usize>,
-    },
-
-    /// Reserved for future BLAS/FFI layout validation.
-    LayoutMismatch {
-        /// The operation that failed.
-        operation: Cow<'static, str>,
-        /// Required layout description.
-        required_layout: Cow<'static, str>,
-        /// Actual layout description.
-        actual_layout: Cow<'static, str>,
-        /// Shape of the tensor.
-        shape: Vec<usize>,
     },
 
     /// Invalid memory layout detected (construction, view, raw-parts, etc.).
@@ -878,8 +804,6 @@ pub enum XenonError {
         actual: StorageKindTag,
         /// Shape of the tensor, if available.
         shape: Option<Vec<usize>>,
-        /// Kind of conversion that was attempted, if applicable.
-        conversion: Option<StorageConversionKind>,
     },
 
     /// FFI-related error (raw-parts, BLAS/LAPACK interoperability).
@@ -890,8 +814,6 @@ pub enum XenonError {
         category: FfiErrorCategory,
         /// Backend involved in the FFI call.
         backend: FfiBackend,
-        /// Chained inner error, if this wraps a lower-level failure.
-        cause: Option<Box<XenonError>>,
     },
 
     /// Workspace operation error (alloc, borrow, split, capacity).
@@ -900,8 +822,6 @@ pub enum XenonError {
         operation: Cow<'static, str>,
         /// Structured classification of the workspace error.
         category: WorkspaceErrorCategory,
-        /// Chained inner error, if this wraps a lower-level failure.
-        cause: Option<Box<XenonError>>,
     },
 
     /// Multi-dimensional index out of bounds.
@@ -953,10 +873,6 @@ impl Display for XenonError {
                 }
                 Ok(())
             },
-            Self::LayoutMismatch { operation, required_layout, actual_layout, shape } => {
-                write!(f, "layout mismatch in `{operation}`: required {required_layout}, ")?;
-                write!(f, "got {actual_layout} for shape {}", FmtShape(shape))
-            },
             Self::InvalidLayout { operation, storage_kind, shape, strides, offset, storage_len, reason } => {
                 write!(f, "invalid layout ({reason}) in `{operation}`: storage={storage_kind}, ")?;
                 write!(f, "shape={}, strides={}, offset={offset}, len={storage_len}",
@@ -982,34 +898,19 @@ impl Display for XenonError {
             Self::InvalidArgument { operation, kind } => {
                 write!(f, "invalid argument ({kind}) in `{operation}`")
             },
-            Self::InvalidStorageMode { operation, expected, actual, shape, conversion } => {
+            Self::InvalidStorageMode { operation, expected, actual, shape } => {
                 write!(f, "invalid storage mode in `{operation}`: expected {expected}, ")?;
                 write!(f, "got {actual}")?;
                 if let Some(s) = shape {
                     write!(f, " for shape {}", FmtShape(s))?;
                 }
-                if let Some(c) = conversion {
-                    write!(f, " (conversion: {c})")?;
-                }
                 Ok(())
             },
-            Self::Ffi { operation, category, backend, cause } => {
-                write!(f, "FFI error (`{category}`) in `{operation}` (backend: {backend})")?;
-                if let Some(inner) = cause {
-                    // Append `; caused by: <inner>` so a single Display call
-                    // shows the whole chain. Programmatic traversal still
-                    // uses `std::error::Error::source()`.
-                    write!(f, "; caused by: {inner}")?;
-                }
-                Ok(())
+            Self::Ffi { operation, category, backend } => {
+                write!(f, "FFI error (`{category}`) in `{operation}` (backend: {backend})")
             },
-            Self::Workspace { operation, category, cause } => {
-                write!(f, "workspace error (`{category}`) in `{operation}`",)?;
-                if let Some(inner) = cause {
-                    // Same chain contract as `Ffi` above.
-                    write!(f, "; caused by: {inner}")?;
-                }
-                Ok(())
+            Self::Workspace { operation, category } => {
+                write!(f, "workspace error (`{category}`) in `{operation}`")
             },
             Self::IndexOutOfBounds { operation, attempted_index, axis, shape } => {
                 write!(f, "index out of bounds in `{operation}`: attempted {} at ", FmtShape(attempted_index))?;
@@ -1028,17 +929,9 @@ impl Display for XenonError {
 }
 
 impl Error for XenonError {
-    /// Returns the underlying cause for chained errors.
-    ///
-    /// `Ffi` and `Workspace` variants propagate their inner `cause` field
-    /// via `source()`. All other variants are leaf errors and return `None`.
+    /// All `XenonError` variants are leaf errors with no chained source.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Ffi { cause, .. } | Self::Workspace { cause, .. } => cause
-                .as_ref()
-                .map(|e| e.as_ref() as &(dyn Error + 'static)),
-            _ => None,
-        }
+        None
     }
 }
 
@@ -1056,7 +949,6 @@ impl XenonError {
         XenonError::Workspace {
             operation: Cow::Borrowed(operation),
             category: WorkspaceErrorCategory::SplitOutOfBounds { mid, len },
-            cause: None,
         }
     }
 
@@ -1069,7 +961,6 @@ impl XenonError {
         XenonError::Workspace {
             operation: Cow::Borrowed(operation),
             category: WorkspaceErrorCategory::BorrowConflict { requested, current },
-            cause: None,
         }
     }
 
@@ -1085,7 +976,6 @@ impl XenonError {
                 current_capacity,
                 additional,
             },
-            cause: None,
         }
     }
 }
@@ -1160,7 +1050,6 @@ mod tests {
         };
         let _ = InvalidLayoutReason::AccessRangeExceedsStorage;
         let _ = StorageKindTag::Owned;
-        let _ = StorageConversionKind::Transpose;
         let _ = InvalidShapeKind::ElementCountMismatch {
             expected: 6,
             actual: 5,
@@ -1263,23 +1152,16 @@ mod tests {
             panic!("variant mismatch");
         }
 
-        // Ffi with cause chain
-        let inner = Box::new(XenonError::InvalidAxis {
-            operation: Cow::Borrowed("check"),
-            axis: 3,
-            ndim: 2,
-            shape: vec![2, 3],
-        });
+        // Ffi
         let e = XenonError::Ffi {
             operation: Cow::Borrowed("export"),
             category: FfiErrorCategory::NullPointer {
                 argument: Cow::Borrowed("data"),
             },
             backend: FfiBackend::RawParts,
-            cause: Some(inner),
         };
-        if let XenonError::Ffi { cause, .. } = &e {
-            assert!(cause.is_some());
+        if let XenonError::Ffi { operation, .. } = &e {
+            assert_eq!(operation, "export");
         } else {
             panic!("variant mismatch");
         }
@@ -1523,30 +1405,6 @@ mod tests {
         assert!(s.contains("non-zero imaginary part"));
     }
 
-    /// Verify cause chain: when `cause: Some(_)`, Display appends
-    /// `; caused by: <inner>`.
-    #[test]
-    fn test_display_ffi_cause_chain_format() {
-        let inner = Box::new(XenonError::InvalidAxis {
-            operation: Cow::Borrowed("validate"),
-            axis: 3,
-            ndim: 2,
-            shape: vec![2, 3],
-        });
-        let e = XenonError::Ffi {
-            operation: Cow::Borrowed("export"),
-            category: FfiErrorCategory::InvalidRank {
-                expected: 2,
-                actual: 3,
-            },
-            backend: FfiBackend::RawParts,
-            cause: Some(inner),
-        };
-        let s = format!("{}", e);
-        assert!(s.contains("; caused by:"));
-        assert!(s.contains("invalid axis"));
-    }
-
     /// Verify `XenonError` implements `std::error::Error`.
     #[test]
     fn test_error_trait_implemented() {
@@ -1579,65 +1437,23 @@ mod tests {
         assert!(e.source().is_none());
     }
 
-    /// Verify `Ffi` variant exposes its inner `cause` via `source()`.
+    /// Verify `source()` returns `None` for `Ffi` and `Workspace` variants.
     #[test]
-    fn test_source_chains_ffi_cause() {
-        let inner = Box::new(XenonError::InvalidAxis {
-            operation: Cow::Borrowed("validate"),
-            axis: 3,
-            ndim: 2,
-            shape: vec![2, 3],
-        });
-        let e = XenonError::Ffi {
-            operation: Cow::Borrowed("export"),
-            category: FfiErrorCategory::InvalidRank {
-                expected: 2,
-                actual: 3,
-            },
-            backend: FfiBackend::RawParts,
-            cause: Some(inner),
-        };
-        let source = e.source();
-        assert!(source.is_some());
-        let source_msg = source.expect("source exists").to_string();
-        assert!(source_msg.contains("invalid axis"));
-    }
-
-    /// Verify `Workspace` variant exposes its inner `cause` via `source()`.
-    #[test]
-    fn test_source_chains_workspace_cause() {
-        let inner = Box::new(XenonError::InvalidLayout {
-            operation: Cow::Borrowed("alloc"),
-            storage_kind: StorageKindTag::Owned,
-            shape: vec![4],
-            strides: vec![1],
-            offset: 0,
-            storage_len: 4,
-            reason: InvalidLayoutReason::AlignmentInvalid,
-        });
-        let e = XenonError::Workspace {
-            operation: Cow::Borrowed("new"),
-            category: WorkspaceErrorCategory::TypedViewRejected {
-                detail: TypedViewRejection::ZeroSizedType,
-            },
-            cause: Some(inner),
-        };
-        let source = e.source();
-        assert!(source.is_some());
-        let source_msg = source.expect("source exists").to_string();
-        assert!(source_msg.contains("invalid layout"));
-    }
-
-    /// Verify `source()` returns `None` when `Ffi`/`Workspace` carry no cause.
-    #[test]
-    fn test_source_returns_none_when_no_cause() {
+    fn test_source_returns_none_for_ffi_and_workspace() {
         let e = XenonError::Ffi {
             operation: Cow::Borrowed("check"),
             category: FfiErrorCategory::NullPointer {
                 argument: Cow::Borrowed("ptr"),
             },
             backend: FfiBackend::RawParts,
-            cause: None,
+        };
+        assert!(e.source().is_none());
+
+        let e = XenonError::Workspace {
+            operation: Cow::Borrowed("new"),
+            category: WorkspaceErrorCategory::TypedViewRejected {
+                detail: TypedViewRejection::ZeroSizedType,
+            },
         };
         assert!(e.source().is_none());
     }
@@ -1698,7 +1514,7 @@ mod tests {
 
     // ── Workspace error category + constructor helper tests ──
 
-    /// Verify all 7 `WorkspaceErrorCategory` variants are constructable
+    /// Verify all `WorkspaceErrorCategory` variants are constructable
     /// and carry structured fields.
     #[test]
     fn test_workspace_workspace_error_category() {
@@ -1725,12 +1541,6 @@ mod tests {
         let cat = WorkspaceErrorCategory::SplitOutOfBounds { mid: 42, len: 10 };
         assert!(format!("{cat:?}").contains("SplitOutOfBounds"));
         assert!(format!("{cat:?}").contains("mid: 42"));
-
-        // SplitCountInvariant
-        let cat = WorkspaceErrorCategory::SplitCountInvariant {
-            detail: Cow::Borrowed("underflow"),
-        };
-        assert!(format!("{cat:?}").contains("SplitCountInvariant"));
 
         // GrowOverflow — field names MUST be `current_capacity` and `additional`.
         let cat = WorkspaceErrorCategory::GrowOverflow {

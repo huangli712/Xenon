@@ -105,7 +105,7 @@ impl<A> BlasInfo<A> {
                 target_width_bits: (core::mem::size_of::<I>() * 8) as u8,
             },
             backend: FfiBackend::Blas,
-            cause: None,
+            
         })
     }
 }

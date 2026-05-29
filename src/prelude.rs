@@ -146,7 +146,6 @@ pub use crate::error::{
     InvalidLayoutReason,
     InvalidShapeKind,
     Result,
-    StorageConversionKind,
     StorageKindTag,
     TypedViewRejection,
     WorkspaceBorrowKind,

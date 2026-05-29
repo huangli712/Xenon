@@ -78,7 +78,7 @@ where
                     actual: self.ndim(),
                 },
                 backend: FfiBackend::Blas,
-                cause: None,
+                
             });
         }
         // Gate 2: layout must be F-contiguous without zero strides.
@@ -90,7 +90,7 @@ where
                     strides: self.strides().to_vec(),
                 },
                 backend: FfiBackend::Blas,
-                cause: None,
+                
             });
         }
         let rows = self.shape()[0];
@@ -111,7 +111,7 @@ where
                     strides: self.strides().to_vec(),
                 },
                 backend: FfiBackend::Blas,
-                cause: None,
+                
             });
         }
         // Post `rows > 0` gate: F-order `strides[1] == rows >= 1`, so
@@ -160,7 +160,7 @@ where
                     actual: self.ndim(),
                 },
                 backend: FfiBackend::Blas,
-                cause: None,
+                
             });
         }
         if !self.is_blas_layout_compatible() {
@@ -171,7 +171,7 @@ where
                     strides: self.strides().to_vec(),
                 },
                 backend: FfiBackend::Blas,
-                cause: None,
+                
             });
         }
         // Mirror `blas_info()` rows-gate.
@@ -183,7 +183,7 @@ where
                     strides: self.strides().to_vec(),
                 },
                 backend: FfiBackend::Blas,
-                cause: None,
+                
             });
         }
         Ok(self.strides()[1])

@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use xenon::broadcast::broadcast_shape;
 use xenon::error::{
     AbiMismatchKind, ConversionFailureReason, FfiBackend, FfiErrorCategory,
-    InvalidArgumentKind, InvalidLayoutReason, InvalidShapeKind, StorageConversionKind,
+    InvalidArgumentKind, InvalidLayoutReason, InvalidShapeKind,
     StorageKindTag, TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState,
     WorkspaceErrorCategory, XenonError,
 };
@@ -127,14 +127,12 @@ fn test_invalid_storage_mode_conversion_error() {
         expected: StorageKindTag::Owned,
         actual: StorageKindTag::View,
         shape: Some(vec![2, 3]),
-        conversion: Some(StorageConversionKind::ToOwned),
     };
     let s = format!("{err}");
     assert!(s.contains("to_owned"));
     assert!(s.contains("expected owned"));
     assert!(s.contains("got view"));
     assert!(s.contains("[2 × 3]"));
-    assert!(s.contains("to owned"));
 }
 
 #[test]
@@ -189,7 +187,6 @@ fn test_error_display() {
                 argument: Cow::Borrowed("ptr"),
             },
             backend: FfiBackend::RawParts,
-            cause: None,
         },
         XenonError::Workspace {
             operation: Cow::Borrowed("Workspace::new"),
@@ -197,7 +194,6 @@ fn test_error_display() {
                 size: 4096,
                 align: 64,
             },
-            cause: None,
         },
     ];
     for e in cases {
@@ -296,7 +292,6 @@ fn test_zst_storage_no_ub() {
             size: 0,
             align: 1,
         },
-        cause: None,
     };
     let s = format!("{err}");
     assert!(s.contains("size=0"));
@@ -312,13 +307,11 @@ fn test_workspace_error_structured_fields() {
             size: 1024,
             align: 64,
         },
-        cause: None,
     };
     match &err {
-        XenonError::Workspace { operation, category, cause } => {
+        XenonError::Workspace { operation, category } => {
             assert_eq!(operation.as_ref(), "Workspace::new");
             assert!(matches!(category, WorkspaceErrorCategory::AllocFailed { size: 1024, align: 64 }));
-            assert!(cause.is_none());
         },
         _ => panic!("variant mismatch"),
     }
@@ -330,7 +323,6 @@ fn test_workspace_error_structured_fields() {
             requested: WorkspaceBorrowKind::Exclusive,
             current: WorkspaceBorrowState::Shared,
         },
-        cause: None,
     };
     let s = format!("{err}");
     assert!(s.contains("borrow conflict"));
@@ -341,24 +333,8 @@ fn test_workspace_error_structured_fields() {
     let err = XenonError::Workspace {
         operation: Cow::Borrowed("Workspace::split_at_mut"),
         category: WorkspaceErrorCategory::SplitOutOfBounds { mid: 42, len: 10 },
-        cause: None,
     };
     let s = format!("{err:?}");
     assert!(s.contains("SplitOutOfBounds"));
     assert!(s.contains("mid: 42"));
-
-    // Cause chain: Workspace wrapping an inner error.
-    let inner = Box::new(XenonError::InvalidAxis {
-        operation: Cow::Borrowed("check"),
-        axis: 1,
-        ndim: 2,
-        shape: vec![3, 4],
-    });
-    let err = XenonError::Workspace {
-        operation: Cow::Borrowed("test"),
-        category: WorkspaceErrorCategory::AllocFailed { size: 64, align: 8 },
-        cause: Some(inner),
-    };
-    let s = format!("{err}");
-    assert!(s.contains("; caused by:"));
 }
