@@ -353,13 +353,14 @@ mod tests {
         assert!(y.iter().any(|v| *v == 0));
     }
 
-    /// Verifies `unique` on a large tensor with high duplication returns the correct distinct set.
+    /// Verifies `unique` on a large tensor with high duplication returns
+    /// the correct distinct set.
     #[test]
     fn test_unique_large_tensor_high_dup() {
         let n = 1024_usize;
         let data: Vec<i32> = (0..n as i32).map(|i| i % 4).collect();
-        let x =
-            Tensor1::from_shape_vec(Ix1(n), data).expect("test input shape matches data length");
+        let x = Tensor1::from_shape_vec(Ix1(n), data)
+            .expect("test input shape matches data length");
         let y = x.unique();
         assert_set_eq_i32(&y, &[0, 1, 2, 3]);
     }
