@@ -4,7 +4,7 @@
 //! Construction goes through `AlignedAlloc` for 64-byte alignment.
 
 use core::mem::{align_of, size_of};
-use core::ptr::copy_nonoverlapping;
+use core::ptr::{copy_nonoverlapping, write};
 
 use crate::element::Element;
 use crate::error::XenonError;
@@ -169,7 +169,7 @@ impl<A> Owned<A> {
         for index in 0..len {
             // SAFETY: capacity >= len, ptr is valid for len elements
             unsafe {
-                core::ptr::write(owned.data.as_mut_ptr().add(index), value);
+                write(owned.data.as_mut_ptr().add(index), value);
             }
         }
         // SAFETY: all len elements have been initialized
@@ -216,7 +216,7 @@ impl<A: Element> Owned<A> {
         for (index, value) in data.into_iter().enumerate() {
             // SAFETY: capacity >= len, ptr valid for len elements
             unsafe {
-                core::ptr::write(owned.data.as_mut_ptr().add(index), value);
+                write(owned.data.as_mut_ptr().add(index), value);
             }
         }
         // SAFETY: all len elements initialized
@@ -363,7 +363,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         for index in 0..self.len() {
             // SAFETY: index < len for both src and dst, no overlap
             unsafe {
-                core::ptr::write(
+                write(
                     cloned.data.as_mut_ptr().add(index),
                     *self.as_ptr().add(index),
                 );
@@ -388,7 +388,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
         for index in 0..self.len() {
             // SAFETY: src and dst are non-overlapping, index < len
             unsafe {
-                core::ptr::write(
+                write(
                     grown.data.as_mut_ptr().add(index),
                     core::ptr::read(self.data.as_ptr().add(index)),
                 );
