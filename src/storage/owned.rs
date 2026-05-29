@@ -551,7 +551,8 @@ mod tests {
         );
     }
 
-    /// Verifies that `as_ptr` returns a stable, non-empty, 64-byte aligned pointer.
+    /// Verifies that `as_ptr` returns a stable, non-empty, 64-byte
+    /// aligned pointer.
     #[test]
     fn test_owned_raw_storage_ptr() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -564,8 +565,8 @@ mod tests {
         assert!(owned.is_aligned_to(64));
     }
 
-    // Storage tests
-    /// Verifies that `Storage::as_slice` exposes the full initialized element slice.
+    /// Verifies that `Storage::as_slice` exposes the full initialized
+    /// element slice.
     #[test]
     fn test_owned_storage_as_slice() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -573,7 +574,8 @@ mod tests {
         assert_eq!(owned.as_slice(), &[1, 2, 3]);
     }
 
-    /// Verifies that `Storage::get` returns `Some` for in-bounds indices and `None` otherwise.
+    /// Verifies that `Storage::get` returns `Some` for in-bounds indices
+    /// and `None` otherwise.
     #[test]
     fn test_owned_storage_get() {
         let owned = Owned::from_vec(vec![1.0_f64])
@@ -582,7 +584,8 @@ mod tests {
         assert_eq!(owned.get(1), None);
     }
 
-    /// Verifies that `Storage::get_unchecked` returns the element at the given in-bounds index.
+    /// Verifies that `Storage::get_unchecked` returns the element at the
+    /// given in-bounds index.
     #[test]
     fn test_owned_storage_get_unchecked() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -590,7 +593,6 @@ mod tests {
         assert_eq!(unsafe { *owned.get_unchecked(2) }, 3);
     }
 
-    // StorageMut + Clone tests
     /// Verifies that `StorageMut::get_mut` allows in-place modification of elements.
     #[test]
     fn test_owned_storage_mut() {
@@ -602,7 +604,8 @@ mod tests {
         assert_eq!(owned.as_slice(), &[9, 2]);
     }
 
-    /// Verifies that `get_unchecked_mut` and `as_mut_slice` both support mutating elements in place.
+    /// Verifies that `get_unchecked_mut` and `as_mut_slice` both support
+    /// mutating elements in place.
     #[test]
     fn test_owned_storage_mut_unchecked_and_slice() {
         let mut owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -614,7 +617,8 @@ mod tests {
         assert_eq!(owned.as_slice(), &[1, 7, 8]);
     }
 
-    /// Verifies that `deep_clone` produces an independent copy whose mutations do not affect the original.
+    /// Verifies that `deep_clone` produces an independent copy whose
+    /// mutations do not affect the original.
     #[test]
     fn test_owned_clone_deep() {
         let original = Owned::from_vec(vec![1_i32, 2, 3])
@@ -627,7 +631,8 @@ mod tests {
         assert_eq!(cloned.as_slice(), &[9, 2, 3]);
     }
 
-    /// Verifies that `into_vec` converts owned storage back into a `Vec` preserving elements.
+    /// Verifies that `into_vec` converts owned storage back into a `Vec`
+    /// preserving elements.
     #[test]
     fn test_owned_into_vec() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -635,7 +640,8 @@ mod tests {
         assert_eq!(owned.into_vec(), vec![1, 2, 3]);
     }
 
-    /// Verifies that `try_reserve` grows capacity without changing the logical length.
+    /// Verifies that `try_reserve` grows capacity without changing the
+    /// logical length.
     #[test]
     fn test_storage_owned_capacity() {
         let mut owned = <Owned<f64> as StorageOwned>::zeros(4);
@@ -647,7 +653,8 @@ mod tests {
         assert_eq!(owned.len(), 4);
     }
 
-    /// Verifies that `StorageOwned::from_elem` and `from_iter` populate storage with the expected elements.
+    /// Verifies that `StorageOwned::from_elem` and `from_iter` populate
+    /// storage with the expected elements.
     #[test]
     fn test_storage_owned_from_elem_and_from_iter() {
         let owned = <Owned<i32> as StorageOwned>::from_elem(3, 5);
@@ -656,8 +663,8 @@ mod tests {
         assert_eq!(iter_owned.as_slice(), &[1, 2, 3]);
     }
 
-    // into_shared + Send/Sync tests
-    /// Verifies that `into_shared` converts `Owned` into `ArcRepr` while preserving element contents.
+    /// Verifies that `into_shared` converts `Owned` into `ArcRepr` while
+    /// preserving element contents.
     #[test]
     fn test_owned_into_shared() {
         let owned = Owned::from_vec(vec![1_i32, 2])
@@ -675,7 +682,8 @@ mod tests {
         assert_sync::<Owned<i32>>();
     }
 
-    /// Verifies that `Owned` can be moved into another thread and accessed there.
+    /// Verifies that `Owned` can be moved into another thread and
+    /// accessed there.
     #[test]
     fn test_owned_cross_thread() {
         let owned = Owned::from_vec(vec![1_i32, 2, 3])
@@ -684,7 +692,6 @@ mod tests {
         assert_eq!(handle.join().expect("thread should not panic"), 3);
     }
 
-    // Default + TryFrom tests
     /// Verifies that `Owned::default` produces empty storage.
     #[test]
     fn test_owned_default() {
@@ -692,7 +699,8 @@ mod tests {
         assert!(owned.is_empty());
     }
 
-    /// Verifies that `TryFrom<Vec<A>> for Owned` produces aligned storage with the original elements.
+    /// Verifies that `TryFrom<Vec<A>> for Owned` produces aligned storage
+    /// with the original elements.
     #[test]
     fn test_owned_from_vec_try_from() {
         let v = vec![1i32, 2, 3];
@@ -701,22 +709,22 @@ mod tests {
         assert_eq!(owned.as_ptr().align_offset(64), 0);
     }
 
-    /// `Owned::from_elem` produces aligned storage with the expected repeated value.
+    /// `Owned::from_elem` produces aligned storage with the expected
+    /// repeated value.
     #[test]
     fn test_owned_from_elem_direct() {
-        let owned =
-            Owned::<i32>::from_elem(5, 42)
+        let owned = Owned::<i32>::from_elem(5, 42)
             .expect("from_elem should succeed for small i32 input");
         assert_eq!(owned.len(), 5);
         assert_eq!(owned.as_slice(), &[42, 42, 42, 42, 42]);
         assert_eq!(owned.as_ptr().align_offset(64), 0);
     }
 
-    /// `Owned::zeros` with a non-trivial type (i32) verifies zero-initialized elements.
+    /// `Owned::zeros` with a non-trivial type (i32) verifies
+    /// zero-initialized elements.
     #[test]
     fn test_owned_zeros_non_float() {
-        let owned =
-            Owned::<i32>::zeros(4)
+        let owned = Owned::<i32>::zeros(4)
             .expect("zeros should succeed for small i32 input");
         assert_eq!(owned.len(), 4);
         assert_eq!(owned.as_slice(), &[0, 0, 0, 0]);
