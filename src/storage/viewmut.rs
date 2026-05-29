@@ -121,6 +121,7 @@ unsafe impl<'a, A> Storage for ViewMutRepr<'a, A> {}
 // borrow, so mutable references and slices derived from it are unique, and
 // `&mut self` guarantees the storage-visible range tracked by ptr/len.
 unsafe impl<'a, A> StorageMut for ViewMutRepr<'a, A> {
+    /// Returns the raw mutable pointer to the borrowed data.
     fn as_mut_ptr(&mut self) -> *mut A {
         self.ptr
     }
@@ -129,6 +130,10 @@ unsafe impl<'a, A> StorageMut for ViewMutRepr<'a, A> {
 // Intentionally no `Sync` impl: sharing `&ViewMutRepr` would share an exclusive
 // write capability and violate the aliasing model.
 impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
+    /// Copies the borrowed data into a fresh `Owned` buffer (O(n)).
+    ///
+    /// Elements are cloned one-by-one into a new 64-byte aligned allocation.
+    /// The result is independent of the original borrowed data.
     fn into_owned_storage(self) -> Owned<A>
     where
         Self::Elem: Clone,
