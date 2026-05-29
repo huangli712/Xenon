@@ -263,18 +263,16 @@ unsafe impl<A: Element> IsOwned for Owned<A> {}
 unsafe impl<A> RawStorage for Owned<A> {
     type Elem = A;
 
+    /// Returns the base pointer to the owned data.
     fn as_ptr(&self) -> *const A {
         self.data.as_ptr()
     }
 
+    /// Returns the number of elements in the storage.
     fn len(&self) -> usize {
         self.data.len()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Storage impl for Owned<A>
-// ---------------------------------------------------------------------------
 
 /// # Safety
 ///
