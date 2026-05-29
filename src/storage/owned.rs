@@ -4,6 +4,7 @@
 //! Construction goes through `AlignedAlloc` for 64-byte alignment.
 
 use core::mem::{align_of, size_of};
+use core::ptr::copy_nonoverlapping;
 
 use crate::element::Element;
 use crate::error::XenonError;
@@ -106,7 +107,7 @@ impl<A> Owned<A> {
         // SAFETY: typed_ptr and data.as_ptr() are valid for len elements,
         // non-overlapping (typed_ptr is freshly allocated)
         unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), typed_ptr, len);
+            copy_nonoverlapping(data.as_ptr(), typed_ptr, len);
         }
         drop(data);
         // SAFETY: ptr was allocated by AlignedAlloc; len elements initialized
