@@ -2,7 +2,7 @@
 //!
 //! `UniqueElement` is a sealed marker trait that enables the [`unique`]
 //! operation on [`TensorBase`]. The supported element types are `i32`,
-//! `i64`, `f32`, `f64`, [`Complex`]<f32>, and [`Complex`]<f64>.
+//! `i64`, `f32`, `f64`, [`Complex`]\<f32\>, and [`Complex`]\<f64\>.
 
 use crate::dimension::{Dimension, Ix1};
 use crate::complex::Complex;
