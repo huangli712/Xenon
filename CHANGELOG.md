@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.13] — 2026-05-29
+
+### Added
+
+- Test coverage for `ArcRepr::zeros` and `ArcRepr::from_elem`.
+- `ViewRepr` tests: from_raw_parts, sub-view, into_owned.
+- `ViewMutRepr` tests: from_raw_parts_mut, sub-view, into_owned.
+- `Owned::from_elem` and `Owned::zeros_non_float` tests.
+- Trait method tests for `is_aligned_to`, `get_unchecked`, `get_mut`, `get_unchecked_mut` in `traits.rs`.
+- Mock runtime tests for `StorageOwned` and `StorageShared` in `traits.rs`.
+
+### Removed
+
+- `RawStorageMut` trait (folded into `StorageMut`).
+- `cause` field from `XenonError::Ffi` and `XenonError::Workspace` variants.
+- `StorageConversionKind` enum.
+- `LayoutMismatch` variant.
+- `SplitCountInvariant` from `WorkspaceErrorCategory`.
+- `RankExceedsStaticMax` from `InvalidShapeKind`.
+- Stale section separator comments and redundant inherent `impl` blocks across storage module.
+
+### Changed
+
+- Consolidated all inherent `impl` blocks into one per struct across storage module.
+- Reordered trait impls for logical grouping.
+- Replaced fully-qualified paths with local imports throughout storage module.
+- Converted `///` SAFETY doc comments to `//` comments on unsafe impl blocks in `owned.rs`.
+- Reorganized `storage/mod.rs` declarations and re-exports.
+
+### Fixed
+
+- Broken intra-doc links for `pub(crate)` items across storage module.
+
 ## [v0.0.12] — 2026-05-28
 
 ### Added
