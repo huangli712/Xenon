@@ -3,6 +3,7 @@
 //! `ViewRepr<'a, A>` is a shared-borrow read-only storage representation.
 //! O(1) `Copy`/`Clone` metadata, no allocation.
 
+use core::ptr::write;
 use core::marker::PhantomData;
 
 use crate::private::Sealed;
@@ -122,7 +123,7 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
         for i in 0..self.len {
             // SAFETY: i < len, both src and dst pointers are valid
             unsafe {
-                core::ptr::write(buf.as_mut_ptr().add(i), (*self.ptr.add(i)).clone());
+                write(buf.as_mut_ptr().add(i), (*self.ptr.add(i)).clone());
             }
             // Increment length after each successful write so that
             // a panic during a later clone() will still drop the
