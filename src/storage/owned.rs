@@ -404,10 +404,6 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// StorageIntoOwned + Send/Sync for Owned<A>
-// ---------------------------------------------------------------------------
-
 impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
     fn into_owned_storage(self) -> Owned<A>
     where
