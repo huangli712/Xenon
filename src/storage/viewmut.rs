@@ -170,7 +170,11 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
     use super::*;
+    use crate::dimension::Ix1;
+    use crate::tensor::Tensor1;
 
     /// Mutable view provides exclusive write access.
     #[test]
@@ -207,12 +211,9 @@ mod tests {
     /// A mutable view can be sent across threads for exclusive writes.
     #[test]
     fn test_view_mut_cross_thread_write() {
-        use crate::dimension::Ix1;
-        use crate::tensor::Tensor1;
-
         let mut tensor = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2])
             .expect("Tensor1::from_shape_vec should succeed for valid shape");
-        std::thread::scope(|scope| {
+        thread::scope(|scope| {
             let mut view = tensor.view_mut();
             let handle = scope.spawn(move || {
                 view.fill(7);
