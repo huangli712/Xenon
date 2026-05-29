@@ -154,6 +154,7 @@ mod tests {
     use std::thread;
 
     use super::*;
+    use crate::StorageMut;
     use crate::dimension::Ix1;
     use crate::tensor::Tensor1;
 
@@ -186,6 +187,65 @@ mod tests {
         let data = [1_i32, 2, 3];
         let view = assert_lifetime(&data);
         assert_eq!(view.as_slice(), &[1, 2, 3]);
+    }
+
+    /// Constructs a view via `from_raw_parts` and verifies data access.
+    #[test]
+    fn test_view_from_raw_parts() {
+        let data = [10_i32, 20, 30];
+        let view = unsafe { ViewRepr::from_raw_parts(data.as_ptr(), data.len()) };
+        assert_eq!(view.as_slice(), &[10, 20, 30]);
+        assert_eq!(view.len(), 3);
+    }
+
+    /// `view()` returns a valid sub-range; panics when start > end or
+    /// end > len.
+    #[test]
+    fn test_view_sub_view() {
+        let data = [5_i32, 10, 15, 20];
+        let view = ViewRepr::from_slice(&data);
+
+        let sub = view.view(1, 3);
+        assert_eq!(sub.as_slice(), &[10, 15]);
+        assert_eq!(sub.len(), 2);
+
+        // empty sub-view
+        let empty = view.view(2, 2);
+        assert!(empty.is_empty());
+    }
+
+    /// `view()` panics when start > end.
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn test_view_sub_view_panics_on_inverted_range() {
+        let data = [1_i32, 2];
+        let view = ViewRepr::from_slice(&data);
+        let _ = view.view(2, 1);
+    }
+
+    /// `view()` panics when end > len.
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn test_view_sub_view_panics_on_oob() {
+        let data = [1_i32, 2];
+        let view = ViewRepr::from_slice(&data);
+        let _ = view.view(0, 3);
+    }
+
+    /// `into_owned_storage` produces a detached deep copy.
+    #[test]
+    fn test_view_into_owned_storage() {
+        let data = [7_i32, 8, 9];
+        let view = ViewRepr::from_slice(&data);
+        let mut owned = view.into_owned_storage();
+
+        assert_eq!(owned.as_slice(), &[7, 8, 9]);
+
+        owned.as_mut_slice()[0] = 99;
+
+        // mutated copy does not affect original data
+        assert_eq!(owned.as_slice(), &[99, 8, 9]);
+        assert_eq!(data, [7, 8, 9]);
     }
 
     /// View implements Send + Sync when the element type does.
