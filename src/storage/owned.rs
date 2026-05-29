@@ -161,6 +161,33 @@ impl<A> Owned<A> {
         }
         Ok(owned)
     }
+
+    /// Zero-copy conversion from `Owned<A>` to shared read-only `ArcRepr<A>`.
+    pub fn into_shared(self) -> ArcRepr<A> {
+        ArcRepr::from_aligned_buf(self.data)
+    }
+
+    /// Returns the allocator alignment in bytes.
+    pub(crate) fn alignment(&self) -> usize {
+        self.data.alignment()
+    }
+
+    /// Returns a mutable pointer to the storage base without requiring
+    /// `&mut self`. This is safe because `Owned<A>` has exclusive ownership.
+    pub(crate) fn as_mut_ptr_unchecked(&self) -> *mut A {
+        self.data.as_mut_ptr_unchecked()
+    }
+
+    /// Constructs `Owned<A>` from raw allocator components.
+    ///
+    /// # Safety
+    ///
+    /// Same preconditions as [`AlignedBuf::from_raw_parts`].
+    pub(crate) unsafe fn from_raw_parts(ptr: *mut A, len: usize, cap: usize, align: usize) -> Self {
+        Self {
+            data: unsafe { AlignedBuf::from_raw_parts(ptr, len, cap, align) },
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +388,7 @@ unsafe impl<A: Element + Clone> StorageOwned for Owned<A> {
 }
 
 // ---------------------------------------------------------------------------
-// into_shared + Send/Sync for Owned<A>
+// StorageIntoOwned + Send/Sync for Owned<A>
 // ---------------------------------------------------------------------------
 
 impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
@@ -374,35 +401,6 @@ impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
 }
 
 // ---------------------------------------------------------------------------
-
-impl<A> Owned<A> {
-    /// Zero-copy conversion from `Owned<A>` to shared read-only `ArcRepr<A>`.
-    pub fn into_shared(self) -> ArcRepr<A> {
-        ArcRepr::from_aligned_buf(self.data)
-    }
-
-    /// Returns the allocator alignment in bytes.
-    pub(crate) fn alignment(&self) -> usize {
-        self.data.alignment()
-    }
-
-    /// Returns a mutable pointer to the storage base without requiring
-    /// `&mut self`. This is safe because `Owned<A>` has exclusive ownership.
-    pub(crate) fn as_mut_ptr_unchecked(&self) -> *mut A {
-        self.data.as_mut_ptr_unchecked()
-    }
-
-    /// Constructs `Owned<A>` from raw allocator components.
-    ///
-    /// # Safety
-    ///
-    /// Same preconditions as [`AlignedBuf::from_raw_parts`].
-    pub(crate) unsafe fn from_raw_parts(ptr: *mut A, len: usize, cap: usize, align: usize) -> Self {
-        Self {
-            data: unsafe { AlignedBuf::from_raw_parts(ptr, len, cap, align) },
-        }
-    }
-}
 
 // SAFETY: `Owned<A>` has exclusive ownership of its allocation and moving it to
 // another thread moves the only owner. Element values are only moved across
