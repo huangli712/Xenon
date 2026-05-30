@@ -15,6 +15,7 @@ use std::vec::Vec;
 struct FmtShape<'a>(&'a [usize]);
 
 impl<'a> Display for FmtShape<'a> {
+    /// Formats the shape slice in NumPy-style bracket notation.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         for (i, dim) in self.0.iter().enumerate() {
@@ -68,6 +69,7 @@ pub enum FfiErrorCategory {
 }
 
 impl Display for FfiErrorCategory {
+    /// Formats the FFI error category with structured detail fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NullPointer { argument } => {
@@ -99,6 +101,7 @@ pub enum FfiBackend {
 }
 
 impl Display for FfiBackend {
+    /// Formats the FFI backend as a short human-readable label.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::RawParts => write!(f, "raw parts"),
@@ -106,7 +109,6 @@ impl Display for FfiBackend {
         }
     }
 }
-
 
 /// Workspace error category for `XenonError::Workspace`. All categories
 /// carry structured context; no free-text fallback variant.
@@ -174,6 +176,7 @@ pub enum WorkspaceErrorCategory {
 }
 
 impl Display for WorkspaceErrorCategory {
+    /// Formats the workspace error category with structured detail fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::AllocFailed { size, align } => {
@@ -212,6 +215,7 @@ pub enum WorkspaceBorrowKind {
 }
 
 impl Display for WorkspaceBorrowKind {
+    /// Formats the workspace borrow kind as a short label.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Shared => f.write_str("shared"),
@@ -241,6 +245,7 @@ pub enum WorkspaceBorrowState {
 }
 
 impl Display for WorkspaceBorrowState {
+    /// Formats the workspace borrow state as a short label.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::None => f.write_str("none"),
@@ -282,6 +287,7 @@ pub enum TypedViewRejection {
 }
 
 impl Display for TypedViewRejection {
+    /// Formats the typed view rejection reason with structured detail fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ZeroSizedType => write!(f, "zero-sized type"),
@@ -315,6 +321,7 @@ pub enum ConversionFailureReason {
 }
 
 impl Display for ConversionFailureReason {
+    /// Formats the conversion failure reason as a short label.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::LossyIntegerNarrowing => write!(f, "lossy integer narrowing"),
@@ -394,6 +401,7 @@ pub enum InvalidArgumentKind {
 }
 
 impl Display for InvalidArgumentKind {
+    /// Formats the invalid argument kind with structured detail fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::RangeOutOfBounds { axis, axis_len, start, end } => {
@@ -473,6 +481,7 @@ pub enum InvalidLayoutReason {
 }
 
 impl Display for InvalidLayoutReason {
+    /// Formats the layout validation reason as a short label.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeProductOverflow => write!(f, "shape product overflow"),
@@ -509,6 +518,7 @@ pub enum StorageKindTag {
 }
 
 impl Display for StorageKindTag {
+    /// Formats the storage kind as a short label.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Owned => write!(f, "owned"),
@@ -541,6 +551,7 @@ pub enum InvalidShapeKind {
 }
 
 impl Display for InvalidShapeKind {
+    /// Formats the invalid shape kind with structured detail fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ProductOverflow => write!(f, "product overflow"),
@@ -727,6 +738,7 @@ pub enum XenonError {
 }
 
 impl Display for XenonError {
+    /// Formats the Xenon error with all structured context fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeMismatch { operation, left_shape, right_shape } => {
@@ -810,7 +822,7 @@ impl Error for XenonError {
     }
 }
 
-/// Constructor helpers for common error variants.
+// Constructor helpers for common error variants.
 impl XenonError {
     // --- Workspace constructor helpers ---
     //
