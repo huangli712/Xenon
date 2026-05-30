@@ -116,33 +116,6 @@ impl LayoutFlags {
             LayoutState::NonContiguous
         }
     }
-
-    /// Compute canonical `LayoutFlags` for an already-validated F-order layout.
-    ///
-    /// Fast path: use only when the caller has already established that
-    /// the layout is F-order (e.g., immediately after a successful
-    /// `Strides::f_contiguous()`). For the general case, use
-    /// `compute_layout_flags(shape, strides, ptr)`.
-    ///
-    /// # Arguments
-    ///
-    /// * `aligned` - whether the logical-first pointer satisfies 64-byte
-    ///   alignment, OR whether the layout describes an empty tensor.
-    /// * `is_broadcast_zero_stride` - whether the layout contains
-    ///   broadcast-induced zero strides. Empty-array degenerate zero
-    ///   strides (`product(shape) == 0`) MUST be passed as `false`
-    ///   (they retain the `F_CONTIGUOUS` bit).
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) const fn flags_for_f_layout(
-        aligned: bool,
-        is_broadcast_zero_stride: bool,
-    ) -> LayoutFlags {
-        LayoutFlags::EMPTY
-            .set_f_contiguous(!is_broadcast_zero_stride)
-            .set_aligned(aligned)
-            .set_has_zero_stride(is_broadcast_zero_stride)
-    }
 }
 
 /// Central entry for computing `LayoutFlags` from `shape + strides + ptr`.
@@ -271,26 +244,6 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
     }
 
-    // --- flags_for_f_layout -------------------------------------------------
-
-    /// Construction path: known F-order + aligned + no broadcast.
-    #[test]
-    fn test_flags_for_f_layout_aligned_no_broadcast() {
-        let flags = LayoutFlags::flags_for_f_layout(true, false);
-        assert!(flags.is_f_contiguous());
-        assert!(flags.is_aligned());
-        assert!(!flags.has_zero_stride());
-        assert_eq!(flags.classify(), LayoutState::FContiguous);
-    }
-
-    /// Broadcast zero-stride clears F_CONTIGUOUS regardless of F-order.
-    #[test]
-    fn test_flags_for_f_layout_broadcast_clears_f_contig() {
-        let flags = LayoutFlags::flags_for_f_layout(true, true);
-        assert!(!flags.is_f_contiguous());
-        assert!(flags.has_zero_stride());
-        assert_eq!(flags.classify(), LayoutState::BroadcastView);
-    }
 
     // --- compute_layout_flags -----------------------------------------------
 
