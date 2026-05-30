@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 use xenon::broadcast::broadcast_shape;
 use xenon::error::{
-    AbiMismatchKind, ConversionFailureReason, FfiBackend, FfiErrorCategory,
+    ConversionFailureReason, FfiBackend, FfiErrorCategory,
     InvalidArgumentKind, InvalidLayoutReason, InvalidShapeKind,
     StorageKindTag, TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState,
     WorkspaceErrorCategory, XenonError,
@@ -215,8 +215,6 @@ fn test_send_sync_contracts() {
     assert_sync::<FfiErrorCategory>();
     assert_send::<FfiBackend>();
     assert_sync::<FfiBackend>();
-    assert_send::<AbiMismatchKind>();
-    assert_sync::<AbiMismatchKind>();
 }
 
 #[test]

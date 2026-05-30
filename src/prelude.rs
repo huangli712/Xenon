@@ -138,7 +138,6 @@ pub use crate::storage::{
 
 // Error types and Result alias
 pub use crate::error::{
-    AbiMismatchKind,
     ConversionFailureReason,
     FfiBackend,
     FfiErrorCategory,

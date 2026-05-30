@@ -74,12 +74,6 @@ pub enum FfiErrorCategory {
         target_width_bits: u8,
     },
 
-    /// ABI shape mismatch when reconstructing tensor from raw parts.
-    AbiMismatch {
-        /// Detail describing the mismatch.
-        detail: AbiMismatchKind,
-    },
-
     /// `from_raw_parts_mut` rejected a layout whose disjointness cannot
     /// be conservatively proven (overlap-rejected guard).
     OverlapRejected {
@@ -89,12 +83,6 @@ pub enum FfiErrorCategory {
         strides: Vec<usize>,
     },
 
-    /// Foreign allocator metadata does not match Xenon's owned-tensor
-    /// invariants (e.g., element type / capacity / alignment differ).
-    ForeignAllocatorMismatch {
-        /// Detail describing the mismatch.
-        detail: AbiMismatchKind,
-    },
 }
 
 impl Display for FfiErrorCategory {
@@ -115,14 +103,8 @@ impl Display for FfiErrorCategory {
             Self::IntegerOverflow { value, target_width_bits } => {
                 write!(f, "integer overflow: {value} does not fit in i{target_width_bits}")
             },
-            Self::AbiMismatch { detail } => {
-                write!(f, "ABI mismatch: {detail:?}")
-            },
             Self::OverlapRejected { shape, strides } => {
                 write!(f, "Overlapping layout rejected: shape {}, strides {}", FmtShape(shape), FmtShape(strides))
-            },
-            Self::ForeignAllocatorMismatch { detail } => {
-                write!(f, "foreign allocator metadata mismatch: {detail:?}")
             },
         }
     }
@@ -149,75 +131,6 @@ impl Display for FfiBackend {
     }
 }
 
-/// Detail kind for ABI mismatch / foreign allocator mismatch.
-///
-/// Marked `#[non_exhaustive]` to allow new ABI mismatch kinds in future
-/// minor versions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum AbiMismatchKind {
-    /// Element type did not match.
-    ElementTypeMismatch {
-        /// The expected type name.
-        expected: &'static str,
-        /// The actual type name.
-        actual: &'static str,
-    },
-
-    /// Capacity (byte length) did not match.
-    CapacityMismatch {
-        /// Expected capacity.
-        expected: usize,
-        /// Actual capacity.
-        actual: usize,
-    },
-
-    /// Address alignment did not match.
-    AlignmentMismatch {
-        /// Required alignment.
-        expected: usize,
-        /// Actual alignment.
-        actual: usize,
-    },
-
-    /// Shape product exceeds storage length.
-    ShapeProductExceedsLen {
-        /// The computed shape product.
-        product: usize,
-        /// The actual storage length.
-        storage_len: usize,
-    },
-
-    /// Strides length does not equal shape rank.
-    StridesRankMismatch {
-        /// Number of dimensions in the shape.
-        shape_ndim: usize,
-        /// Number of strides provided.
-        strides_ndim: usize,
-    },
-}
-
-impl Display for AbiMismatchKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ElementTypeMismatch { expected, actual } => {
-                write!(f, "element type mismatch: expected {expected}, got {actual}")
-            },
-            Self::CapacityMismatch { expected, actual } => {
-                write!(f, "capacity mismatch: expected {expected}, got {actual}")
-            },
-            Self::AlignmentMismatch { expected, actual } => {
-                write!(f, "alignment mismatch: expected {expected}, got {actual}",)
-            },
-            Self::ShapeProductExceedsLen { product, storage_len } => {
-                write!(f, "shape product ({product}) exceeds storage len ({storage_len})")
-            },
-            Self::StridesRankMismatch { shape_ndim, strides_ndim } => {
-                write!(f, "strides rank mismatch: shape_ndim={shape_ndim}, strides_ndim={strides_ndim}")
-            },
-        }
-    }
-}
 
 /// Workspace error category for `XenonError::Workspace`. All categories
 /// carry structured context; no free-text fallback variant.
@@ -1009,12 +922,6 @@ mod tests {
     fn test_ffi_aux_enums_construct() {
         let _ = FfiErrorCategory::NullPointer {
             argument: Cow::Borrowed("ptr"),
-        };
-        let _ = FfiErrorCategory::AbiMismatch {
-            detail: AbiMismatchKind::CapacityMismatch {
-                expected: 16,
-                actual: 8,
-            },
         };
         let _ = FfiBackend::RawParts;
         let _ = FfiBackend::Blas;
