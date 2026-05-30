@@ -1490,4 +1490,291 @@ mod tests {
         assert!(s.contains("current_capacity"));
         assert!(s.contains("additional"));
     }
+
+    // ── Display output tests for auxiliary enums ──
+
+    /// Verify `FfiErrorCategory` Display output for all 4 variants.
+    #[test]
+    fn test_ffi_error_category_display() {
+        let s = format!("{}", FfiErrorCategory::NullPointer { argument: Cow::Borrowed("ptr") });
+        assert!(s.contains("null pointer"));
+        assert!(s.contains("ptr"));
+
+        let s = format!("{}", FfiErrorCategory::InvalidRank { expected: 2, actual: 3 });
+        assert!(s.contains("invalid rank"));
+        assert!(s.contains("expected 2"));
+        assert!(s.contains("actual 3"));
+
+        let s = format!("{}", FfiErrorCategory::BlasIncompatibleLayout { shape: vec![2, 3], strides: vec![1, 2] });
+        assert!(s.contains("BLAS-incompatible"));
+        assert!(s.contains("[2 × 3]"));
+        assert!(s.contains("[1 × 2]"));
+
+        let s = format!("{}", FfiErrorCategory::IntegerOverflow { value: 5000, target_width_bits: 32 });
+        assert!(s.contains("5000"));
+        assert!(s.contains("i32"));
+    }
+
+    /// Verify `FfiBackend` Display output.
+    #[test]
+    fn test_ffi_backend_display() {
+        assert_eq!(format!("{}", FfiBackend::RawParts), "raw parts");
+        assert_eq!(format!("{}", FfiBackend::Blas), "BLAS");
+    }
+
+    /// Verify `WorkspaceErrorCategory` Display output for all 6 variants.
+    #[test]
+    fn test_workspace_error_category_display() {
+        let s = format!("{}", WorkspaceErrorCategory::AllocFailed { size: 1024, align: 64 });
+        assert!(s.contains("allocation failed"));
+        assert!(s.contains("1024"));
+        assert!(s.contains("64"));
+
+        let s = format!("{}", WorkspaceErrorCategory::InvalidLayout { size: 0, align: 1 });
+        assert!(s.contains("invalid layout"));
+
+        let s = format!("{}", WorkspaceErrorCategory::BorrowConflict { requested: WorkspaceBorrowKind::Exclusive, current: WorkspaceBorrowState::Shared });
+        assert!(s.contains("borrow conflict"));
+        assert!(s.contains("Exclusive"));
+        assert!(s.contains("Shared"));
+
+        let s = format!("{}", WorkspaceErrorCategory::SplitOutOfBounds { mid: 5, len: 10 });
+        assert!(s.contains("split out of bounds"));
+        assert!(s.contains("5"));
+        assert!(s.contains("10"));
+
+        let s = format!("{}", WorkspaceErrorCategory::GrowOverflow { current_capacity: 100, additional: 50 });
+        assert!(s.contains("grow overflow"));
+        assert!(s.contains("100"));
+        assert!(s.contains("50"));
+
+        let s = format!("{}", WorkspaceErrorCategory::TypedViewRejected { detail: TypedViewRejection::ZeroSizedType });
+        assert!(s.contains("typed view rejected"));
+        assert!(s.contains("ZeroSizedType"));
+    }
+
+    /// Verify `WorkspaceBorrowKind` Display output.
+    #[test]
+    fn test_workspace_borrow_kind_display() {
+        assert_eq!(format!("{}", WorkspaceBorrowKind::Shared), "shared");
+        assert_eq!(format!("{}", WorkspaceBorrowKind::Exclusive), "exclusive");
+        assert_eq!(format!("{}", WorkspaceBorrowKind::Split), "split");
+    }
+
+    /// Verify `WorkspaceBorrowState` Display output for all 4 variants.
+    #[test]
+    fn test_workspace_borrow_state_display() {
+        assert_eq!(format!("{}", WorkspaceBorrowState::None), "none");
+        assert_eq!(format!("{}", WorkspaceBorrowState::Shared), "shared");
+        assert_eq!(format!("{}", WorkspaceBorrowState::Exclusive), "exclusive");
+        let s = format!("{}", WorkspaceBorrowState::SplitActive { count: 3 });
+        assert!(s.contains("split active"));
+        assert!(s.contains("3"));
+    }
+
+    /// Verify `TypedViewRejection` Display output for all 3 variants.
+    #[test]
+    fn test_typed_view_rejection_display() {
+        assert_eq!(format!("{}", TypedViewRejection::ZeroSizedType), "zero-sized type");
+
+        let s = format!("{}", TypedViewRejection::AlignmentMismatch { required: 8, actual: 1 });
+        assert!(s.contains("alignment mismatch"));
+        assert!(s.contains("8"));
+        assert!(s.contains("1"));
+
+        let s = format!("{}", TypedViewRejection::TypedByteLengthOverflow { count: 1024, elem_size: 8 });
+        assert!(s.contains("byte length overflow"));
+        assert!(s.contains("1024"));
+        assert!(s.contains("8"));
+    }
+
+    /// Verify `ConversionFailureReason` Display output for all 5 variants.
+    #[test]
+    fn test_conversion_failure_reason_display() {
+        assert_eq!(format!("{}", ConversionFailureReason::LossyIntegerNarrowing), "lossy integer narrowing");
+        assert_eq!(format!("{}", ConversionFailureReason::LossyFloatNarrowing), "lossy float narrowing");
+        assert_eq!(format!("{}", ConversionFailureReason::FloatToInteger), "float to integer");
+        assert_eq!(format!("{}", ConversionFailureReason::IntegerToFloatPrecisionLoss), "integer to float precision loss");
+        assert_eq!(format!("{}", ConversionFailureReason::NonZeroImaginaryPart), "non-zero imaginary part");
+    }
+
+    /// Verify `InvalidArgumentKind` Display output for all 6 variants.
+    #[test]
+    fn test_invalid_argument_kind_display() {
+        let s = format!("{}", InvalidArgumentKind::RangeOutOfBounds { axis: 0, axis_len: 5, start: 3, end: 10 });
+        assert!(s.contains("out of bounds"));
+        assert!(s.contains("axis 0"));
+        assert!(s.contains("5"));
+
+        let s = format!("{}", InvalidArgumentKind::RangeStartAfterEnd { axis: 1, start: 5, end: 3 });
+        assert!(s.contains("start (5) after end (3)"));
+        assert!(s.contains("axis 1"));
+
+        let s = format!("{}", InvalidArgumentKind::NumericOutOfRange { argument: Cow::Borrowed("n"), domain: Cow::Borrowed(">= 0"), actual: Cow::Borrowed("-1") });
+        assert!(s.contains("`n`"));
+        assert!(s.contains(">= 0"));
+        assert!(s.contains("-1"));
+
+        let s = format!("{}", InvalidArgumentKind::InvalidConfig { argument: Cow::Borrowed("threshold"), constraint: Cow::Borrowed("> 0"), actual: Cow::Borrowed("0") });
+        assert!(s.contains("invalid config"));
+        assert!(s.contains("threshold"));
+
+        let s = format!("{}", InvalidArgumentKind::DuplicateOrEmpty { argument: Cow::Borrowed("axes") });
+        assert!(s.contains("duplicate or empty"));
+        assert!(s.contains("axes"));
+
+        let s = format!("{}", InvalidArgumentKind::OperationSpecific { argument: Cow::Borrowed("min"), constraint: Cow::Borrowed("min > max") });
+        assert!(s.contains("`min`"));
+        assert!(s.contains("min > max"));
+    }
+
+    /// Verify `InvalidLayoutReason` Display output for a representative
+    /// sampling of all 13 variants.
+    #[test]
+    fn test_invalid_layout_reason_display() {
+        assert_eq!(format!("{}", InvalidLayoutReason::ShapeProductOverflow), "shape product overflow");
+        assert_eq!(format!("{}", InvalidLayoutReason::StrideExceedsIsizeMax), "stride exceeds isize::MAX");
+        assert_eq!(format!("{}", InvalidLayoutReason::StrideSpanOverflow), "stride span overflow");
+        assert_eq!(format!("{}", InvalidLayoutReason::AccessRangeOverflow), "access range overflow");
+        assert_eq!(format!("{}", InvalidLayoutReason::ZeroStrideRejectedForViewMut), "zero stride rejected for ViewMut");
+        assert_eq!(format!("{}", InvalidLayoutReason::AmbiguousOverlap), "ambiguous overlap");
+        assert_eq!(format!("{}", InvalidLayoutReason::OwnedRequiresZeroOffset), "owned requires zero offset");
+        assert_eq!(format!("{}", InvalidLayoutReason::LenShapeMismatch), "len-shape mismatch");
+        assert_eq!(format!("{}", InvalidLayoutReason::CapacityBelowLen), "capacity below len");
+        assert_eq!(format!("{}", InvalidLayoutReason::AlignmentInvalid), "alignment invalid");
+        assert_eq!(format!("{}", InvalidLayoutReason::OwnedRequiresCanonicalFOrder), "owned requires canonical F-order");
+        assert_eq!(format!("{}", InvalidLayoutReason::AccessRangeExceedsStorage), "access range exceeds storage");
+        assert_eq!(format!("{}", InvalidLayoutReason::EmptyTensorOffsetExceedsStorage), "empty tensor offset exceeds storage");
+    }
+
+    /// Verify `InvalidShapeKind` Display output for both variants.
+    #[test]
+    fn test_invalid_shape_kind_display() {
+        assert_eq!(format!("{}", InvalidShapeKind::ProductOverflow), "product overflow");
+
+        let s = format!("{}", InvalidShapeKind::ElementCountMismatch { expected: 6, actual: 5 });
+        assert!(s.contains("element count mismatch"));
+        assert!(s.contains("expected 6"));
+        assert!(s.contains("got 5"));
+    }
+
+    /// Verify `StorageKindTag` Display output.
+    #[test]
+    fn test_storage_kind_tag_display() {
+        assert_eq!(format!("{}", StorageKindTag::Owned), "owned");
+        assert_eq!(format!("{}", StorageKindTag::View), "view");
+        assert_eq!(format!("{}", StorageKindTag::ViewMut), "view mut");
+        assert_eq!(format!("{}", StorageKindTag::Shared), "shared");
+    }
+
+    // ── Display output tests for remaining XenonError variants ──
+
+    /// Verify `InvalidLayout` variant Display includes storage kind and reason.
+    #[test]
+    fn test_display_invalid_layout() {
+        let e = XenonError::InvalidLayout {
+            operation: Cow::Borrowed("from_raw_parts"),
+            storage_kind: StorageKindTag::ViewMut,
+            shape: vec![2, 3],
+            strides: vec![1, 2],
+            offset: 0,
+            storage_len: 6,
+            reason: InvalidLayoutReason::AmbiguousOverlap,
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("from_raw_parts"));
+        assert!(s.contains("ambiguous overlap"));
+        assert!(s.contains("view mut"));
+        assert!(s.contains("[2 × 3]"));
+        assert!(s.contains("[1 × 2]"));
+        assert!(s.contains("offset=0"));
+        assert!(s.contains("len=6"));
+    }
+
+    /// Verify `InvalidAxis` variant Display includes ndim and shape.
+    #[test]
+    fn test_display_invalid_axis() {
+        let e = XenonError::InvalidAxis {
+            operation: Cow::Borrowed("sum"),
+            axis: 2,
+            ndim: 2,
+            shape: vec![3, 4],
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("sum"));
+        assert!(s.contains("axis 2"));
+        assert!(s.contains("0..2"));
+        assert!(s.contains("[3 × 4]"));
+    }
+
+    /// Verify `InvalidShape` variant Display includes kind and offending dim.
+    #[test]
+    fn test_display_invalid_shape() {
+        let e = XenonError::InvalidShape {
+            operation: Cow::Borrowed("from_shape_vec"),
+            shape: vec![2, 3],
+            kind: InvalidShapeKind::ElementCountMismatch { expected: 6, actual: 5 },
+            offending_dim: Some(0),
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("from_shape_vec"));
+        assert!(s.contains("element count mismatch"));
+        assert!(s.contains("offending dim: 0"));
+    }
+
+    /// Verify `InvalidArgument` variant Display includes kind.
+    #[test]
+    fn test_display_invalid_argument() {
+        let e = XenonError::InvalidArgument {
+            operation: Cow::Borrowed("slice"),
+            kind: InvalidArgumentKind::DuplicateOrEmpty { argument: Cow::Borrowed("axes") },
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("slice"));
+        assert!(s.contains("duplicate or empty"));
+    }
+
+    /// Verify `InvalidStorageMode` variant Display includes shape when present.
+    #[test]
+    fn test_display_invalid_storage_mode() {
+        let e = XenonError::InvalidStorageMode {
+            operation: Cow::Borrowed("slice_mut"),
+            expected: StorageKindTag::ViewMut,
+            actual: StorageKindTag::View,
+            shape: Some(vec![2, 3]),
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("slice_mut"));
+        assert!(s.contains("view mut"));
+        assert!(s.contains("view"));
+        assert!(s.contains("[2 × 3]"));
+    }
+
+    /// Verify `Ffi` variant Display includes category and backend.
+    #[test]
+    fn test_display_ffi_error() {
+        let e = XenonError::Ffi {
+            operation: Cow::Borrowed("export"),
+            category: FfiErrorCategory::InvalidRank { expected: 2, actual: 3 },
+            backend: FfiBackend::Blas,
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("export"));
+        assert!(s.contains("invalid rank"));
+        assert!(s.contains("BLAS"));
+    }
+
+    /// Verify `Workspace` variant Display includes category.
+    #[test]
+    fn test_display_workspace_error() {
+        let e = XenonError::Workspace {
+            operation: Cow::Borrowed("new"),
+            category: WorkspaceErrorCategory::AllocFailed { size: 2048, align: 128 },
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("new"));
+        assert!(s.contains("allocation failed"));
+        assert!(s.contains("2048"));
+        assert!(s.contains("128"));
+    }
 }
