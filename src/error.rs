@@ -65,8 +65,6 @@ pub enum FfiErrorCategory {
         /// Bit-width of the target integer type.
         target_width_bits: u8,
     },
-
-
 }
 
 impl Display for FfiErrorCategory {
@@ -432,19 +430,11 @@ pub enum InvalidLayoutReason {
     /// `shape.checked_size()` overflowed `usize`.
     ShapeProductOverflow,
 
-    /// `strides.len() != shape.len()`.
-    StridesRankMismatch,
-
     /// Computed `max_offset` exceeds `storage_len`.
     AccessRangeExceedsStorage,
 
     /// Empty tensor metadata uses `offset > storage_len`.
     EmptyTensorOffsetExceedsStorage,
-
-    /// Stride along an axis is not allowed for the current storage kind
-    /// (e.g., negative stride; not representable as `usize`) or cannot
-    /// be represented for pointer arithmetic.
-    UnsupportedStride,
 
     /// A stride exceeds `isize::MAX`, so pointer `.add()` arithmetic
     /// cannot be proven valid.
@@ -455,9 +445,6 @@ pub enum InvalidLayoutReason {
 
     /// Accumulating the reachable access range overflowed.
     AccessRangeOverflow,
-
-    /// Zero stride observed on a non-broadcast-view storage kind.
-    UnexpectedZeroStride,
 
     /// Zero stride rejected specifically for ViewMut construction: the
     /// layout passes `validate_access_range` but contains a non-singleton
@@ -489,14 +476,11 @@ impl Display for InvalidLayoutReason {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeProductOverflow => write!(f, "shape product overflow"),
-            Self::StridesRankMismatch => write!(f, "strides rank mismatch"),
             Self::AccessRangeExceedsStorage => write!(f, "access range exceeds storage"),
             Self::EmptyTensorOffsetExceedsStorage => write!(f, "empty tensor offset exceeds storage"),
-            Self::UnsupportedStride => write!(f, "unsupported stride"),
             Self::StrideExceedsIsizeMax => write!(f, "stride exceeds isize::MAX"),
             Self::StrideSpanOverflow => write!(f, "stride span overflow"),
             Self::AccessRangeOverflow => write!(f, "access range overflow"),
-            Self::UnexpectedZeroStride => write!(f, "unexpected zero stride"),
             Self::ZeroStrideRejectedForViewMut => write!(f, "zero stride rejected for ViewMut"),
             Self::AmbiguousOverlap => write!(f, "ambiguous overlap"),
             Self::OwnedRequiresZeroOffset => write!(f, "owned requires zero offset"),
