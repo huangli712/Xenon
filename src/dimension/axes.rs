@@ -27,14 +27,7 @@ impl Axis {
         self.0
     }
 
-    /// Returns the next axis, or `None` on overflow.
-    #[inline]
-    pub fn checked_next(self) -> Option<Self> {
-        self.0.checked_add(1).map(Axis)
-    }
-
     /// Returns the next axis, or `None` if `self.0 == usize::MAX`.
-    /// Equivalent to `checked_next()`; both share the same non-panicking contract.
     #[inline]
     pub fn next(self) -> Option<Self> {
         self.0.checked_add(1).map(Axis)
@@ -74,18 +67,9 @@ mod tests {
         assert_eq!(Axis::new(0).prev(), None);
     }
 
-    /// `checked_next` overflow returns `None`; `next` shares the same contract.
+    /// `next()` overflow returns `None`.
     #[test]
-    fn test_axis_checked_next() {
-        assert_eq!(
-            Axis::new(0)
-                .checked_next()
-                .expect("checked_next of 0")
-                .index(),
-            1
-        );
-        assert_eq!(Axis::new(usize::MAX).checked_next(), None);
-        // `next()` shares the same checked contract.
+    fn test_axis_next_overflow() {
         assert_eq!(Axis::new(usize::MAX).next(), None);
     }
 
