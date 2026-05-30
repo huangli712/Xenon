@@ -81,5 +81,30 @@ mod tests {
         assert!(Axis::new(2).is_last(3));
         assert!(!Axis::new(0).is_last(0));
         assert!(!Axis::new(1).is_last(3));
+        assert!(Axis::new(0).is_last(1));
+    }
+
+    /// Verifies derive traits: Debug, Clone, Copy, PartialEq, Eq,
+    /// PartialOrd, Ord, Hash.
+    #[test]
+    fn test_axis_derive_traits() {
+        // Debug
+        assert_eq!(format!("{:?}", Axis::new(3)), "Axis(3)");
+        // Clone / Copy
+        let a = Axis::new(5);
+        let b = a; // Copy
+        let c = a.clone();
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+        // Ord / PartialOrd
+        assert!(Axis::new(0) < Axis::new(1));
+        assert!(Axis::new(2) > Axis::new(1));
+        // Hash (must not panic)
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Axis::new(0));
+        set.insert(Axis::new(1));
+        set.insert(Axis::new(0)); // duplicate
+        assert_eq!(set.len(), 2);
     }
 }
