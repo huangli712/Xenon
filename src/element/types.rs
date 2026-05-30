@@ -53,16 +53,6 @@ impl ElementType {
             ElementType::Complex64 => "Complex<f64>",
         }
     }
-
-    /// Returns the compile-time discriminant for element type `A`.
-    ///
-    /// This is a zero-cost generic dispatch: `ElementType::of::<A>()`
-    /// resolves to the `A::ELEMENT_TYPE` associated constant and is
-    /// eligible for const evaluation.
-    #[allow(dead_code)]
-    pub(crate) const fn of<A: Element>() -> Self {
-        A::ELEMENT_TYPE
-    }
 }
 
 impl Display for ElementType {
@@ -74,8 +64,8 @@ impl Display for ElementType {
 
 /// Returns the `ElementType` discriminant for `A`.
 ///
-/// This is a free-function equivalent of [`ElementType::of`].
-/// Both resolve to `A::ELEMENT_TYPE` and are zero-cost const functions.
+/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated constant.
+/// This is a zero-cost const function.
 pub(crate) const fn element_type_of<A: Element>() -> ElementType {
     A::ELEMENT_TYPE
 }
@@ -111,29 +101,49 @@ mod tests {
         assert_eq!(ElementType::Complex64 as u8, 6);
     }
 
-    /// Verifies `ElementType::of::<A>()` resolves to the correct variant
-    /// through the `A::ELEMENT_TYPE` associated constant.
-    #[test]
-    fn test_element_type_of_dispatch() {
-        assert_eq!(ElementType::of::<i32>(), ElementType::I32);
-        assert_eq!(ElementType::of::<f64>(), ElementType::F64);
-        assert_eq!(ElementType::of::<bool>(), ElementType::Bool);
-        assert_eq!(ElementType::of::<Complex<f64>>(), ElementType::Complex64);
-    }
-
-    /// Verifies the free function `element_type_of::<A>()` returns the
-    /// same result as `ElementType::of::<A>()`.
+    /// Verifies the free function `element_type_of::<A>()` resolves
+    /// through `A::ELEMENT_TYPE` for all 7 element types.
     #[test]
     fn test_free_functions_dispatch() {
+        assert_eq!(element_type_of::<bool>(), ElementType::Bool);
+        assert_eq!(element_type_of::<i32>(), ElementType::I32);
+        assert_eq!(element_type_of::<i64>(), ElementType::I64);
         assert_eq!(element_type_of::<f32>(), ElementType::F32);
+        assert_eq!(element_type_of::<f64>(), ElementType::F64);
+        assert_eq!(element_type_of::<Complex<f32>>(), ElementType::Complex32);
+        assert_eq!(element_type_of::<Complex<f64>>(), ElementType::Complex64);
     }
 
-    /// Verifies the `Display` impl delegates to [`ElementType::name`].
+    /// Verifies the `Display` impl delegates to [`ElementType::name`]
+    /// for all 7 variants.
     #[test]
     fn test_element_type_display() {
         assert_eq!(format!("{}", ElementType::Bool), "bool");
         assert_eq!(format!("{}", ElementType::I32), "i32");
+        assert_eq!(format!("{}", ElementType::I64), "i64");
+        assert_eq!(format!("{}", ElementType::F32), "f32");
         assert_eq!(format!("{}", ElementType::F64), "f64");
+        assert_eq!(format!("{}", ElementType::Complex32), "Complex<f32>");
         assert_eq!(format!("{}", ElementType::Complex64), "Complex<f64>");
+    }
+
+    /// Verifies derive traits: Debug, Clone, Copy, PartialEq, Eq, Hash.
+    #[test]
+    fn test_element_type_derive_traits() {
+        // Debug
+        assert_eq!(format!("{:?}", ElementType::F64), "F64");
+        // Clone / Copy
+        let a = ElementType::I32;
+        let b = a; // Copy
+        let c = a.clone();
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+        // Hash (must not panic)
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ElementType::Bool);
+        set.insert(ElementType::F32);
+        set.insert(ElementType::Complex64);
+        assert_eq!(set.len(), 3);
     }
 }
