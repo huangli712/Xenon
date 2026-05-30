@@ -41,14 +41,6 @@ pub enum FfiErrorCategory {
         argument: Cow<'static, str>,
     },
 
-    /// Pointer alignment did not satisfy the type's alignment requirement.
-    AlignmentMismatch {
-        /// Required alignment in bytes.
-        required: usize,
-        /// Actual alignment in bytes.
-        actual: usize,
-    },
-
     /// Rank check failed (e.g., BLAS layer expects 2D matrix).
     InvalidRank {
         /// Expected rank.
@@ -74,14 +66,6 @@ pub enum FfiErrorCategory {
         target_width_bits: u8,
     },
 
-    /// `from_raw_parts_mut` rejected a layout whose disjointness cannot
-    /// be conservatively proven (overlap-rejected guard).
-    OverlapRejected {
-        /// Shape of the tensor.
-        shape: Vec<usize>,
-        /// Strides of the tensor.
-        strides: Vec<usize>,
-    },
 
 }
 
@@ -91,9 +75,6 @@ impl Display for FfiErrorCategory {
             Self::NullPointer { argument } => {
                 write!(f, "null pointer for argument {argument}")
             },
-            Self::AlignmentMismatch { required, actual } => {
-                write!(f, "alignment mismatch: required {required}, actual {actual}")
-            },
             Self::InvalidRank { expected, actual } => {
                 write!(f, "invalid rank: expected {expected}, actual {actual}")
             },
@@ -102,9 +83,6 @@ impl Display for FfiErrorCategory {
             },
             Self::IntegerOverflow { value, target_width_bits } => {
                 write!(f, "integer overflow: {value} does not fit in i{target_width_bits}")
-            },
-            Self::OverlapRejected { shape, strides } => {
-                write!(f, "Overlapping layout rejected: shape {}, strides {}", FmtShape(shape), FmtShape(strides))
             },
         }
     }
