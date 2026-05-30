@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.15] — 2026-05-30
+
+### Added
+
+- Doc comments to all `Display` impls in `error.rs`.
+- Display output tests for all error enum variants.
+- Test: `classify` for `LayoutFlags::EMPTY`.
+- Test: derive traits for `Axis`.
+- Additional `is_last` assertion for `Axis`.
+
+### Removed
+
+- Dead `AbiMismatchKind` enum and related `FfiErrorCategory` variants.
+- Dead `StridesRankMismatch`/`UnsupportedStride`/`UnexpectedZeroStride` from `InvalidLayoutReason`.
+- Dead `flags_for_f_layout` function and tests.
+- Dead `ElementType::of::<A>()` const method.
+- Dead `Axis::checked_next` method.
+
+### Changed
+
+- Updated `test_crate_metadata` error message to current version.
+
 ## [v0.0.14] — 2026-05-29
 
 ### Added
