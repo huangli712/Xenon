@@ -93,7 +93,7 @@ mod tests {
         // Clone / Copy
         let a = Axis::new(5);
         let b = a; // Copy
-        let c = a.clone();
+        let c = a;
         assert_eq!(a, b);
         assert_eq!(a, c);
         // Ord / PartialOrd
