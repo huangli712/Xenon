@@ -883,6 +883,7 @@ mod tests {
     struct OrAny<T>(Option<T>);
 
     impl<T: Display> Display for OrAny<T> {
+        /// Formats `Some(v)` as `v` and `None` as `<any>`.
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             match &self.0 {
                 Some(v) => write!(f, "{v}"),
