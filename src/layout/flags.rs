@@ -244,6 +244,11 @@ mod tests {
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
     }
 
+    /// EMPTY (all bits cleared) classifies as NonContiguous.
+    #[test]
+    fn test_classify_empty_non_contiguous() {
+        assert_eq!(LayoutFlags::EMPTY.classify(), LayoutState::NonContiguous);
+    }
 
     // --- compute_layout_flags -----------------------------------------------
 
