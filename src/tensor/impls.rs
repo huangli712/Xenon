@@ -455,6 +455,23 @@ where
             )
         }
     }
+
+    /// Creates a mutable view sharing the underlying storage.
+    pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
+        let storage = unsafe {
+            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
+        };
+        unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                self.shape.clone(),
+                self.strides.clone(),
+                self.offset,
+                self.flags,
+                false,
+            )
+        }
+    }
 }
 
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -513,29 +530,6 @@ where
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
         let storage =
             unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
-        unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
-                self.offset,
-                self.flags,
-                false,
-            )
-        }
-    }
-}
-
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element,
-    D: Dimension + Clone,
-{
-    /// Creates a mutable view sharing the underlying storage.
-    pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
-        let storage = unsafe {
-            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
-        };
         unsafe {
             TensorBase::new_unchecked(
                 storage,

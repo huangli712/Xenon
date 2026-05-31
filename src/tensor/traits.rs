@@ -89,6 +89,3 @@ impl<A: Element> StorageSemantics for ArcRepr<A> {
         AliasClass::ArcShared
     }
 }
-
-// ── Generic dispatch methods ──
-
