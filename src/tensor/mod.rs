@@ -4,7 +4,6 @@
 //! Sub-module ownership:
 //! - `impls`     — query methods, view/view_mut, semantics dispatch
 //! - `aliases`   — 36 type aliases (re-exported via `pub use aliases::*;`)
-//! - `construct` — crate-internal constructors and validators
 //! - `types`     — `TensorBase<S, D>` definition
 //!
 //! ## Public re-exports
@@ -24,7 +23,6 @@
 //! as `TensorBase`'s `from_raw_parts` and `from_raw_parts_mut`.
 
 mod aliases;
-mod construct;
 mod impls;
 mod types;
 
