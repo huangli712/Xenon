@@ -496,210 +496,6 @@ where
     }
 }
 
-impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
-where
-    D: Dimension + Clone,
-{
-    /// Creates an immutable view, propagating `derived_from_view_mut` from
-    /// the source (may be `true` if the source was already a demoted ViewMut).
-    pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
-        unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
-                self.offset,
-                self.flags,
-                self.derived_from_view_mut,
-            )
-        }
-    }
-}
-
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension + Clone,
-{
-    /// Demotes a mutable view to an immutable view with ViewMut provenance.
-    ///
-    /// Sets `derived_from_view_mut = true` so that `access_semantics()` and
-    /// `alias_class()` correctly report the ViewMut origin.
-    pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
-        unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
-                self.offset,
-                self.flags,
-                true,
-            )
-        }
-    }
-}
-
-impl<A, D> TensorBase<ArcRepr<A>, D>
-where
-    A: Element,
-    D: Dimension + Clone,
-{
-    /// Creates an immutable view sharing the underlying Arc storage.
-    pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
-        unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
-                self.offset,
-                self.flags,
-                false,
-            )
-        }
-    }
-}
-
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    D: Dimension + Clone,
-{
-    /// Creates a reborrowed mutable view. Does NOT set the ViewMut provenance bit.
-    pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
-        let storage = unsafe {
-            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
-        };
-        unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
-                self.offset,
-                self.flags,
-                false,
-            )
-        }
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-
-// ── from_raw_parts (immutable view) ──
-
-impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Constructs an immutable view from raw parts.
-    ///
-    /// # Safety
-    ///
-    /// - `ptr` is the non-null storage base pointer, valid for lifetime `'a`.
-    ///   Empty tensors must still pass a non-null sentinel such as
-    ///   `NonNull::<A>::dangling().as_ptr()`.
-    /// - The byte range `[ptr, ptr + storage_len * size_of::<A>())` belongs
-    ///   to a single allocated object and stays valid for lifetime `'a`.
-    /// - `ptr` is aligned to `align_of::<A>()`.
-    /// - Every logical element address derived from shape/strides/offset
-    ///   points to an initialized `A` value (for non-empty tensors).
-    /// - No live `&mut` reference to overlapping memory exists during `'a`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(XenonError::InvalidLayout)` for shape product overflow,
-    /// stride > `isize::MAX`, stride span overflow, or access range
-    /// out of bounds.
-    pub unsafe fn from_raw_parts(
-        ptr: *const A,
-        storage_len: usize,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-    ) -> Result<Self> {
-        validate_access_range(
-            &shape,
-            &strides,
-            offset,
-            storage_len,
-            "TensorView::from_raw_parts",
-            StorageKindTag::View,
-        )?;
-
-        let storage = unsafe { ViewRepr::from_raw_parts(ptr, storage_len) };
-
-        let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
-            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
-        } else {
-            unsafe { ptr.add(offset) }
-        };
-        let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
-
-        Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
-    }
-}
-
-// ── from_raw_parts_mut (mutable view) ──
-
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Constructs a mutable view from raw parts.
-    ///
-    /// # Safety
-    ///
-    /// Inherits all caller obligations from [`from_raw_parts`] plus:
-    /// - `ptr` is non-null; empty tensors must still pass a non-null sentinel.
-    /// - Caller holds exclusive write access to `[ptr, ptr + storage_len)`
-    ///   for lifetime `'a`.
-    /// - No other reference (shared or mutable) to overlapping memory may be
-    ///   alive during `'a`.
-    /// - The layout itself is non-overlapping (no two logical indices map to
-    ///   the same address).
-    ///
-    /// # Errors
-    ///
-    /// Same as [`from_raw_parts`], plus rejects zero-stride on non-singleton
-    /// axes and ambiguous-overlap layouts.
-    ///
-    /// [`from_raw_parts`]: crate::tensor::TensorBase::from_raw_parts
-    pub unsafe fn from_raw_parts_mut(
-        ptr: *mut A,
-        storage_len: usize,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-    ) -> Result<Self> {
-        validate_access_range(
-            &shape,
-            &strides,
-            offset,
-            storage_len,
-            "TensorViewMut::from_raw_parts_mut",
-            StorageKindTag::ViewMut,
-        )?;
-        validate_non_overlapping_layout(&shape, &strides, offset, storage_len)?;
-
-        let storage = unsafe { ViewMutRepr::from_raw_parts_mut(ptr, storage_len) };
-
-        let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
-            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
-        } else {
-            unsafe { (ptr as *const A).add(offset) }
-        };
-        let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
-
-        Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
-    }
-}
-
 // ── from_raw_vec_unchecked ──
 
 impl<A, D> TensorBase<Owned<A>, D>
@@ -729,7 +525,6 @@ where
         unsafe { Self::new_unchecked(storage, shape, strides, 0, flags, false) }
     }
 }
-
 
 // ── into_raw_parts / from_raw_parts_owned ──
 
@@ -857,6 +652,208 @@ where
             flags,
             derived_from_view_mut: false,
         })
+    }
+}
+
+impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
+where
+    D: Dimension + Clone,
+{
+    /// Creates an immutable view, propagating `derived_from_view_mut` from
+    /// the source (may be `true` if the source was already a demoted ViewMut).
+    pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                self.shape.clone(),
+                self.strides.clone(),
+                self.offset,
+                self.flags,
+                self.derived_from_view_mut,
+            )
+        }
+    }
+}
+
+// ── from_raw_parts (immutable view) ──
+
+impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Element,
+    D: Dimension,
+{
+    /// Constructs an immutable view from raw parts.
+    ///
+    /// # Safety
+    ///
+    /// - `ptr` is the non-null storage base pointer, valid for lifetime `'a`.
+    ///   Empty tensors must still pass a non-null sentinel such as
+    ///   `NonNull::<A>::dangling().as_ptr()`.
+    /// - The byte range `[ptr, ptr + storage_len * size_of::<A>())` belongs
+    ///   to a single allocated object and stays valid for lifetime `'a`.
+    /// - `ptr` is aligned to `align_of::<A>()`.
+    /// - Every logical element address derived from shape/strides/offset
+    ///   points to an initialized `A` value (for non-empty tensors).
+    /// - No live `&mut` reference to overlapping memory exists during `'a`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(XenonError::InvalidLayout)` for shape product overflow,
+    /// stride > `isize::MAX`, stride span overflow, or access range
+    /// out of bounds.
+    pub unsafe fn from_raw_parts(
+        ptr: *const A,
+        storage_len: usize,
+        shape: D,
+        strides: Strides<D>,
+        offset: usize,
+    ) -> Result<Self> {
+        validate_access_range(
+            &shape,
+            &strides,
+            offset,
+            storage_len,
+            "TensorView::from_raw_parts",
+            StorageKindTag::View,
+        )?;
+
+        let storage = unsafe { ViewRepr::from_raw_parts(ptr, storage_len) };
+
+        let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
+            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
+        } else {
+            unsafe { ptr.add(offset) }
+        };
+        let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
+
+        Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
+    }
+}
+
+impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
+where
+    A: Element,
+    D: Dimension + Clone,
+{
+    /// Demotes a mutable view to an immutable view with ViewMut provenance.
+    ///
+    /// Sets `derived_from_view_mut = true` so that `access_semantics()` and
+    /// `alias_class()` correctly report the ViewMut origin.
+    pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                self.shape.clone(),
+                self.strides.clone(),
+                self.offset,
+                self.flags,
+                true,
+            )
+        }
+    }
+}
+
+impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
+where
+    D: Dimension + Clone,
+{
+    /// Creates a reborrowed mutable view. Does NOT set the ViewMut provenance bit.
+    pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
+        let storage = unsafe {
+            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
+        };
+        unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                self.shape.clone(),
+                self.strides.clone(),
+                self.offset,
+                self.flags,
+                false,
+            )
+        }
+    }
+}
+
+// ── from_raw_parts_mut (mutable view) ──
+
+impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
+where
+    A: Element,
+    D: Dimension,
+{
+    /// Constructs a mutable view from raw parts.
+    ///
+    /// # Safety
+    ///
+    /// Inherits all caller obligations from [`from_raw_parts`] plus:
+    /// - `ptr` is non-null; empty tensors must still pass a non-null sentinel.
+    /// - Caller holds exclusive write access to `[ptr, ptr + storage_len)`
+    ///   for lifetime `'a`.
+    /// - No other reference (shared or mutable) to overlapping memory may be
+    ///   alive during `'a`.
+    /// - The layout itself is non-overlapping (no two logical indices map to
+    ///   the same address).
+    ///
+    /// # Errors
+    ///
+    /// Same as [`from_raw_parts`], plus rejects zero-stride on non-singleton
+    /// axes and ambiguous-overlap layouts.
+    ///
+    /// [`from_raw_parts`]: crate::tensor::TensorBase::from_raw_parts
+    pub unsafe fn from_raw_parts_mut(
+        ptr: *mut A,
+        storage_len: usize,
+        shape: D,
+        strides: Strides<D>,
+        offset: usize,
+    ) -> Result<Self> {
+        validate_access_range(
+            &shape,
+            &strides,
+            offset,
+            storage_len,
+            "TensorViewMut::from_raw_parts_mut",
+            StorageKindTag::ViewMut,
+        )?;
+        validate_non_overlapping_layout(&shape, &strides, offset, storage_len)?;
+
+        let storage = unsafe { ViewMutRepr::from_raw_parts_mut(ptr, storage_len) };
+
+        let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
+            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
+        } else {
+            unsafe { (ptr as *const A).add(offset) }
+        };
+        let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
+
+        Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
+    }
+}
+
+impl<A, D> TensorBase<ArcRepr<A>, D>
+where
+    A: Element,
+    D: Dimension + Clone,
+{
+    /// Creates an immutable view sharing the underlying Arc storage.
+    pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                self.shape.clone(),
+                self.strides.clone(),
+                self.offset,
+                self.flags,
+                false,
+            )
+        }
     }
 }
 
