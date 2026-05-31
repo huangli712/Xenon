@@ -228,7 +228,8 @@ mod tests {
             SliceInfoElem::Range { start: 1, end: 3 },
             SliceInfoElem::Range { start: 1, end: 3 },
         ]);
-        let info = SliceInfo::new(indices, Ix2(3, 3), Ix2(2, 2)).unwrap();
+        let info = SliceInfo::new(indices, Ix2(3, 3), Ix2(2, 2))
+            .expect("valid slice info");
         let sliced = x.slice(info).expect("valid slice");
         assert_ne!(sliced.offset(), 0);
 
