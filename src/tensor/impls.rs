@@ -220,7 +220,7 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
 impl<S, D> TensorBase<S, D>
 where
     S: RawStorage,
-    D: crate::dimension::Dimension,
+    D: Dimension,
 {
     /// Axis lengths. Zero-copy delegation to `Dimension::slice()`.
     pub fn shape(&self) -> &[usize] {
@@ -260,7 +260,7 @@ where
     }
 
     /// Full layout flags (`F_CONTIGUOUS` / `ALIGNED` / `HAS_ZERO_STRIDE`).
-    pub fn flags(&self) -> crate::layout::LayoutFlags {
+    pub fn flags(&self) -> LayoutFlags {
         self.flags
     }
 
@@ -268,26 +268,7 @@ where
     pub fn data_location(&self) -> DataLocation {
         DataLocation::Cpu
     }
-}
 
-impl<S, D> TensorBase<S, D>
-where
-    S: RawStorage,
-    D: crate::dimension::Dimension + Clone,
-{
-    /// Clone of the dimension descriptor. Requires `D: Clone`.
-    pub fn raw_dim(&self) -> D {
-        self.shape.clone()
-    }
-}
-
-// ── Layout query delegation ──
-
-impl<S, D> TensorBase<S, D>
-where
-    S: RawStorage,
-    D: crate::dimension::Dimension,
-{
     /// Returns the layout-state classification (`FContiguous` / `NonContiguous` / `BroadcastView`).
     pub fn layout_state(&self) -> crate::layout::LayoutState {
         self.flags.classify()
@@ -309,13 +290,24 @@ where
     }
 }
 
+impl<S, D> TensorBase<S, D>
+where
+    S: RawStorage,
+    D: Dimension + Clone,
+{
+    /// Clone of the dimension descriptor. Requires `D: Clone`.
+    pub fn raw_dim(&self) -> D {
+        self.shape.clone()
+    }
+}
+
 
 // ── Pointer access & slice ──
 
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
-    D: crate::dimension::Dimension,
+    D: Dimension,
 {
     /// Raw storage base pointer (does NOT add `offset`).
     pub fn as_storage_ptr(&self) -> *const A {
@@ -355,7 +347,7 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: StorageMut<Elem = A>,
-    D: crate::dimension::Dimension,
+    D: Dimension,
 {
     /// Raw mutable storage base pointer (does NOT add `offset`).
     pub fn as_storage_mut_ptr(&mut self) -> *mut A {
@@ -397,7 +389,7 @@ where
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
-    D: crate::dimension::Dimension + Clone,
+    D: Dimension + Clone,
 {
     /// Creates an immutable view sharing the underlying storage.
     ///
@@ -444,7 +436,7 @@ where
 
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
-    D: crate::dimension::Dimension + Clone,
+    D: Dimension + Clone,
 {
     /// Creates an immutable view, propagating `derived_from_view_mut` from
     /// the source (may be `true` if the source was already a demoted ViewMut).
@@ -467,7 +459,7 @@ where
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
     A: Element,
-    D: crate::dimension::Dimension + Clone,
+    D: Dimension + Clone,
 {
     /// Demotes a mutable view to an immutable view with ViewMut provenance.
     ///
@@ -492,7 +484,7 @@ where
 impl<A, D> TensorBase<ArcRepr<A>, D>
 where
     A: Element,
-    D: crate::dimension::Dimension + Clone,
+    D: Dimension + Clone,
 {
     /// Creates an immutable view sharing the underlying Arc storage.
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
@@ -514,7 +506,7 @@ where
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
-    D: crate::dimension::Dimension + Clone,
+    D: Dimension + Clone,
 {
     /// Creates a mutable view sharing the underlying storage.
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
@@ -536,7 +528,7 @@ where
 
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
-    D: crate::dimension::Dimension + Clone,
+    D: Dimension + Clone,
 {
     /// Creates a reborrowed mutable view. Does NOT set the ViewMut provenance bit.
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
@@ -592,7 +584,7 @@ where
 
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
-    A: crate::element::Element,
+    A: Element,
     D: Dimension,
 {
     /// Constructs an immutable view from raw parts.
@@ -647,7 +639,7 @@ where
 
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
-    A: crate::element::Element,
+    A: Element,
     D: Dimension,
 {
     /// Constructs a mutable view from raw parts.
@@ -703,7 +695,7 @@ where
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    A: crate::element::Element,
+    A: Element,
     D: Dimension,
 {
     /// Construct an Owned tensor from a Vec, skipping all consistency checks.
@@ -734,7 +726,7 @@ where
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    A: crate::element::Element + Clone,
+    A: Element + Clone,
     D: Dimension + Clone,
 {
     /// Consumes the tensor, returning owned raw parts.
@@ -759,7 +751,7 @@ where
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    A: crate::element::Element,
+    A: Element,
     D: Dimension + Clone + PartialEq,
 {
     /// Reconstructs an owned tensor from raw parts obtained via
