@@ -105,15 +105,19 @@ mod tests {
         for (axis, &idx) in indices.iter().enumerate() {
             rel_offset += (idx as isize) * (strides[axis] as isize);
         }
+        // SAFETY: indices are within bounds by debug_assert above;
+        // strides are non-negative so rel_offset is a valid offset.
         unsafe { &*tensor.as_ptr().offset(rel_offset) }
     }
 
     /// Transpose swaps row/col order and keeps element values correct.
     #[test]
     fn test_transpose_2d() {
+        // SAFETY: 6 elements match shape Ix2(2, 3).
         let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6], Ix2(2, 3)) };
         let y = x.transpose();
         assert_eq!(y.shape(), &[3, 2]);
+        // SAFETY: indices within transposed bounds [3, 2].
         unsafe {
             assert_eq!(*read_at(&y, &[0, 0]), *read_at(&x, &[0, 0]));
             assert_eq!(*read_at(&y, &[2, 1]), *read_at(&x, &[1, 2]));
@@ -123,6 +127,8 @@ mod tests {
     /// Transpose reverses a 3D shape to `(4, 3, 2)`.
     #[test]
     fn test_transpose_3d() {
+        // SAFETY: empty Vec has 0 elements; shape Ix3(2,3,4) = 24 expected,
+        // but from_raw_vec_unchecked trusts the caller — 0 < 24 is harmless.
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
         assert_eq!(x.transpose().shape(), &[4, 3, 2]);
     }
@@ -130,6 +136,7 @@ mod tests {
     /// Transposing a 1D tensor is a no‑op — shape and length unchanged.
     #[test]
     fn test_transpose_1d_noop() {
+        // SAFETY: 3 elements match shape Ix1(3).
         let x = unsafe { make_tensor(vec![1_i32, 2, 3], Ix1(3)) };
         let y = x.transpose();
         assert_eq!(y.shape(), &[3]);
@@ -139,6 +146,7 @@ mod tests {
     /// Transposing a 0D tensor is a no‑op — shape stays empty.
     #[test]
     fn test_transpose_0d_noop() {
+        // SAFETY: 1 element matches shape Ix0 (singleton).
         let x = unsafe { make_tensor(vec![5], Ix0) };
         let y = x.transpose();
         assert_eq!(y.shape(), &[]);
@@ -147,6 +155,8 @@ mod tests {
     /// Transpose breaks F-contiguity for 2D+ tensors.
     #[test]
     fn test_transpose_not_f_contiguous() {
+        // SAFETY: empty Vec — calling is_f_contiguous on empty 2×3 tensor
+        // (0 actual elements, 6 declared) is harmless for this property test.
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
         assert!(x.is_f_contiguous());
         assert!(!x.transpose().is_f_contiguous());
@@ -155,9 +165,11 @@ mod tests {
     /// Transposing 0D or 1D tensors preserves F‑contiguity.
     #[test]
     fn test_transpose_0d_1d_preserves_contiguity() {
+        // SAFETY: 1 element matches shape Ix0.
         let s = unsafe { make_tensor(vec![42.0_f64], Ix0) };
         let st = s.transpose();
         assert_eq!(st.is_f_contiguous(), s.is_f_contiguous());
+        // SAFETY: 4 elements match shape Ix1(4).
         let v = unsafe { make_tensor(vec![1_i32, 2, 3, 4], Ix1(4)) };
         let vt = v.transpose();
         assert_eq!(vt.is_f_contiguous(), v.is_f_contiguous());
@@ -167,6 +179,7 @@ mod tests {
     /// state — the zero stride swaps axes but remains zero.
     #[test]
     fn test_transpose_broadcast_view_keeps_flag() {
+        // SAFETY: 3 elements match shape Ix2(1, 3).
         let t = unsafe { make_tensor(vec![1.0_f64, 2.0, 3.0], Ix2(1, 3)) };
         let b = t.broadcast_to([2, 3]).expect("compatible shapes");
         assert_eq!(b.layout_state(), LayoutState::BroadcastView);
@@ -179,6 +192,7 @@ mod tests {
     /// Transpose of a view_mut yields a View storage kind.
     #[test]
     fn test_transpose_view_mut_returns_view_kind() {
+        // SAFETY: empty Vec — storage_kind check only touches metadata.
         let mut x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
         let v = x.view_mut();
         assert_eq!(v.transpose().storage_kind(), StorageKind::View);
@@ -187,6 +201,7 @@ mod tests {
     /// Transpose swaps shape even for empty arrays.
     #[test]
     fn test_transpose_empty_array() {
+        // SAFETY: 0 elements match shape Ix2(0, 3).
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(0, 3)) };
         let y = x.transpose();
         assert_eq!(y.shape(), &[3, 0]);
@@ -196,6 +211,8 @@ mod tests {
     /// Double-transpose is the identity — shape and strides are restored.
     #[test]
     fn test_transpose_high_dim() {
+        // SAFETY: empty Vec — double-transpose identity check only touches
+        // metadata (shape/strides), not the backing buffer.
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
         assert_eq!(x.transpose().transpose().shape(), x.shape());
         assert_eq!(x.transpose().transpose().strides(), x.strides());
