@@ -8,12 +8,11 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Reverse the axis order. See 16-shape.md §5.1.
+    /// Reverse the axis order.
     ///
-    /// `Reverse` is named at the method-level `where`-clause (not the impl
-    /// header) so it only constrains this single API; other methods on the
-    /// same `impl` block (added in later waves) are unaffected. This
-    /// matches the design at 16-shape.md §5.1 line 119–122.
+    /// `Reverse` is bound at the method-level `where`-clause (not the
+    /// `impl` header) so it constrains only this API — other methods on
+    /// the same `impl` block are unaffected.
     pub fn transpose(&self) -> TensorView<'_, A, D>
     where
         D: Reverse,
@@ -27,25 +26,25 @@ where
     S: Storage<Elem = A>,
     D: Dimension + Reverse,
 {
-    // (1) Reverse the dimension via the sealed `Reverse` trait.
+    // Reverse the dimension via the sealed `Reverse` trait.
     let new_shape: D = tensor.raw_dim().reverse();
 
-    // (2) Build a reversed Strides<D>.
+    // Build reversed strides.
     let rev: Vec<usize> = tensor.strides().iter().rev().copied().collect();
     let new_strides: Strides<D> = Strides::<D>::from_slice(&rev)
         .expect("rank-preserving stride reverse cannot change slice length");
 
-    // (3) Recompute LayoutFlags.
+    // Recompute layout flags.
     let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, tensor.as_ptr());
 
-    // (4) Build ViewRepr borrowing source storage.
+    // Build a ViewRepr borrowing the source storage.
     // SAFETY: as_storage_ptr() is a non-null aligned base pointer of
     // already-validated live storage. storage_len() is the correct extent.
     // Result lifetime is bound to &tensor.
     let view_storage: ViewRepr<'_, A> =
         unsafe { ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len()) };
 
-    // (5) Finalize via TensorBase::new_unchecked (Path Y).
+    // Assemble the result via TensorBase::new_unchecked.
     // SAFETY: new_shape + new_strides + offset form a bijective reversal
     // of source metadata. new_flags computed by the authoritative entry
     // point. derived_from_view_mut forwarded from source.
@@ -95,6 +94,7 @@ mod tests {
         unsafe { &*tensor.as_ptr().offset(rel_offset) }
     }
 
+    /// Transpose swaps row/col order and keeps element values correct.
     #[test]
     fn test_transpose_2d() {
         let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6], Ix2(2, 3)) };
@@ -106,12 +106,14 @@ mod tests {
         }
     }
 
+    /// Transpose reverses a 3D shape to `(4, 3, 2)`.
     #[test]
     fn test_transpose_3d() {
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
         assert_eq!(x.transpose().shape(), &[4, 3, 2]);
     }
 
+    /// Transposing a 1D tensor is a no‑op — shape and length unchanged.
     #[test]
     fn test_transpose_1d_noop() {
         let x = unsafe { make_tensor(vec![1_i32, 2, 3], Ix1(3)) };
@@ -120,6 +122,7 @@ mod tests {
         assert_eq!(y.len(), x.len());
     }
 
+    /// Transposing a 0D tensor is a no‑op — shape stays empty.
     #[test]
     fn test_transpose_0d_noop() {
         let x = unsafe { make_tensor(vec![5], Ix0) };
@@ -127,6 +130,7 @@ mod tests {
         assert_eq!(y.shape(), &[]);
     }
 
+    /// Transpose breaks F-contiguity for 2D+ tensors.
     #[test]
     fn test_transpose_not_f_contiguous() {
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
@@ -134,6 +138,7 @@ mod tests {
         assert!(!x.transpose().is_f_contiguous());
     }
 
+    /// Transposing 0D or 1D tensors preserves F‑contiguity.
     #[test]
     fn test_transpose_0d_1d_preserves_contiguity() {
         let s = unsafe { make_tensor(vec![42.0_f64], Ix0) };
@@ -144,8 +149,8 @@ mod tests {
         assert_eq!(vt.is_f_contiguous(), v.is_f_contiguous());
     }
 
-    /// W11 activated: transpose of a broadcast view preserves the BroadcastView
-    /// layout state — the zero stride swaps axes but remains zero.
+    /// Transpose of a broadcast view preserves the `BroadcastView` layout
+    /// state — the zero stride swaps axes but remains zero.
     #[test]
     fn test_transpose_broadcast_view_keeps_flag() {
         let t = unsafe { make_tensor(vec![1.0_f64, 2.0, 3.0], Ix2(1, 3)) };
@@ -157,6 +162,7 @@ mod tests {
         assert_eq!(bt.layout_state(), LayoutState::BroadcastView);
     }
 
+    /// Transpose of a view_mut yields a View storage kind.
     #[test]
     fn test_transpose_view_mut_returns_view_kind() {
         let mut x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
@@ -164,6 +170,7 @@ mod tests {
         assert_eq!(v.transpose().storage_kind(), StorageKind::View);
     }
 
+    /// Transpose swaps shape even for empty arrays.
     #[test]
     fn test_transpose_empty_array() {
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(0, 3)) };
@@ -172,6 +179,7 @@ mod tests {
         assert_eq!(y.len(), 0);
     }
 
+    /// Double-transpose is the identity — shape and strides are restored.
     #[test]
     fn test_transpose_high_dim() {
         let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
