@@ -1,26 +1,11 @@
+//! Full-axis transpose implementation.
+
 use crate::dimension::{Dimension, Reverse};
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, ViewRepr};
 use crate::tensor::{TensorBase, TensorView};
 
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
-    /// Reverse the axis order.
-    ///
-    /// `Reverse` is bound at the method-level `where`-clause (not the
-    /// `impl` header) so it constrains only this API — other methods on
-    /// the same `impl` block are unaffected.
-    pub fn transpose(&self) -> TensorView<'_, A, D>
-    where
-        D: Reverse,
-    {
-        transpose_impl(self)
-    }
-}
-
+/// Reverse the dimension, strides, and layout flags to produce a transposed view.
 fn transpose_impl<S, D, A>(tensor: &TensorBase<S, D>) -> TensorView<'_, A, D>
 where
     S: Storage<Elem = A>,
@@ -57,6 +42,24 @@ where
             new_flags,
             tensor.derived_from_view_mut,
         )
+    }
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    /// Reverse the axis order.
+    ///
+    /// `Reverse` is bound at the method-level `where`-clause (not the
+    /// `impl` header) so it constrains only this API — other methods on
+    /// the same `impl` block are unaffected.
+    pub fn transpose(&self) -> TensorView<'_, A, D>
+    where
+        D: Reverse,
+    {
+        transpose_impl(self)
     }
 }
 
