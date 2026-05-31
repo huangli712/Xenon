@@ -29,7 +29,7 @@ mod impls;
 mod types;
 
 pub use aliases::*;
-pub use construct::OwnedRawParts;
+pub use types::OwnedRawParts;
 pub use impls::AliasClass;
 pub use impls::StorageSemantics;
 pub use impls::{AccessSemantics, DataLocation, StorageKind};
