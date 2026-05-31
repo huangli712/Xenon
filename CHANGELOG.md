@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.16] — 2026-05-30
+
+### Added
+
+- `///` doc comments and SAFETY comments to all test functions in `transpose.rs`.
+- Test: transpose slice offset preserved.
+- Test: double-transpose identity for 3D (`transpose_high_dim`).
+- Module-level doc for `shape/transpose.rs`.
+
+### Removed
+
+- Stale design-doc cross-references and task-tracking from shape module.
+- Empty `test_shape_module_compiles` skeleton test.
+
+### Changed
+
+- Moved `transpose_impl` before `impl` block for top-down dependency order.
+- Consolidated imports and removed redundant `.clone()` on `Copy` types.
+- Moved inline `use` to top-level test imports in `transpose.rs`.
+- Cleaned up shape module docs with concise descriptions.
+
+### Fixed
+
+- None.
+
 ## [v0.0.15] — 2026-05-30
 
 ### Added
