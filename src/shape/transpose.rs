@@ -69,8 +69,7 @@ mod tests {
     use crate::element::Element;
     use crate::layout::LayoutState;
     use crate::storage::Owned;
-    use crate::tensor::StorageKind;
-    use crate::tensor::TensorBase;
+    use crate::tensor::{StorageKind, TensorBase};
 
     /// Construct a tensor using the internal fast path.
     unsafe fn make_tensor<A: Element, D: Dimension>(
