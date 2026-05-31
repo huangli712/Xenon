@@ -1,4 +1,4 @@
-//! Storage semantics trait: [`StorageSemantics`] and related dispatch methods.
+//! Storage semantics trait: [`StorageSemantics`].
 
 use super::{AccessSemantics, AliasClass, StorageKind};
 use crate::element::Element;
@@ -90,3 +90,135 @@ impl<A: Element> StorageSemantics for ArcRepr<A> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::LayoutFlags;
+
+    // ── Owned ──
+
+    /// Owned storage kind is Owned.
+    #[test]
+    fn test_owned_kind() {
+        assert_eq!(<Owned<i32>>::KIND, StorageKind::Owned);
+    }
+
+    /// Owned access_semantics always returns Owned regardless of
+    /// flags/provenance.
+    #[test]
+    fn test_owned_access_semantics() {
+        assert_eq!(
+            <Owned<i32>>::access_semantics(LayoutFlags::F_CONTIGUOUS, false),
+            AccessSemantics::Owned
+        );
+        assert_eq!(
+            <Owned<i32>>::access_semantics(LayoutFlags::HAS_ZERO_STRIDE, true),
+            AccessSemantics::Owned
+        );
+    }
+
+    /// Owned alias_class returns Unique for F-contiguous, BroadcastAlias
+    /// for zero-stride, ViewMutDerived when derived_from_view_mut is set.
+    #[test]
+    fn test_owned_alias_class() {
+        assert_eq!(
+            <Owned<i32>>::alias_class(LayoutFlags::F_CONTIGUOUS, false),
+            AliasClass::Unique
+        );
+        assert_eq!(
+            <Owned<i32>>::alias_class(LayoutFlags::HAS_ZERO_STRIDE, false),
+            AliasClass::BroadcastAlias
+        );
+        assert_eq!(
+            <Owned<i32>>::alias_class(LayoutFlags::F_CONTIGUOUS, true),
+            AliasClass::ViewMutDerived
+        );
+    }
+
+    // ── ViewRepr ──
+
+    /// ViewRepr access_semantics: ReadOnly for plain, SharedReadOnly for
+    /// zero-stride or ViewMut-derived.
+    #[test]
+    fn test_viewrepr_access_semantics() {
+        assert_eq!(
+            <ViewRepr<'_, i32>>::access_semantics(LayoutFlags::F_CONTIGUOUS, false),
+            AccessSemantics::ReadOnly
+        );
+        assert_eq!(
+            <ViewRepr<'_, i32>>::access_semantics(LayoutFlags::HAS_ZERO_STRIDE, false),
+            AccessSemantics::SharedReadOnly
+        );
+        assert_eq!(
+            <ViewRepr<'_, i32>>::access_semantics(LayoutFlags::F_CONTIGUOUS, true),
+            AccessSemantics::SharedReadOnly
+        );
+    }
+
+    /// ViewRepr alias_class: Unique for plain, BroadcastAlias for zero-stride,
+    /// ViewMutDerived when derived_from_view_mut is set.
+    #[test]
+    fn test_viewrepr_alias_class() {
+        assert_eq!(
+            <ViewRepr<'_, i32>>::alias_class(LayoutFlags::F_CONTIGUOUS, false),
+            AliasClass::Unique
+        );
+        assert_eq!(
+            <ViewRepr<'_, i32>>::alias_class(LayoutFlags::HAS_ZERO_STRIDE, false),
+            AliasClass::BroadcastAlias
+        );
+        assert_eq!(
+            <ViewRepr<'_, i32>>::alias_class(LayoutFlags::F_CONTIGUOUS, true),
+            AliasClass::ViewMutDerived
+        );
+    }
+
+    // ── ViewMutRepr ──
+
+    /// ViewMutRepr access_semantics always returns Writable.
+    #[test]
+    fn test_viewmutrepr_access_semantics() {
+        assert_eq!(
+            <ViewMutRepr<'_, i32>>::access_semantics(LayoutFlags::F_CONTIGUOUS, false),
+            AccessSemantics::Writable
+        );
+    }
+
+    /// ViewMutRepr alias_class: Unique for plain, BroadcastAlias for
+    /// zero-stride.
+    #[test]
+    fn test_viewmutrepr_alias_class() {
+        assert_eq!(
+            <ViewMutRepr<'_, i32>>::alias_class(LayoutFlags::F_CONTIGUOUS, false),
+            AliasClass::Unique
+        );
+        assert_eq!(
+            <ViewMutRepr<'_, i32>>::alias_class(LayoutFlags::HAS_ZERO_STRIDE, false),
+            AliasClass::BroadcastAlias
+        );
+    }
+
+    // ── ArcRepr ──
+
+    /// ArcRepr access_semantics always returns SharedReadOnly.
+    #[test]
+    fn test_arcrepr_access_semantics() {
+        assert_eq!(
+            <ArcRepr<i32>>::access_semantics(LayoutFlags::F_CONTIGUOUS, false),
+            AccessSemantics::SharedReadOnly
+        );
+    }
+
+    /// ArcRepr alias_class always returns ArcShared regardless of flags.
+    #[test]
+    fn test_arcrepr_alias_class() {
+        assert_eq!(
+            <ArcRepr<i32>>::alias_class(LayoutFlags::F_CONTIGUOUS, false),
+            AliasClass::ArcShared
+        );
+        assert_eq!(
+            <ArcRepr<i32>>::alias_class(LayoutFlags::HAS_ZERO_STRIDE, false),
+            AliasClass::ArcShared
+        );
+    }
+}
