@@ -1,8 +1,6 @@
 //! Query methods for [`TensorBase`]: shape/strides/ndim/len, layout flags,
 //! storage kind, access semantics, alias classification, pointer access,
 //! contiguous slices, and view creation.
-//!
-//! See `07-tensor.md §5.3–§5.5` for the authoritative API definitions.
 
 use super::TensorBase;
 use crate::element::Element;
@@ -37,8 +35,6 @@ pub enum StorageKind {
 }
 
 /// Access semantics returned by [`TensorBase::access_semantics`].
-///
-/// Authoritative 4-variant set per `07-tensor.md §5.3` L378-383.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessSemantics {
     /// Plain non-broadcast read-only view.
@@ -394,9 +390,8 @@ where
 
     /// Zero-copy conversion from `Tensor<A, D>` to `ArcTensor<A, D>`.
     ///
-    /// Wraps the storage-layer `Owned<A>::into_shared(self) -> ArcRepr<A>`
-    /// per `05-storage.md §5.11.3` line 628. Shape, strides, offset, and
-    /// layout flags are preserved; `derived_from_view_mut` is `false` since
+    /// Wraps the storage-layer `Owned<A>::into_shared(self) -> ArcRepr<A>`.
+    /// Shape, strides, offset, and layout flags are preserved; `derived_from_view_mut` is `false` since
     /// `Owned`-backed tensors are never derived from a `ViewMut`.
     pub fn into_shared(self) -> TensorBase<ArcRepr<A>, D> {
         let storage = self.storage.into_shared();
@@ -576,20 +571,22 @@ mod tests {
         f_contig(data, shape, 0)
     }
 
-    // ── W8T4 tests ──
 
+    /// Verify shape and strides are correctly returned for a 3×4 tensor.
     #[test]
     fn test_tensor_shape_strides() {
         let t = f_contig_i32(vec![1; 12], Ix2(3, 4));
         assert_eq!(t.shape(), &[3, 4]);
         assert_eq!(t.strides(), &[1_usize, 3]);
     }
+    /// Verify len and ndim are correctly computed for a 3×4 tensor.
     #[test]
     fn test_tensor_len_and_ndim() {
         let t = f_contig_i32(vec![1; 12], Ix2(3, 4));
         assert_eq!(t.len(), 12);
         assert_eq!(t.ndim(), 2);
     }
+    /// Verify offset and flags after direct struct construction.
     #[test]
     fn test_tensor_offset_and_flags() {
         let strides = Strides::f_contiguous(&Ix1(5)).expect("valid");
@@ -605,46 +602,53 @@ mod tests {
         assert_eq!(t.offset(), 0);
         assert!(t.flags().is_f_contiguous());
     }
+    /// Verify raw_dim clones the dimension descriptor correctly.
     #[test]
     fn test_tensor_raw_dim() {
         let t = f_contig_i32(vec![1; 4], Ix2(2, 2));
         assert_eq!(t.raw_dim().slice(), &[2, 2]);
     }
+    /// Verify is_empty returns true when an axis is zero.
     #[test]
     fn test_tensor_is_empty() {
         let t = f_contig_i32(Vec::<i32>::new(), Ix2(0, 3));
         assert!(t.is_empty());
     }
+    /// Verify data_location returns Cpu.
     #[test]
     fn test_tensor_data_location() {
         let t = f_contig_i32(vec![1], Ix2(1, 1));
         assert_eq!(t.data_location(), DataLocation::Cpu);
     }
+    /// Verify storage_kind returns Owned for Owned-backed tensors.
     #[test]
     fn test_tensor_storage_kind_owned() {
         let t = f_contig_i32(vec![1; 4], Ix2(2, 2));
         assert_eq!(t.storage_kind(), StorageKind::Owned);
     }
+    /// Verify access_semantics returns Owned for Owned-backed tensors.
     #[test]
     fn test_tensor_access_semantics_owned() {
         let t = f_contig_i32(vec![1; 4], Ix2(2, 2));
         assert_eq!(t.access_semantics(), AccessSemantics::Owned);
     }
 
-    // ── W8T5 tests ──
 
+    /// Verify layout_state returns FContiguous for F_CONTIGUOUS flags.
     #[test]
     fn test_layout_state_f_contiguous() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
         assert!(t.is_f_contiguous());
         assert_eq!(t.layout_state(), LayoutState::FContiguous);
     }
+    /// Verify layout_state returns NonContiguous for EMPTY flags.
     #[test]
     fn test_layout_state_non_contiguous() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::EMPTY, false, 0);
         assert!(!t.is_f_contiguous());
         assert_eq!(t.layout_state(), LayoutState::NonContiguous);
     }
+    /// Verify is_aligned returns true when the aligned flag is set.
     #[test]
     fn test_flags_aligned() {
         let t = make_owned(
@@ -656,11 +660,13 @@ mod tests {
         );
         assert!(t.is_aligned());
     }
+    /// Verify is_aligned returns false when the aligned flag is not set.
     #[test]
     fn test_not_aligned() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::EMPTY, false, 0);
         assert!(!t.is_aligned());
     }
+    /// Verify has_zero_stride returns true when HAS_ZERO_STRIDE is set.
     #[test]
     fn test_has_zero_stride_set() {
         let t = make_owned(
@@ -672,16 +678,19 @@ mod tests {
         );
         assert!(t.has_zero_stride());
     }
+    /// Verify has_zero_stride returns false for F-contiguous layout.
     #[test]
     fn test_has_zero_stride_clear() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
         assert!(!t.has_zero_stride());
     }
+    /// Verify alias_class returns Unique for F-contiguous Owned tensors.
     #[test]
     fn test_alias_class_unique_owned() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
         assert_eq!(t.alias_class(), AliasClass::Unique);
     }
+    /// Verify alias_class returns BroadcastAlias for zero-stride tensors.
     #[test]
     fn test_alias_class_broadcast() {
         let t = make_owned(
@@ -693,24 +702,28 @@ mod tests {
         );
         assert_eq!(t.alias_class(), AliasClass::BroadcastAlias);
     }
+    /// Verify alias_class returns ViewMutDerived when derived_from_view_mut is true.
     #[test]
     fn test_alias_class_view_mut_derived() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, true, 0);
         assert_eq!(t.alias_class(), AliasClass::ViewMutDerived);
     }
 
-    // ── W8T6 tests ──
 
+    /// Verify as_storage_ptr returns a non-null pointer.
     #[test]
     fn test_as_storage_ptr() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert!(!t.as_storage_ptr().is_null());
     }
+    /// Verify storage_len matches the underlying storage length.
     #[test]
     fn test_storage_len() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert_eq!(t.storage_len(), 4);
     }
+    /// Verify as_ptr returns a non-null pointer equal to as_storage_ptr
+    /// (offset = 0).
     #[test]
     fn test_as_ptr() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
@@ -718,6 +731,8 @@ mod tests {
         assert!(!ptr.is_null());
         assert_eq!(ptr, t.as_storage_ptr());
     }
+    /// Verify as_mut_ptr returns a non-null pointer through which
+    /// element mutation is visible.
     #[test]
     fn test_as_mut_ptr() {
         let mut t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
@@ -728,32 +743,38 @@ mod tests {
         }
         assert_eq!(t.as_slice().expect("F-contiguous")[0], 99);
     }
+    /// Verify as_storage_mut_ptr returns a non-null pointer.
     #[test]
     fn test_as_storage_mut_ptr() {
         let mut t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert!(!t.as_storage_mut_ptr().is_null());
     }
+    /// Verify as_slice returns the expected contiguous data.
     #[test]
     fn test_as_slice() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert_eq!(t.as_slice().expect("F-contiguous"), &[1, 2, 3, 4]);
     }
+    /// Verify as_mut_slice allows in-place mutation visible through as_slice.
     #[test]
     fn test_as_mut_slice() {
         let mut t = f_contig_i32(vec![1, 2, 3], Ix2(1, 3));
         t.as_mut_slice().expect("F-contiguous")[1] = 9;
         assert_eq!(t.as_slice().expect("F-contiguous"), &[1, 9, 3]);
     }
+    /// Verify as_slice returns an empty slice for an empty tensor.
     #[test]
     fn test_as_slice_empty() {
         let t = f_contig_i32(Vec::new(), Ix2(0, 3));
         assert!(t.as_slice().expect("empty").is_empty());
     }
+    /// Verify as_mut_slice returns an empty slice for an empty tensor.
     #[test]
     fn test_as_mut_slice_empty() {
         let mut t = f_contig_i32(Vec::new(), Ix2(0, 3));
         assert!(t.as_mut_slice().expect("empty").is_empty());
     }
+    /// Verify as_slice returns None for non-contiguous layout.
     #[test]
     fn test_as_slice_non_contiguous() {
         let shape = Ix2(2, 2);
@@ -770,8 +791,8 @@ mod tests {
         assert!(t.as_slice().is_none());
     }
 
-    // ── W8T9 tests ──
 
+    /// Verify view shares data with source; mutation visible through both.
     #[test]
     fn test_view_data_shared() {
         let mut t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
@@ -783,12 +804,15 @@ mod tests {
         let v2 = t.view();
         assert_eq!(v2.as_slice().expect("F-contiguous")[0], 99);
     }
+    /// Verify view_mut allows mutable access to the underlying data.
     #[test]
     fn test_view_mut_writable() {
         let mut t = f_contig_i32(vec![1, 2], Ix2(1, 2));
         t.view_mut().as_mut_slice().expect("F-contiguous")[0] = 9;
         assert_eq!(t.as_slice().expect("F-contiguous")[0], 9);
     }
+    /// Verify view() on ViewMut sets derived_from_view_mut and reports
+    /// SharedReadOnly semantics.
     #[test]
     fn test_view_from_view_mut_derived_flag() {
         let mut t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
@@ -800,6 +824,8 @@ mod tests {
             AccessSemantics::SharedReadOnly
         );
     }
+    /// Verify view_mut reborrow does not set derived_from_view_mut and
+    /// reports Writable semantics.
     #[test]
     fn test_view_mut_reborrow_no_flag() {
         let mut t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
@@ -808,6 +834,8 @@ mod tests {
         assert!(!vm2.derived_from_view_mut);
         assert_eq!(vm2.access_semantics(), AccessSemantics::Writable);
     }
+    /// Verify view() on Owned reports ReadOnly and does not set
+    /// derived_from_view_mut.
     #[test]
     fn test_view_from_owned_read_only() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));

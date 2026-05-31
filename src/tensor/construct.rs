@@ -1,4 +1,4 @@
-//! Internal constructors and from_raw_parts (populated by W8T7, W8T8, W22T10).
+//! Internal constructors, validators, and raw-parts entry points.
 
 use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
@@ -9,7 +9,7 @@ use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
 use crate::layout::{LayoutFlags, Strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, StorageOwned, ViewMutRepr, ViewRepr};
 use std::borrow::Cow;
-// ── canonical new_unchecked (07-tensor.md §5.6 L669-730) ──
+// ── new_unchecked ──
 
 impl<S, D> super::TensorBase<S, D>
 where
@@ -40,8 +40,15 @@ where
     }
 }
 
-// ── validate_access_range (07-tensor.md §6.2) ──
+// ── validate_access_range ──
 
+/// Validates that the logical access range defined by shape/strides/offset
+/// fits within the given storage length.
+///
+/// Returns an error for: shape product overflow, stride exceeding
+/// `isize::MAX`, stride span overflow, and out-of-bounds access.
+/// Zero-length tensors are accepted as long as the offset does not exceed
+/// the storage length.
 pub(crate) fn validate_access_range<D: Dimension>(
     shape: &D,
     strides: &Strides<D>,
@@ -144,8 +151,14 @@ pub(crate) fn validate_access_range<D: Dimension>(
     Ok(())
 }
 
-// ── validate_non_overlapping_layout (07-tensor.md §5.7) ──
+// ── validate_non_overlapping_layout ──
 
+/// Validates that a mutable view's layout has no ambiguous element overlap.
+///
+/// Rejects zero-stride axes on non-singleton dimensions (which would
+/// cause multiple logical indices to map to the same memory) and layouts
+/// where different index tuples alias the same storage address. Singleton
+/// dimensions and empty tensors are accepted.
 pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
     shape: &D,
     strides: &Strides<D>,
@@ -337,7 +350,7 @@ where
     }
 }
 
-// ── from_raw_vec_unchecked (W8T8) ──
+// ── from_raw_vec_unchecked ──
 
 impl<A, D> super::TensorBase<Owned<A>, D>
 where
@@ -367,7 +380,7 @@ where
     }
 }
 
-// ── OwnedRawParts (W22T10, 07-tensor.md §5.7) ──
+// ── OwnedRawParts ──
 
 /// Decomposition of an owned tensor into raw pointer + allocator metadata.
 ///
@@ -379,11 +392,8 @@ where
 /// FFI consumers MUST NOT decode this struct from C code. It exists solely
 /// as a Rust-internal round-trip carrier for `into_raw_parts` /
 /// `from_raw_parts_owned`. C-facing interop must use the dedicated
-/// `TensorExportRaw` / `TensorExportMutRaw` types defined in `23-ffi.md §5.3.1`,
-/// which are explicitly designed for stable C ABI.
-///
-/// See `07-tensor.md §5.7` for the authoritative field semantics and the
-/// Owned round-trip contract.
+/// `TensorExportRaw` / `TensorExportMutRaw` types, which are explicitly
+/// designed for a stable C ABI.
 #[expect(
     missing_debug_implementations,
     reason = "OwnedRawParts carries a raw pointer; Debug is misleading"
@@ -466,19 +476,18 @@ where
     /// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator
     ///   metadata (as returned by `into_raw_parts`).
     /// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping
-    ///   canonical F-order layout (enforced by Gate 5).
-    /// - `raw.offset` must be 0 (enforced by Gate 1).
+    ///   canonical F-order layout.
+    /// - `raw.offset` must be 0.
     /// - The caller transfers ownership; do NOT free `raw.ptr` separately.
     ///
     /// # Errors
     ///
     /// Returns `Err(XenonError::InvalidLayout { reason, .. })` when directly
-    /// checkable metadata validation fails. The five gate-specific
-    /// `InvalidLayoutReason` variants are listed above; the unsafe obligation
-    /// remains the memory/pointer guarantees that cannot be checked from
-    /// metadata alone.
+    /// checkable metadata validation fails. The memory/pointer guarantees
+    /// must be upheld by the caller as they cannot be checked from metadata
+    /// alone.
     pub unsafe fn from_raw_parts_owned(raw: OwnedRawParts<A, D>) -> Result<Self> {
-        // Gate 1: offset must be zero for owned raw parts.
+        // offset must be zero for owned raw parts.
         if raw.offset != 0 {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -491,7 +500,7 @@ where
             });
         }
 
-        // Gate 2: shape product must be representable AND equal raw.len.
+        // shape product must be representable AND equal raw.len.
         let expected_len = raw
             .shape
             .checked_size()
@@ -516,7 +525,7 @@ where
             });
         }
 
-        // Gate 3: capacity must cover len.
+        // capacity must cover len.
         if raw.cap < raw.len {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -529,7 +538,7 @@ where
             });
         }
 
-        // Gate 4: align must be a valid power of two and at least align_of::<A>().
+        // align must be a valid power of two and at least align_of::<A>().
         if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -542,7 +551,7 @@ where
             });
         }
 
-        // Gate 5: strides must equal canonical F-order strides.
+        // strides must equal canonical F-order strides.
         let expected_strides = Strides::f_contiguous(&raw.shape)?;
         if raw.strides.as_slice() != expected_strides.as_slice() {
             return Err(XenonError::InvalidLayout {
@@ -572,15 +581,15 @@ where
         };
         let flags = compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
 
-        // SAFETY (new_unchecked, six-input invariant):
-        //   (1) shape was overflow-checked above (Gate 2);
-        //   (2) strides were verified canonical F-order (Gate 5);
-        //   (3) offset == 0 was verified (Gate 1);
+        // SAFETY (new_unchecked invariant):
+        //   (1) shape was overflow-checked above;
+        //   (2) strides were verified canonical F-order;
+        //   (3) offset == 0 was verified;
         //   (4) flags were just produced by compute_layout_flags for the
         //       same shape/strides/logical_ptr;
         //   (5) the logical access range [0, raw.len) lies within storage
-        //       because raw.len == shape.checked_size() (Gate 2) and
-        //       raw.cap >= raw.len (Gate 3);
+        //       because raw.len == shape.checked_size() and
+        //       raw.cap >= raw.len;
         //   (6) derived_from_view_mut: false — from_raw_parts_owned is an
         //       Owned reconstruction, NOT a ViewMut downgrade.
         Ok(unsafe {
@@ -596,6 +605,7 @@ mod tests {
     use crate::layout::Strides;
     use crate::tensor::Tensor;
 
+    /// Validates access range for a 2×2 F-order layout with sufficient storage.
     #[test]
     fn test_validate_access_range_valid() {
         let r = validate_access_range(
@@ -609,6 +619,7 @@ mod tests {
         assert!(r.is_ok());
     }
 
+    /// Access range with storage_len 3 on a 2×2 layout should be rejected.
     #[test]
     fn test_validate_access_range_out_of_bounds() {
         let r = validate_access_range(
@@ -622,6 +633,7 @@ mod tests {
         assert!(r.is_err());
     }
 
+    /// Empty tensor (any axis = 0) with offset 0 should pass validation.
     #[test]
     fn test_validate_access_range_empty_offset_ok() {
         let r = validate_access_range(
@@ -635,24 +647,29 @@ mod tests {
         assert!(r.is_ok());
     }
 
+    /// Dense 2×3 F-order layout should be non-overlapping.
     #[test]
     fn test_validate_non_overlap_dense_prefix_ok() {
         let r = validate_non_overlapping_layout(&Ix2(2, 3), &Strides::new(Ix2(1, 2)), 0, 6);
         assert!(r.is_ok());
     }
 
+    /// Zero-stride axis on a 2×3 layout should be rejected.
     #[test]
     fn test_validate_non_overlap_zero_stride_rejected() {
         let r = validate_non_overlapping_layout(&Ix2(2, 3), &Strides::new(Ix2(0, 1)), 0, 6);
         assert!(r.is_err());
     }
 
+    /// Ambiguous overlap (stride [1, 1] for 2×2) should be rejected.
     #[test]
     fn test_validate_non_overlap_ambiguous_rejected() {
         let r = validate_non_overlapping_layout(&Ix2(2, 2), &Strides::new(Ix2(1, 1)), 0, 4);
         assert!(r.is_err());
     }
 
+    /// `from_raw_vec_unchecked` with 4-element vec and shape [2, 2]
+    /// produces a valid F-contiguous tensor.
     #[test]
     fn test_from_raw_vec_unchecked_valid() {
         let tensor = unsafe {
@@ -662,6 +679,8 @@ mod tests {
         assert!(tensor.is_f_contiguous());
     }
 
+    /// `from_raw_vec_unchecked` with empty vec and shape [0, 3]
+    /// produces an empty F-contiguous tensor.
     #[test]
     fn test_from_raw_vec_unchecked_empty() {
         let tensor = unsafe {
@@ -671,6 +690,7 @@ mod tests {
         assert!(tensor.is_f_contiguous());
     }
 
+    /// `from_raw_vec_unchecked` with a 0-dimensional shape should succeed.
     #[test]
     fn test_from_raw_vec_unchecked_zero_dim() {
         let tensor = unsafe { super::super::TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
@@ -678,10 +698,10 @@ mod tests {
         assert_eq!(tensor.len(), 1);
     }
 
-    // ── W22T10: OwnedRawParts round-trip tests ──
+    // ── OwnedRawParts round-trip tests ──
 
-    /// §8.2 test_from_raw_parts_roundtrip — into_raw_parts → from_raw_parts_owned
-    /// round-trip preserves shape / strides / offset / element contents.
+    /// `into_raw_parts` → `from_raw_parts_owned` round-trip preserves shape,
+    /// strides, offset, and element contents.
     #[test]
     fn test_into_raw_parts_roundtrip_2d() {
         let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])

@@ -1,6 +1,5 @@
 //! Tensor core: `TensorBase<S, D>`, type aliases, query methods, and
-//! raw-parts construction. See `07-tensor.md §3` for the file layout
-//! rationale.
+//! raw-parts construction.
 //!
 //! Sub-module ownership:
 //! - `impls`     — query methods, view/view_mut, semantics dispatch
@@ -55,15 +54,16 @@ where
     D: crate::dimension::Dimension,
 {
     /// Opaque storage handle. Private to the type; exposed through query API.
-    // SAFETY INVARIANT: the six fields below together establish the tensor
-    // layout contract described in `07-tensor.md §5`. Direct field mutation
-    // (possible via `pub(crate)` visibility) can violate the shape/strides/
-    // offset/flags mutual-consistency invariant OR the provenance invariant
-    // encoded by `derived_from_view_mut`. ANY constructor path within the
-    // crate MUST route through `construct::new_unchecked` (or one of the
+    // SAFETY INVARIANT: the six fields below together encode the tensor
+    // layout contract. Direct field mutation (possible via `pub(crate)`
+    // visibility) can violate the shape/strides/offset/flags mutual-
+    // consistency invariant OR the provenance invariant encoded by
+    // `derived_from_view_mut`. ANY constructor path within the crate
+    // MUST route through `construct::new_unchecked` (or one of the
     // validated public constructors) which is the single internal entry
     // point for tensor metadata assembly. Tests may construct directly
-    // because their invariants are locally obvious; production code MUST NOT.
+    // because their invariants are locally obvious; production code
+    // MUST NOT.
     pub(crate) storage: S,
     pub(crate) shape: D,
     pub(crate) strides: crate::layout::Strides<D>,
@@ -90,8 +90,6 @@ pub use impls::AliasClass;
 pub use impls::StorageSemantics;
 pub use impls::{AccessSemantics, DataLocation, StorageKind};
 
-// Re-exports are added incrementally by downstream tasks; see W8T2..W8T9.
-
 #[cfg(test)]
 mod tests {
     use super::TensorBase;
@@ -100,18 +98,16 @@ mod tests {
     use crate::storage::Owned;
 
     /// Verify the tensor module skeleton compiles and all three sub-modules
-    /// are reachable. If the placeholder `.rs` files in Step 1 are missing,
-    /// the outer `mod impls;` / `mod aliases;` / `mod construct;` declarations
-    /// fail at `cargo check`, and this test will never even be invoked.
+    /// (`impls`, `aliases`, `construct`) are reachable.
     #[test]
     fn test_module_skeleton_compile() {
-        // Reaching this point means: (a) all three sub-module files exist,
-        // (b) `src/tensor/mod.rs` parses, (c) the crate compiled. The
-        // behavioural tests for query/view methods are added in W8T4+ once
-        // the underlying APIs exist.
+        // Reaching this point confirms: (a) all three sub-module files
+        // exist, (b) `src/tensor/mod.rs` parses, (c) the crate compiled.
         assert_ne!(0, 1);
     }
 
+    /// Verify `TensorBase` struct fields hold the values assigned to them
+    /// after direct construction.
     #[test]
     fn test_tensorbase_struct_fields() {
         let data = vec![0.0_f64, 1.0, 2.0, 3.0, 4.0, 5.0];
