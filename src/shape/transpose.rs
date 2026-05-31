@@ -20,14 +20,23 @@ where
         .expect("rank-preserving stride reverse cannot change slice length");
 
     // Recompute layout flags.
-    let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, tensor.as_ptr());
+    let new_flags = compute_layout_flags::<A, D>(
+        &new_shape,
+        &new_strides,
+        tensor.as_ptr()
+    );
 
     // Build a ViewRepr borrowing the source storage.
     // SAFETY: as_storage_ptr() is a non-null aligned base pointer of
     // already-validated live storage. storage_len() is the correct extent.
     // Result lifetime is bound to &tensor.
     let view_storage: ViewRepr<'_, A> =
-        unsafe { ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len()) };
+        unsafe {
+            ViewRepr::from_raw_parts(
+                tensor.as_storage_ptr(),
+                tensor.storage_len()
+            )
+        };
 
     // Assemble the result via TensorBase::new_unchecked.
     // SAFETY: new_shape + new_strides + offset form a bijective reversal
