@@ -288,6 +288,29 @@ where
     pub fn has_zero_stride(&self) -> bool {
         self.flags.has_zero_stride()
     }
+
+    /// Canonical unchecked tensor metadata assembly.
+    ///
+    /// # Safety
+    /// Caller must guarantee shape/strides/offset/flags mutual consistency,
+    /// validated access range, and correct `derived_from_view_mut`.
+    pub(crate) unsafe fn new_unchecked(
+        storage: S,
+        shape: D,
+        strides: Strides<D>,
+        offset: usize,
+        flags: LayoutFlags,
+        derived_from_view_mut: bool,
+    ) -> Self {
+        Self {
+            storage,
+            shape,
+            strides,
+            offset,
+            flags,
+            derived_from_view_mut,
+        }
+    }
 }
 
 impl<S, D> TensorBase<S, D>
@@ -549,36 +572,6 @@ where
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// ── new_unchecked ──
-
-impl<S, D> TensorBase<S, D>
-where
-    S: RawStorage,
-    D: Dimension,
-{
-    /// Canonical unchecked tensor metadata assembly.
-    ///
-    /// # Safety
-    /// Caller must guarantee shape/strides/offset/flags mutual consistency,
-    /// validated access range, and correct `derived_from_view_mut`.
-    pub(crate) unsafe fn new_unchecked(
-        storage: S,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-        flags: LayoutFlags,
-        derived_from_view_mut: bool,
-    ) -> Self {
-        Self {
-            storage,
-            shape,
-            strides,
-            offset,
-            flags,
-            derived_from_view_mut,
-        }
-    }
-}
 
 // ── from_raw_parts (immutable view) ──
 
