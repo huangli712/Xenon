@@ -7,7 +7,7 @@ use core::ptr::NonNull;
 use std::borrow::Cow;
 
 use super::TensorBase;
-use super::{OwnedRawParts, DataLocation, StorageKind, AccessSemantics};
+use super::{OwnedRawParts, DataLocation, StorageKind, AccessSemantics, AliasClass};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
@@ -312,25 +312,6 @@ where
     }
 }
 
-// ── AliasClass enum + alias_class() ──
-
-/// Precise alias classification returned by [`TensorBase::alias_class`].
-///
-/// Unlike [`AccessSemantics::SharedReadOnly`] which merges three semantically
-/// distinct categories, `AliasClass` splits them so callers can pattern-match
-/// on alias origin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AliasClass {
-    /// No aliases: source is Owned or exclusive ViewMut.
-    Unique,
-    /// Arc shared ownership: multiple `ArcTensor` instances share a `SharedBuf`.
-    ArcShared,
-    /// Broadcast zero-stride alias: same physical element accessed by multiple
-    /// logical indices.
-    BroadcastAlias,
-    /// Read-only view demoted from ViewMut (`derived_from_view_mut == true`).
-    ViewMutDerived,
-}
 
 // ── view() / view_mut() ──
 //
@@ -768,30 +749,6 @@ mod tests {
     fn test_has_zero_stride_clear() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
         assert!(!t.has_zero_stride());
-    }
-    /// Verify alias_class returns Unique for F-contiguous Owned tensors.
-    #[test]
-    fn test_alias_class_unique_owned() {
-        let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
-        assert_eq!(t.alias_class(), AliasClass::Unique);
-    }
-    /// Verify alias_class returns BroadcastAlias for zero-stride tensors.
-    #[test]
-    fn test_alias_class_broadcast() {
-        let t = make_owned(
-            Ix2(2, 3),
-            vec![0.0; 6],
-            LayoutFlags::HAS_ZERO_STRIDE,
-            false,
-            0,
-        );
-        assert_eq!(t.alias_class(), AliasClass::BroadcastAlias);
-    }
-    /// Verify alias_class returns ViewMutDerived when derived_from_view_mut is true.
-    #[test]
-    fn test_alias_class_view_mut_derived() {
-        let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, true, 0);
-        assert_eq!(t.alias_class(), AliasClass::ViewMutDerived);
     }
 
 
