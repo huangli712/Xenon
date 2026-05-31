@@ -217,4 +217,27 @@ mod tests {
         assert_eq!(x.transpose().transpose().shape(), x.shape());
         assert_eq!(x.transpose().transpose().strides(), x.strides());
     }
+
+    /// Transpose preserves the offset of a sliced view.
+    #[test]
+    fn test_transpose_slice_offset_preserved() {
+        use crate::index::slice::{SliceInfo, SliceInfoElem, SliceInfoIndices};
+        // SAFETY: 9 elements match shape Ix2(3, 3).
+        let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6, 7, 8, 9], Ix2(3, 3)) };
+        let indices = SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Range { start: 1, end: 3 },
+            SliceInfoElem::Range { start: 1, end: 3 },
+        ]);
+        let info = SliceInfo::new(indices, Ix2(3, 3), Ix2(2, 2)).unwrap();
+        let sliced = x.slice(info).expect("valid slice");
+        assert_ne!(sliced.offset(), 0);
+
+        let transposed = sliced.transpose();
+        assert_eq!(transposed.offset(), sliced.offset());
+        // Verify element at (0, 1) of transposed = original (2, 1).
+        // SAFETY: indices within transposed bounds [2, 2].
+        unsafe {
+            assert_eq!(*read_at(&transposed, &[0, 1]), *read_at(&sliced, &[1, 0]));
+        }
+    }
 }
