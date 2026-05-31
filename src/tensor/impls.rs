@@ -403,6 +403,28 @@ where
     }
 }
 
+// ── Semantic dispatch (storage_kind / access_semantics / alias_class) ──
+
+impl<S, D> TensorBase<S, D>
+where
+    S: StorageSemantics,
+    D: Dimension,
+{
+    /// Returns the storage-representation [`StorageKind`] of this tensor.
+    pub fn storage_kind(&self) -> StorageKind {
+        S::KIND
+    }
+
+    /// Returns the [`AccessSemantics`] of this tensor.
+    pub fn access_semantics(&self) -> AccessSemantics {
+        S::access_semantics(self.flags, self.derived_from_view_mut)
+    }
+
+    /// Returns the precise [`AliasClass`] for this tensor.
+    pub fn alias_class(&self) -> AliasClass {
+        S::alias_class(self.flags, self.derived_from_view_mut)
+    }
+}
 
 // ── view() / view_mut() ──
 //
@@ -835,29 +857,6 @@ where
             flags,
             derived_from_view_mut: false,
         })
-    }
-}
-
-// ── Semantic dispatch (storage_kind / access_semantics / alias_class) ──
-
-impl<S, D> TensorBase<S, D>
-where
-    S: StorageSemantics,
-    D: Dimension,
-{
-    /// Returns the storage-representation [`StorageKind`] of this tensor.
-    pub fn storage_kind(&self) -> StorageKind {
-        S::KIND
-    }
-
-    /// Returns the [`AccessSemantics`] of this tensor.
-    pub fn access_semantics(&self) -> AccessSemantics {
-        S::access_semantics(self.flags, self.derived_from_view_mut)
-    }
-
-    /// Returns the precise [`AliasClass`] for this tensor.
-    pub fn alias_class(&self) -> AliasClass {
-        S::alias_class(self.flags, self.derived_from_view_mut)
     }
 }
 
