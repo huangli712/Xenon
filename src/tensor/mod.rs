@@ -32,6 +32,6 @@ pub use aliases::*;
 pub use types::OwnedRawParts;
 pub use impls::AliasClass;
 pub use impls::StorageSemantics;
-pub use impls::{AccessSemantics, StorageKind};
-pub use types::DataLocation;
+pub use impls::AccessSemantics;
+pub use types::{DataLocation, StorageKind};
 pub use types::TensorBase;

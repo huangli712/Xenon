@@ -109,11 +109,29 @@ pub enum DataLocation {
     Cpu,
 }
 
+// ── StorageKind ──
+
+/// Storage-representation classification returned by [`TensorBase::storage_kind`].
+///
+/// Reports the underlying storage *representation type*, not high-level access
+/// semantics. See [`AccessSemantics`] for the caller-facing access model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind {
+    /// Owned storage (`Owned<A>`).
+    Owned,
+    /// Immutable borrowed view (`ViewRepr<'a, A>`).
+    View,
+    /// Mutable borrowed view (`ViewMutRepr<'a, A>`).
+    ViewMut,
+    /// Reference-counted shared storage (`ArcRepr<A>`).
+    Shared,
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::TensorBase;
-    use super::DataLocation;
+    use super::{DataLocation, StorageKind};
     use crate::dimension::Ix2;
     use crate::layout::{LayoutFlags, Strides};
     use crate::storage::Owned;
@@ -168,5 +186,23 @@ mod tests {
             derived_from_view_mut: false,
         };
         assert_eq!(t.data_location(), DataLocation::Cpu);
+    }
+
+    /// Verify storage_kind returns Owned for Owned-backed tensors.
+    #[test]
+    fn test_tensor_storage_kind_owned() {
+        let shape = Ix2(1, 1);
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
+        let storage = Owned::from_vec(vec![1_i32; 1]).expect("valid vec");
+
+        let t = TensorBase {
+            storage,
+            shape,
+            strides,
+            offset: 0,
+            flags: LayoutFlags::F_CONTIGUOUS,
+            derived_from_view_mut: false,
+        };
+        assert_eq!(t.storage_kind(), StorageKind::Owned);
     }
 }

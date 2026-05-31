@@ -7,7 +7,7 @@ use core::ptr::NonNull;
 use std::borrow::Cow;
 
 use super::TensorBase;
-use super::{OwnedRawParts, DataLocation};
+use super::{OwnedRawParts, DataLocation, StorageKind};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
@@ -19,21 +19,6 @@ use crate::storage::{Storage, StorageMut};
 // ── Semantic query enums ──
 
 
-/// Storage-representation classification returned by [`TensorBase::storage_kind`].
-///
-/// Reports the underlying storage *representation type*, not high-level access
-/// semantics. See [`AccessSemantics`] for the caller-facing access model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageKind {
-    /// Owned storage (`Owned<A>`).
-    Owned,
-    /// Immutable borrowed view (`ViewRepr<'a, A>`).
-    View,
-    /// Mutable borrowed view (`ViewMutRepr<'a, A>`).
-    ViewMut,
-    /// Reference-counted shared storage (`ArcRepr<A>`).
-    Shared,
-}
 
 /// Access semantics returned by [`TensorBase::access_semantics`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -744,12 +729,6 @@ mod tests {
     fn test_tensor_is_empty() {
         let t = f_contig_i32(Vec::<i32>::new(), Ix2(0, 3));
         assert!(t.is_empty());
-    }
-    /// Verify storage_kind returns Owned for Owned-backed tensors.
-    #[test]
-    fn test_tensor_storage_kind_owned() {
-        let t = f_contig_i32(vec![1; 4], Ix2(2, 2));
-        assert_eq!(t.storage_kind(), StorageKind::Owned);
     }
     /// Verify access_semantics returns Owned for Owned-backed tensors.
     #[test]
