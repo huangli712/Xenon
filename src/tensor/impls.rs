@@ -7,7 +7,7 @@ use core::ptr::NonNull;
 use std::borrow::Cow;
 
 use super::TensorBase;
-use super::{OwnedRawParts, DataLocation, StorageKind};
+use super::{OwnedRawParts, DataLocation, StorageKind, AccessSemantics};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
@@ -19,19 +19,6 @@ use crate::storage::{Storage, StorageMut};
 // ── Semantic query enums ──
 
 
-
-/// Access semantics returned by [`TensorBase::access_semantics`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessSemantics {
-    /// Plain non-broadcast read-only view.
-    ReadOnly,
-    /// Arc shared / broadcast / ViewMut-demoted view.
-    SharedReadOnly,
-    /// Exclusive mutable view.
-    Writable,
-    /// Owned storage.
-    Owned,
-}
 
 // ── Basic query methods ──
 
@@ -729,12 +716,6 @@ mod tests {
     fn test_tensor_is_empty() {
         let t = f_contig_i32(Vec::<i32>::new(), Ix2(0, 3));
         assert!(t.is_empty());
-    }
-    /// Verify access_semantics returns Owned for Owned-backed tensors.
-    #[test]
-    fn test_tensor_access_semantics_owned() {
-        let t = f_contig_i32(vec![1; 4], Ix2(2, 2));
-        assert_eq!(t.access_semantics(), AccessSemantics::Owned);
     }
 
 

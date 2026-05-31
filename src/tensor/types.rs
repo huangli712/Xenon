@@ -109,6 +109,21 @@ pub enum DataLocation {
     Cpu,
 }
 
+// ── AccessSemantics ──
+
+/// Access semantics returned by [`TensorBase::access_semantics`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessSemantics {
+    /// Plain non-broadcast read-only view.
+    ReadOnly,
+    /// Arc shared / broadcast / ViewMut-demoted view.
+    SharedReadOnly,
+    /// Exclusive mutable view.
+    Writable,
+    /// Owned storage.
+    Owned,
+}
+
 // ── StorageKind ──
 
 /// Storage-representation classification returned by [`TensorBase::storage_kind`].
@@ -131,7 +146,7 @@ pub enum StorageKind {
 #[cfg(test)]
 mod tests {
     use super::TensorBase;
-    use super::{DataLocation, StorageKind};
+    use super::{DataLocation, StorageKind, AccessSemantics};
     use crate::dimension::Ix2;
     use crate::layout::{LayoutFlags, Strides};
     use crate::storage::Owned;
@@ -204,5 +219,23 @@ mod tests {
             derived_from_view_mut: false,
         };
         assert_eq!(t.storage_kind(), StorageKind::Owned);
+    }
+
+    /// Verify access_semantics returns Owned for Owned-backed tensors.
+    #[test]
+    fn test_tensor_access_semantics_owned() {
+        let shape = Ix2(1, 1);
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
+        let storage = Owned::from_vec(vec![1_i32; 1]).expect("valid vec");
+
+        let t = TensorBase {
+            storage,
+            shape,
+            strides,
+            offset: 0,
+            flags: LayoutFlags::F_CONTIGUOUS,
+            derived_from_view_mut: false,
+        };
+        assert_eq!(t.access_semantics(), AccessSemantics::Owned);
     }
 }
