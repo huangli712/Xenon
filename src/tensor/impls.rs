@@ -16,9 +16,204 @@ use crate::layout::{LayoutFlags, Strides, compute_layout_flags};
 use crate::storage::{ArcRepr, Owned, RawStorage, StorageOwned, ViewMutRepr, ViewRepr};
 use crate::storage::{Storage, StorageMut};
 
-// ── Semantic query enums ──
+// ── validate_access_range ──
 
+/// Validates that the logical access range defined by shape/strides/offset
+/// fits within the given storage length.
+///
+/// Returns an error for: shape product overflow, stride exceeding
+/// `isize::MAX`, stride span overflow, and out-of-bounds access.
+/// Zero-length tensors are accepted as long as the offset does not exceed
+/// the storage length.
+pub(crate) fn validate_access_range<D: Dimension>(
+    shape: &D,
+    strides: &Strides<D>,
+    offset: usize,
+    storage_len: usize,
+    op_name: &'static str,
+    kind: StorageKindTag,
+) -> Result<()> {
+    let len = match shape.checked_size() {
+        Ok(l) => l,
+        Err(_) => {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::ShapeProductOverflow,
+            });
+        },
+    };
 
+    if len == 0 {
+        if offset > storage_len {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::EmptyTensorOffsetExceedsStorage,
+            });
+        }
+        return Ok(());
+    }
+
+    for &stride in strides.as_slice() {
+        if stride > isize::MAX as usize {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::StrideExceedsIsizeMax,
+            });
+        }
+    }
+
+    let mut max_offset = offset;
+    for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
+        if dim == 0 {
+            continue;
+        }
+        let span = match (dim - 1).checked_mul(stride) {
+            Some(s) => s,
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed(op_name),
+                    storage_kind: kind,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::StrideSpanOverflow,
+                });
+            },
+        };
+        max_offset = match max_offset.checked_add(span) {
+            Some(m) => m,
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed(op_name),
+                    storage_kind: kind,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::AccessRangeOverflow,
+                });
+            },
+        };
+    }
+
+    if max_offset >= storage_len {
+        return Err(XenonError::InvalidLayout {
+            operation: Cow::Borrowed(op_name),
+            storage_kind: kind,
+            shape: shape.slice().to_vec(),
+            strides: strides.as_slice().to_vec(),
+            offset,
+            storage_len,
+            reason: InvalidLayoutReason::AccessRangeExceedsStorage,
+        });
+    }
+
+    Ok(())
+}
+
+// ── validate_non_overlapping_layout ──
+
+/// Validates that a mutable view's layout has no ambiguous element overlap.
+///
+/// Rejects zero-stride axes on non-singleton dimensions (which would
+/// cause multiple logical indices to map to the same memory) and layouts
+/// where different index tuples alias the same storage address. Singleton
+/// dimensions and empty tensors are accepted.
+pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
+    shape: &D,
+    strides: &Strides<D>,
+    offset: usize,
+    storage_len: usize,
+) -> Result<()> {
+    let len = shape.checked_size().unwrap_or(0);
+    if len <= 1 {
+        return Ok(());
+    }
+
+    for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
+        if dim > 1 && stride == 0 {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
+                storage_kind: StorageKindTag::ViewMut,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::ZeroStrideRejectedForViewMut,
+            });
+        }
+    }
+
+    let mut axes: Vec<(usize, usize)> = shape
+        .slice()
+        .iter()
+        .zip(strides.as_slice())
+        .filter(|(dim, _)| **dim > 1)
+        .map(|(&dim, &stride)| (dim, stride))
+        .collect();
+    axes.sort_by_key(|&(_, stride)| stride);
+
+    let mut covered_max_offset: usize = 0;
+    for (dim, stride) in axes {
+        if stride <= covered_max_offset {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
+                storage_kind: StorageKindTag::ViewMut,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::AmbiguousOverlap,
+            });
+        }
+        let span = match (dim - 1).checked_mul(stride) {
+            Some(s) => s,
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
+                    storage_kind: StorageKindTag::ViewMut,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::StrideSpanOverflow,
+                });
+            },
+        };
+        covered_max_offset = match covered_max_offset.checked_add(span) {
+            Some(m) => m,
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
+                    storage_kind: StorageKindTag::ViewMut,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::StrideSpanOverflow,
+                });
+            },
+        };
+    }
+
+    Ok(())
+}
 
 // ── Basic query methods ──
 
@@ -391,205 +586,6 @@ where
             derived_from_view_mut,
         }
     }
-}
-
-// ── validate_access_range ──
-
-/// Validates that the logical access range defined by shape/strides/offset
-/// fits within the given storage length.
-///
-/// Returns an error for: shape product overflow, stride exceeding
-/// `isize::MAX`, stride span overflow, and out-of-bounds access.
-/// Zero-length tensors are accepted as long as the offset does not exceed
-/// the storage length.
-pub(crate) fn validate_access_range<D: Dimension>(
-    shape: &D,
-    strides: &Strides<D>,
-    offset: usize,
-    storage_len: usize,
-    op_name: &'static str,
-    kind: StorageKindTag,
-) -> Result<()> {
-    let len = match shape.checked_size() {
-        Ok(l) => l,
-        Err(_) => {
-            return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed(op_name),
-                storage_kind: kind,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::ShapeProductOverflow,
-            });
-        },
-    };
-
-    if len == 0 {
-        if offset > storage_len {
-            return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed(op_name),
-                storage_kind: kind,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::EmptyTensorOffsetExceedsStorage,
-            });
-        }
-        return Ok(());
-    }
-
-    for &stride in strides.as_slice() {
-        if stride > isize::MAX as usize {
-            return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed(op_name),
-                storage_kind: kind,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::StrideExceedsIsizeMax,
-            });
-        }
-    }
-
-    let mut max_offset = offset;
-    for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
-        if dim == 0 {
-            continue;
-        }
-        let span = match (dim - 1).checked_mul(stride) {
-            Some(s) => s,
-            None => {
-                return Err(XenonError::InvalidLayout {
-                    operation: Cow::Borrowed(op_name),
-                    storage_kind: kind,
-                    shape: shape.slice().to_vec(),
-                    strides: strides.as_slice().to_vec(),
-                    offset,
-                    storage_len,
-                    reason: InvalidLayoutReason::StrideSpanOverflow,
-                });
-            },
-        };
-        max_offset = match max_offset.checked_add(span) {
-            Some(m) => m,
-            None => {
-                return Err(XenonError::InvalidLayout {
-                    operation: Cow::Borrowed(op_name),
-                    storage_kind: kind,
-                    shape: shape.slice().to_vec(),
-                    strides: strides.as_slice().to_vec(),
-                    offset,
-                    storage_len,
-                    reason: InvalidLayoutReason::AccessRangeOverflow,
-                });
-            },
-        };
-    }
-
-    if max_offset >= storage_len {
-        return Err(XenonError::InvalidLayout {
-            operation: Cow::Borrowed(op_name),
-            storage_kind: kind,
-            shape: shape.slice().to_vec(),
-            strides: strides.as_slice().to_vec(),
-            offset,
-            storage_len,
-            reason: InvalidLayoutReason::AccessRangeExceedsStorage,
-        });
-    }
-
-    Ok(())
-}
-
-// ── validate_non_overlapping_layout ──
-
-/// Validates that a mutable view's layout has no ambiguous element overlap.
-///
-/// Rejects zero-stride axes on non-singleton dimensions (which would
-/// cause multiple logical indices to map to the same memory) and layouts
-/// where different index tuples alias the same storage address. Singleton
-/// dimensions and empty tensors are accepted.
-pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
-    shape: &D,
-    strides: &Strides<D>,
-    offset: usize,
-    storage_len: usize,
-) -> Result<()> {
-    let len = shape.checked_size().unwrap_or(0);
-    if len <= 1 {
-        return Ok(());
-    }
-
-    for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
-        if dim > 1 && stride == 0 {
-            return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
-                storage_kind: StorageKindTag::ViewMut,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::ZeroStrideRejectedForViewMut,
-            });
-        }
-    }
-
-    let mut axes: Vec<(usize, usize)> = shape
-        .slice()
-        .iter()
-        .zip(strides.as_slice())
-        .filter(|(dim, _)| **dim > 1)
-        .map(|(&dim, &stride)| (dim, stride))
-        .collect();
-    axes.sort_by_key(|&(_, stride)| stride);
-
-    let mut covered_max_offset: usize = 0;
-    for (dim, stride) in axes {
-        if stride <= covered_max_offset {
-            return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
-                storage_kind: StorageKindTag::ViewMut,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::AmbiguousOverlap,
-            });
-        }
-        let span = match (dim - 1).checked_mul(stride) {
-            Some(s) => s,
-            None => {
-                return Err(XenonError::InvalidLayout {
-                    operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
-                    storage_kind: StorageKindTag::ViewMut,
-                    shape: shape.slice().to_vec(),
-                    strides: strides.as_slice().to_vec(),
-                    offset,
-                    storage_len,
-                    reason: InvalidLayoutReason::StrideSpanOverflow,
-                });
-            },
-        };
-        covered_max_offset = match covered_max_offset.checked_add(span) {
-            Some(m) => m,
-            None => {
-                return Err(XenonError::InvalidLayout {
-                    operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
-                    storage_kind: StorageKindTag::ViewMut,
-                    shape: shape.slice().to_vec(),
-                    strides: strides.as_slice().to_vec(),
-                    offset,
-                    storage_len,
-                    reason: InvalidLayoutReason::StrideSpanOverflow,
-                });
-            },
-        };
-    }
-
-    Ok(())
 }
 
 // ── from_raw_parts (immutable view) ──
