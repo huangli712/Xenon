@@ -7,7 +7,7 @@ use core::ptr::NonNull;
 use std::borrow::Cow;
 
 use super::TensorBase;
-use super::{OwnedRawParts, DataLocation, StorageKind, AccessSemantics, AliasClass};
+use super::{OwnedRawParts, DataLocation};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
@@ -114,125 +114,6 @@ where
     }
 }
 
-// ── Dispatched storage_kind / access_semantics / alias_class ──
-//
-// Uses a sealed `StorageSemantics` trait to provide generic dispatch across
-// all four concrete storage representations, so code generic over
-// `S: RawStorage + StorageSemantics` can query storage kind, access
-// semantics, and alias class without knowing the concrete `S`.
-//
-// Prior design used per‑type inherent impls (Owned / ViewRepr /
-// ViewMutRepr / ArcRepr). That approach locked every new storage type
-// into 3 extra impl blocks and made generic functions unable to call
-// these methods. This trait‑based design eliminates both issues.
-
-/// Sealed helper trait for callers writing generic helpers over
-/// `TensorBase<S, D>`.
-///
-/// This trait is intentionally public so downstream code can name the bound
-/// required by [`TensorBase::storage_kind`], [`TensorBase::access_semantics`],
-/// and [`TensorBase::alias_class`] on generic `S`. It remains sealed because
-/// [`RawStorage`] is sealed, so external crates cannot implement it for custom
-/// storage types.
-pub trait StorageSemantics: RawStorage {
-    /// The [`StorageKind`] for this storage representation.
-    const KIND: StorageKind;
-
-    /// Compute [`AccessSemantics`] for the given layout flags and provenance
-    /// state (the `derived_from_view_mut` flag on `TensorBase`).
-    fn access_semantics(
-        flags: crate::layout::LayoutFlags,
-        derived_from_view_mut: bool,
-    ) -> AccessSemantics;
-
-    /// Compute [`AliasClass`] for the given layout flags and provenance state.
-    fn alias_class(flags: crate::layout::LayoutFlags, derived_from_view_mut: bool) -> AliasClass;
-}
-
-// ── Implementations for the four sealed storage types ──
-
-impl<A> StorageSemantics for Owned<A> {
-    const KIND: StorageKind = StorageKind::Owned;
-    fn access_semantics(_: crate::layout::LayoutFlags, _: bool) -> AccessSemantics {
-        AccessSemantics::Owned
-    }
-    fn alias_class(flags: crate::layout::LayoutFlags, derived: bool) -> AliasClass {
-        if flags.has_zero_stride() {
-            AliasClass::BroadcastAlias
-        } else if derived {
-            AliasClass::ViewMutDerived
-        } else {
-            AliasClass::Unique
-        }
-    }
-}
-
-impl<A> StorageSemantics for ViewRepr<'_, A> {
-    const KIND: StorageKind = StorageKind::View;
-    fn access_semantics(flags: crate::layout::LayoutFlags, derived: bool) -> AccessSemantics {
-        if flags.has_zero_stride() || derived {
-            AccessSemantics::SharedReadOnly
-        } else {
-            AccessSemantics::ReadOnly
-        }
-    }
-    fn alias_class(flags: crate::layout::LayoutFlags, derived: bool) -> AliasClass {
-        if flags.has_zero_stride() {
-            AliasClass::BroadcastAlias
-        } else if derived {
-            AliasClass::ViewMutDerived
-        } else {
-            AliasClass::Unique
-        }
-    }
-}
-
-impl<A> StorageSemantics for ViewMutRepr<'_, A> {
-    const KIND: StorageKind = StorageKind::ViewMut;
-    fn access_semantics(_: crate::layout::LayoutFlags, _: bool) -> AccessSemantics {
-        AccessSemantics::Writable
-    }
-    fn alias_class(flags: crate::layout::LayoutFlags, _: bool) -> AliasClass {
-        if flags.has_zero_stride() {
-            AliasClass::BroadcastAlias
-        } else {
-            AliasClass::Unique
-        }
-    }
-}
-
-impl<A: Element> StorageSemantics for ArcRepr<A> {
-    const KIND: StorageKind = StorageKind::Shared;
-    fn access_semantics(_: crate::layout::LayoutFlags, _: bool) -> AccessSemantics {
-        AccessSemantics::SharedReadOnly
-    }
-    fn alias_class(_: crate::layout::LayoutFlags, _: bool) -> AliasClass {
-        AliasClass::ArcShared
-    }
-}
-
-// ── Generic dispatch methods ──
-
-impl<S, D> TensorBase<S, D>
-where
-    S: StorageSemantics,
-    D: crate::dimension::Dimension,
-{
-    /// Returns the storage-representation [`StorageKind`] of this tensor.
-    pub fn storage_kind(&self) -> StorageKind {
-        S::KIND
-    }
-
-    /// Returns the [`AccessSemantics`] of this tensor.
-    pub fn access_semantics(&self) -> AccessSemantics {
-        S::access_semantics(self.flags, self.derived_from_view_mut)
-    }
-
-    /// Returns the precise [`AliasClass`] for this tensor.
-    pub fn alias_class(&self) -> AliasClass {
-        S::alias_class(self.flags, self.derived_from_view_mut)
-    }
-}
 
 // ── Pointer access & slice ──
 
@@ -617,6 +498,7 @@ mod tests {
     use crate::dimension::{Dimension, Ix0, Ix1, Ix2};
     use crate::layout::{LayoutFlags, LayoutState, Strides};
     use crate::storage::Owned;
+    use crate::tensor::AccessSemantics;
     use crate::tensor::Tensor;
 
     fn make_owned(

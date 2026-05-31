@@ -30,6 +30,6 @@ mod types;
 
 pub use aliases::*;
 pub use types::OwnedRawParts;
-pub use impls::StorageSemantics;
+pub use types::StorageSemantics;
 pub use types::{DataLocation, StorageKind, AccessSemantics, AliasClass};
 pub use types::TensorBase;
