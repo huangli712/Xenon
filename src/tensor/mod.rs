@@ -23,13 +23,13 @@
 //! `new_unchecked` constructor and the public raw-parts entry points exposed
 //! as `TensorBase`'s `from_raw_parts` and `from_raw_parts_mut`.
 
+mod types;
+mod traits;
 mod aliases;
 mod impls;
-mod traits;
-mod types;
 
-pub use aliases::*;
-pub use types::OwnedRawParts;
-pub use traits::StorageSemantics;
-pub use types::{DataLocation, StorageKind, AccessSemantics, AliasClass};
 pub use types::TensorBase;
+pub use types::OwnedRawParts;
+pub use types::{DataLocation, StorageKind, AccessSemantics, AliasClass};
+pub use traits::StorageSemantics;
+pub use aliases::*;
