@@ -89,3 +89,4 @@ impl<A: Element> StorageSemantics for ArcRepr<A> {
         AliasClass::ArcShared
     }
 }
+
