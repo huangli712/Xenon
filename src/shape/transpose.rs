@@ -78,6 +78,7 @@ mod tests {
     use crate::element::Element;
     use crate::layout::LayoutState;
     use crate::storage::{Owned, Storage};
+    use crate::index::slice::{SliceInfo, SliceInfoElem, SliceInfoIndices};
     use crate::tensor::{StorageKind, TensorBase};
 
     /// Construct a tensor using the internal fast path.
@@ -221,7 +222,6 @@ mod tests {
     /// Transpose preserves the offset of a sliced view.
     #[test]
     fn test_transpose_slice_offset_preserved() {
-        use crate::index::slice::{SliceInfo, SliceInfoElem, SliceInfoIndices};
         // SAFETY: 9 elements match shape Ix2(3, 3).
         let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6, 7, 8, 9], Ix2(3, 3)) };
         let indices = SliceInfoIndices::from_vec(vec![
