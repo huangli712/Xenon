@@ -7,7 +7,7 @@ use core::ptr::NonNull;
 use std::borrow::Cow;
 
 use super::TensorBase;
-use super::OwnedRawParts;
+use super::{OwnedRawParts, DataLocation};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
@@ -18,14 +18,6 @@ use crate::storage::{Storage, StorageMut};
 
 // ── Semantic query enums ──
 
-/// Physical data location of the tensor payload.
-///
-/// Current version only supports CPU memory; GPU support deferred to later waves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DataLocation {
-    /// Data resides in CPU memory.
-    Cpu,
-}
 
 /// Storage-representation classification returned by [`TensorBase::storage_kind`].
 ///
@@ -752,12 +744,6 @@ mod tests {
     fn test_tensor_is_empty() {
         let t = f_contig_i32(Vec::<i32>::new(), Ix2(0, 3));
         assert!(t.is_empty());
-    }
-    /// Verify data_location returns Cpu.
-    #[test]
-    fn test_tensor_data_location() {
-        let t = f_contig_i32(vec![1], Ix2(1, 1));
-        assert_eq!(t.data_location(), DataLocation::Cpu);
     }
     /// Verify storage_kind returns Owned for Owned-backed tensors.
     #[test]

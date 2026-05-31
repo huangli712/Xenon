@@ -100,10 +100,20 @@ where
     pub offset: usize,
 }
 
+// ── DataLocation ──
+
+/// Physical data location of the tensor payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataLocation {
+    /// Data resides in CPU memory.
+    Cpu,
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::TensorBase;
+    use super::DataLocation;
     use crate::dimension::Ix2;
     use crate::layout::{LayoutFlags, Strides};
     use crate::storage::Owned;
@@ -139,5 +149,24 @@ mod tests {
         assert_eq!(tensor.offset, 0);
         assert!(!tensor.derived_from_view_mut);
         assert!(tensor.flags.is_f_contiguous());
+    }
+
+    /// Verify data_location returns Cpu.
+    #[test]
+    fn test_tensor_data_location() {
+        let data = vec![1_i32];
+        let shape = Ix2(1, 1);
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
+        let storage = Owned::from_vec(data).expect("valid vec");
+
+        let t = TensorBase {
+            storage,
+            shape,
+            strides,
+            offset: 0,
+            flags: LayoutFlags::F_CONTIGUOUS,
+            derived_from_view_mut: false,
+        };
+        assert_eq!(t.data_location(), DataLocation::Cpu);
     }
 }
