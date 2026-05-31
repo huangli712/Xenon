@@ -2,9 +2,10 @@
 //! raw-parts construction.
 //!
 //! Sub-module ownership:
-//! - `impls`     — query methods, view/view_mut, semantics dispatch
-//! - `aliases`   — 36 type aliases (re-exported via `pub use aliases::*;`)
-//! - `types`     — `TensorBase<S, D>` definition
+//! - `impls`  — query methods, view/view_mut, semantics dispatch
+//! - `aliases` — 36 type aliases (re-exported via `pub use aliases::*;`)
+//! - `traits`  — `StorageSemantics` trait and implementations
+//! - `types`   — `TensorBase<S, D>` definition
 //!
 //! ## Public re-exports
 //!
@@ -24,10 +25,11 @@
 
 mod aliases;
 mod impls;
+mod traits;
 mod types;
 
 pub use aliases::*;
 pub use types::OwnedRawParts;
-pub use types::StorageSemantics;
+pub use traits::StorageSemantics;
 pub use types::{DataLocation, StorageKind, AccessSemantics, AliasClass};
 pub use types::TensorBase;
