@@ -77,7 +77,7 @@ mod tests {
     use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3};
     use crate::element::Element;
     use crate::layout::LayoutState;
-    use crate::storage::Owned;
+    use crate::storage::{Owned, Storage};
     use crate::tensor::{StorageKind, TensorBase};
 
     /// Construct a tensor using the internal fast path.
@@ -90,9 +90,12 @@ mod tests {
     }
 
     /// Access element at logical index.
-    unsafe fn read_at<'a, S, D, A>(tensor: &'a TensorBase<S, D>, indices: &[usize]) -> &'a A
+    unsafe fn read_at<'a, S, D, A>(
+        tensor: &'a TensorBase<S, D>,
+        indices: &[usize]
+    ) -> &'a A
     where
-        S: crate::storage::Storage<Elem = A>,
+        S: Storage<Elem = A>,
         D: Dimension,
         A: Element,
     {
