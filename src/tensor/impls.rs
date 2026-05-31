@@ -559,7 +559,7 @@ where
 // ──────────────────────────────────────────────────────────────────────────
 // ── new_unchecked ──
 
-impl<S, D> super::TensorBase<S, D>
+impl<S, D> TensorBase<S, D>
 where
     S: RawStorage,
     D: Dimension,
@@ -590,7 +590,7 @@ where
 
 // ── from_raw_parts (immutable view) ──
 
-impl<'a, A, D> super::TensorBase<ViewRepr<'a, A>, D>
+impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
     A: crate::element::Element,
     D: Dimension,
@@ -645,7 +645,7 @@ where
 
 // ── from_raw_parts_mut (mutable view) ──
 
-impl<'a, A, D> super::TensorBase<ViewMutRepr<'a, A>, D>
+impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
     A: crate::element::Element,
     D: Dimension,
@@ -701,7 +701,7 @@ where
 
 // ── from_raw_vec_unchecked ──
 
-impl<A, D> super::TensorBase<Owned<A>, D>
+impl<A, D> TensorBase<Owned<A>, D>
 where
     A: crate::element::Element,
     D: Dimension,
@@ -1444,5 +1444,6 @@ mod tests {
             flags: LayoutFlags::F_CONTIGUOUS,
             derived_from_view_mut: true,
         };
+        assert_eq!(t.alias_class(), AliasClass::ViewMutDerived);
     }
 }
