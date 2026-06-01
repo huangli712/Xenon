@@ -907,6 +907,7 @@ where
     }
 }
 
+// ---------- Arc storage (ArcRepr) -------------------------------------------
 
 impl<A, D> TensorBase<ArcRepr<A>, D>
 where
@@ -915,8 +916,14 @@ where
 {
     /// Creates an immutable view sharing the underlying Arc storage.
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        // SAFETY: storage exposes valid base pointer + len
+        let storage = unsafe {
+            ViewRepr::from_raw_parts(
+                self.storage.as_ptr(),
+                self.storage.len()
+            )
+        };
+        // SAFETY: shape/strides/offset/flags inherited from source ArcRepr.
         unsafe {
             TensorBase::new_unchecked(
                 storage,
