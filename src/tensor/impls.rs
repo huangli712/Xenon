@@ -788,6 +788,7 @@ where
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
             NonNull::<A>::dangling().as_ptr() as *const A
         } else {
+            // SAFETY: layout validated above; offset addition is within bounds.
             unsafe { ptr.add(offset) }
         };
 
@@ -900,12 +901,13 @@ where
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
             NonNull::<A>::dangling().as_ptr() as *const A
         } else {
+            // SAFETY: layout validated above; offset addition is within bounds.
             unsafe { (ptr as *const A).add(offset) }
         };
         let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
 
-        // SAFETY: all parameters validated; derived_from_view_mut is false for
-        // a fresh mutable view.
+        // SAFETY: all parameters validated; derived_from_view_mut is false
+        // for a fresh mutable view.
         Ok(unsafe {
             Self::new_unchecked(storage, shape, strides, offset, flags, false)
         })
