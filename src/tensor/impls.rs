@@ -6,8 +6,9 @@ use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use std::borrow::Cow;
 
-use super::TensorBase;
-use super::{OwnedRawParts, DataLocation, StorageSemantics, StorageKind, AccessSemantics, AliasClass};
+use super::{TensorBase, OwnedRawParts};
+use super::{DataLocation, StorageKind, AccessSemantics, AliasClass};
+use super::StorageSemantics;
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
