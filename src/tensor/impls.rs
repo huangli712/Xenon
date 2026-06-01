@@ -264,11 +264,6 @@ where
         self.shape.checked_size().expect("validated shape")
     }
 
-    /// `true` iff any axis length is 0 (i.e. logical element count is 0).
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
     /// Non-negative offset from storage base to logical first element.
     pub fn offset(&self) -> usize {
         self.offset
@@ -290,6 +285,15 @@ where
         self.flags.classify()
     }
 
+    /// Underlying storage buffer length in elements.
+    ///
+    /// Distinct from [`len`](Self::len) which returns the logical element
+    /// count (product of axis dimensions). The storage buffer may be larger
+    /// than the logical count for views into larger allocations.
+    pub fn storage_len(&self) -> usize {
+        self.storage.len()
+    }
+
     /// Returns `true` if the data is F-order contiguous.
     pub fn is_f_contiguous(&self) -> bool {
         self.flags.is_f_contiguous()
@@ -300,19 +304,15 @@ where
         self.flags.is_aligned()
     }
 
+    /// `true` iff any axis length is 0 (i.e. logical element count is 0).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns `true` iff `LayoutFlags::HAS_ZERO_STRIDE` is set (broadcast-
     /// induced zero stride).
     pub fn has_zero_stride(&self) -> bool {
         self.flags.has_zero_stride()
-    }
-
-    /// Underlying storage buffer length in elements.
-    ///
-    /// Distinct from [`len`](Self::len) which returns the logical element
-    /// count (product of axis dimensions). The storage buffer may be larger
-    /// than the logical count for views into larger allocations.
-    pub fn storage_len(&self) -> usize {
-        self.storage.len()
     }
 
     /// Canonical unchecked tensor metadata assembly.
@@ -482,6 +482,23 @@ where
         }
     }
 
+    /// Creates a mutable view sharing the underlying storage.
+    pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
+        let storage = unsafe {
+            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
+        };
+        unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                self.shape.clone(),
+                self.strides.clone(),
+                self.offset,
+                self.flags,
+                false,
+            )
+        }
+    }
+
     /// Zero-copy conversion from `Tensor<A, D>` to `ArcTensor<A, D>`.
     ///
     /// Wraps the storage-layer `Owned<A>::into_shared(self) -> ArcRepr<A>`.
@@ -498,23 +515,6 @@ where
                 storage,
                 self.shape,
                 self.strides,
-                self.offset,
-                self.flags,
-                false,
-            )
-        }
-    }
-
-    /// Creates a mutable view sharing the underlying storage.
-    pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
-        let storage = unsafe {
-            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
-        };
-        unsafe {
-            TensorBase::new_unchecked(
-                storage,
-                self.shape.clone(),
-                self.strides.clone(),
                 self.offset,
                 self.flags,
                 false,
