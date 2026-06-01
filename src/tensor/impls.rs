@@ -645,10 +645,13 @@ where
             });
         }
 
+        // All validations passed — transfer ownership back to Xenon's allocator.
         let storage = unsafe {
             Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align)
         };
 
+        // Empty tensors use a dangling sentinel; otherwise raw.ptr is the
+        // logical first element (offset was validated to be 0 above).
         let logical_ptr: *const A = if raw.len == 0 {
             NonNull::<A>::dangling().as_ptr()
         } else {
