@@ -26,8 +26,8 @@
 // Construction module skeleton (W22T1).
 //
 // Implementations are added by sub-tasks in their respective files:
-//   W22T2 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn zeros }  in init.rs
-//   W22T3 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn ones }   in init.rs
+//   W22T2 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn zeros }  in from.rs
+//   W22T3 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn ones }   in from.rs
 //   W22T4 → pub trait EyeElement + impl<A: EyeElement> TensorBase<Owned<A>, Ix2> { fn eye }
 //           in eye.rs
 //           W22T4 additionally adds `pub use eye::EyeElement;` here.
@@ -41,24 +41,22 @@
 /// Identity matrix constructor (`eye`).
 pub mod eye;
 pub use eye::EyeElement;
-/// Constructors from data sources (`from_shape_vec`, `from_vec`,
+/// Tensor constructors (`zeros`, `ones`, `from_shape_vec`, `from_vec`,
 /// `from_shape_slice`, `from_array`, `from_scalar`).
 pub mod from;
-/// Basic initialization constructors (`zeros`, `ones`).
-pub mod init;
 
 #[cfg(test)]
 mod tests {
     /// Compile-time anchor: each sub-module path must resolve. If any of the
-    /// three `pub mod` declarations is removed or its target file is missing,
+    /// two `pub mod` declarations is removed or its target file is missing,
     /// this `use` block fails to compile, surfacing the breakage at the
     /// W22T1 acceptance gate rather than at a downstream sub-task.
     #[allow(unused_imports)]
-    use super::{eye, from, init};
+    use super::{eye, from};
 
     #[test]
     fn compile_anchor_construct_submodule_paths_resolve() {
-        // No assertion needed — the `use super::{eye, from, init};`
+        // No assertion needed — the `use super::{eye, from};`
         // statement above is itself the test. The empty body documents that
         // constructor behavior is tested by W22T2 (zeros), W22T3 (ones),
         // W22T4 (eye + EyeElement), W22T5 (from_shape_vec + from_vec),
