@@ -416,7 +416,9 @@ where
     /// tensors, or for empty tensors. Returns `None` otherwise.
     pub fn as_mut_slice(&mut self) -> Option<&mut [A]> {
         if self.is_empty() {
-            return Some(unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), 0) });
+            return Some(unsafe {
+                slice::from_raw_parts_mut(self.as_mut_ptr(), 0)
+            });
         }
         if !self.flags.is_f_contiguous() || self.flags.has_zero_stride() {
             return None;
