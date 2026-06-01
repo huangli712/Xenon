@@ -1,6 +1,6 @@
-//! Query methods for [`TensorBase`]: shape/strides/ndim/len, layout flags,
-//! storage kind, access semantics, alias classification, pointer access,
-//! contiguous slices, and view creation.
+//! Implementations for [`TensorBase`]: validation, query, construction,
+//! views, raw‑parts, pointer access, slice extraction, semantic dispatch,
+//! and associated tests.
 
 use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
