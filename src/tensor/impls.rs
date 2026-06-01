@@ -365,7 +365,7 @@ where
     /// returns `storage.as_ptr().add(offset)`.
     pub fn as_ptr(&self) -> *const A {
         if self.is_empty() {
-            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
+            NonNull::<A>::dangling().as_ptr() as *const A
         } else {
             unsafe { self.storage.as_ptr().add(self.offset) }
         }
@@ -401,7 +401,7 @@ where
     /// For empty tensors returns `NonNull::dangling().as_ptr()`.
     pub fn as_mut_ptr(&mut self) -> *mut A {
         if self.is_empty() {
-            core::ptr::NonNull::<A>::dangling().as_ptr()
+            NonNull::<A>::dangling().as_ptr()
         } else {
             unsafe { self.storage.as_mut_ptr().add(self.offset) }
         }
@@ -730,7 +730,7 @@ where
         let storage = unsafe { ViewRepr::from_raw_parts(ptr, storage_len) };
 
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
-            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
+            NonNull::<A>::dangling().as_ptr() as *const A
         } else {
             unsafe { ptr.add(offset) }
         };
@@ -833,7 +833,7 @@ where
         let storage = unsafe { ViewMutRepr::from_raw_parts_mut(ptr, storage_len) };
 
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
-            core::ptr::NonNull::<A>::dangling().as_ptr() as *const A
+            NonNull::<A>::dangling().as_ptr() as *const A
         } else {
             unsafe { (ptr as *const A).add(offset) }
         };
