@@ -463,7 +463,10 @@ where
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
         // SAFETY: storage exposes valid base pointer + len
         let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+            unsafe { ViewRepr::from_raw_parts(
+                self.storage.as_ptr(),
+                self.storage.len()
+            ) };
         unsafe {
             TensorBase::new_unchecked(
                 storage,
