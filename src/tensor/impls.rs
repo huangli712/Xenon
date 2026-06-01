@@ -462,11 +462,12 @@ where
     /// `derived_from_view_mut` is set to `false` for Owned-backed views.
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
         // SAFETY: storage exposes valid base pointer + len
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(
+        let storage = unsafe {
+            ViewRepr::from_raw_parts(
                 self.storage.as_ptr(),
                 self.storage.len()
-            ) };
+            )
+        };
         unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -482,7 +483,9 @@ where
     /// Creates a mutable view sharing the underlying storage.
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
         let storage = unsafe {
-            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
+            ViewMutRepr::from_raw_parts_mut(
+                self.storage.as_ptr() as *mut A, self.storage.len()
+            )
         };
         unsafe {
             TensorBase::new_unchecked(
