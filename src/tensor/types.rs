@@ -134,7 +134,6 @@ pub enum AliasClass {
     Unique,
 
     /// Arc shared ownership: multiple `ArcTensor` instances share a `SharedBuf`.
-
     ArcShared,
     
     /// Broadcast zero-stride alias.
