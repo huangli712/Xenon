@@ -699,8 +699,10 @@ where
     /// upholds the `# Safety` precondition that `shape.checked_size()` was
     /// previously validated.
     pub unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
-        let strides = crate::layout::Strides::f_contiguous(&shape).expect("caller-proved valid shape");
-        let storage = Owned::from_vec(data).expect("caller-proved valid vec");
+        let strides = Strides::f_contiguous(&shape)
+            .expect("caller-proved valid shape");
+        let storage = Owned::from_vec(data)
+            .expect("caller-proved valid vec");
         let flags = compute_layout_flags::<A, D>(&shape, &strides, storage.as_ptr());
         unsafe { Self::new_unchecked(storage, shape, strides, 0, flags, false) }
     }
@@ -1273,7 +1275,7 @@ mod tests {
         let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
             .expect("test input valid");
         let mut raw = original.into_raw_parts();
-        raw.strides = crate::layout::Strides::from_slice(&[3, 1]).expect("test input valid");
+        raw.strides = Strides::from_slice(&[3, 1]).expect("test input valid");
         let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }
             .expect_err("tampered raw parts");
         assert!(matches!(
