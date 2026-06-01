@@ -123,8 +123,6 @@ pub enum DataLocation {
     Cpu,
 }
 
-// ── AliasClass ──
-
 /// Precise alias classification returned by [`TensorBase::alias_class`].
 ///
 /// Unlike [`AccessSemantics::SharedReadOnly`] which merges three semantically
@@ -134,30 +132,33 @@ pub enum DataLocation {
 pub enum AliasClass {
     /// No aliases: source is Owned or exclusive ViewMut.
     Unique,
+
     /// Arc shared ownership: multiple `ArcTensor` instances share a `SharedBuf`.
+
     ArcShared,
+    
     /// Broadcast zero-stride alias.
     BroadcastAlias,
+    
     /// Read-only view demoted from ViewMut.
     ViewMutDerived,
 }
-
-// ── AccessSemantics ──
 
 /// Access semantics returned by [`TensorBase::access_semantics`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessSemantics {
     /// Plain non-broadcast read-only view.
     ReadOnly,
+
     /// Arc shared / broadcast / ViewMut-demoted view.
     SharedReadOnly,
+
     /// Exclusive mutable view.
     Writable,
+    
     /// Owned storage.
     Owned,
 }
-
-// ── StorageKind ──
 
 /// Storage-representation classification returned by [`TensorBase::storage_kind`].
 ///
