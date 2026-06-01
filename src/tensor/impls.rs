@@ -833,7 +833,9 @@ where
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
         // SAFETY: storage exposes valid base pointer + len
         let storage = unsafe {
-            ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
+            ViewMutRepr::from_raw_parts_mut(
+                self.storage.as_ptr() as *mut A, self.storage.len()
+            )
         };
         // SAFETY: shape/strides/offset/flags are inherited; provenance not set
         // (reborrow does not demote to immutable).
@@ -885,6 +887,7 @@ where
         )?;
         validate_non_overlapping_layout(&shape, &strides, offset, storage_len)?;
 
+        // SAFETY: layout validated above; ptr is valid per caller contract.
         let storage = unsafe { ViewMutRepr::from_raw_parts_mut(ptr, storage_len) };
 
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
@@ -894,6 +897,8 @@ where
         };
         let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
 
+        // SAFETY: all parameters validated; derived_from_view_mut is false for
+        // a fresh mutable view.
         Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
     }
 }
