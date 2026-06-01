@@ -861,7 +861,7 @@ where
     ///
     /// # Safety
     ///
-    /// Inherits all caller obligations from [`from_raw_parts`] plus:
+    /// Inherits all caller obligations from `from_raw_parts` plus:
     /// - `ptr` is non-null; empty tensors must still pass a non-null sentinel.
     /// - Caller holds exclusive write access to `[ptr, ptr + storage_len)`
     ///   for lifetime `'a`.
@@ -872,7 +872,7 @@ where
     ///
     /// # Errors
     ///
-    /// Same as [`from_raw_parts`], plus rejects zero-stride on non-singleton
+    /// Same as `from_raw_parts`, plus rejects zero-stride on non-singleton
     /// axes and ambiguous-overlap layouts.
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
@@ -950,9 +950,9 @@ mod tests {
     use crate::dimension::{Dimension, Ix0, Ix1, Ix2};
     use crate::layout::{LayoutFlags, LayoutState, Strides};
     use crate::storage::Owned;
-    use crate::tensor::AccessSemantics;
     use crate::tensor::Tensor;
 
+    /// Helper: construct an Owned tensor with arbitrary flags/offset for testing.
     fn make_owned(
         shape: Ix2,
         data: Vec<f64>,
@@ -972,7 +972,12 @@ mod tests {
         }
     }
 
-    fn f_contig(data: Vec<i32>, shape: Ix2, offset: usize) -> TensorBase<Owned<i32>, Ix2> {
+    /// Helper: construct an F-contiguous Owned<i32> tensor for testing.
+    fn f_contig(
+        data: Vec<i32>,
+        shape: Ix2,
+        offset: usize
+    ) -> TensorBase<Owned<i32>, Ix2> {
         let strides = Strides::f_contiguous(&shape).expect("valid shape");
         let storage = Owned::from_vec(data).expect("valid vec");
         TensorBase {
@@ -985,10 +990,13 @@ mod tests {
         }
     }
 
-    fn f_contig_i32(data: Vec<i32>, shape: Ix2) -> TensorBase<Owned<i32>, Ix2> {
+    /// Shorthand for `f_contig` with offset 0.
+    fn f_contig_i32(
+        data: Vec<i32>,
+        shape: Ix2
+    ) -> TensorBase<Owned<i32>, Ix2> {
         f_contig(data, shape, 0)
     }
-
 
     /// Verify shape and strides are correctly returned for a 3×4 tensor.
     #[test]
@@ -997,6 +1005,7 @@ mod tests {
         assert_eq!(t.shape(), &[3, 4]);
         assert_eq!(t.strides(), &[1_usize, 3]);
     }
+
     /// Verify len and ndim are correctly computed for a 3×4 tensor.
     #[test]
     fn test_tensor_len_and_ndim() {
@@ -1004,6 +1013,7 @@ mod tests {
         assert_eq!(t.len(), 12);
         assert_eq!(t.ndim(), 2);
     }
+    
     /// Verify offset and flags after direct struct construction.
     #[test]
     fn test_tensor_offset_and_flags() {
@@ -1020,19 +1030,20 @@ mod tests {
         assert_eq!(t.offset(), 0);
         assert!(t.flags().is_f_contiguous());
     }
+    
     /// Verify raw_dim clones the dimension descriptor correctly.
     #[test]
     fn test_tensor_raw_dim() {
         let t = f_contig_i32(vec![1; 4], Ix2(2, 2));
         assert_eq!(t.raw_dim().slice(), &[2, 2]);
     }
+   
     /// Verify is_empty returns true when an axis is zero.
     #[test]
     fn test_tensor_is_empty() {
         let t = f_contig_i32(Vec::<i32>::new(), Ix2(0, 3));
         assert!(t.is_empty());
     }
-
 
     /// Verify layout_state returns FContiguous for F_CONTIGUOUS flags.
     #[test]
@@ -1041,6 +1052,7 @@ mod tests {
         assert!(t.is_f_contiguous());
         assert_eq!(t.layout_state(), LayoutState::FContiguous);
     }
+
     /// Verify layout_state returns NonContiguous for EMPTY flags.
     #[test]
     fn test_layout_state_non_contiguous() {
@@ -1048,6 +1060,7 @@ mod tests {
         assert!(!t.is_f_contiguous());
         assert_eq!(t.layout_state(), LayoutState::NonContiguous);
     }
+    
     /// Verify is_aligned returns true when the aligned flag is set.
     #[test]
     fn test_flags_aligned() {
@@ -1060,12 +1073,14 @@ mod tests {
         );
         assert!(t.is_aligned());
     }
+   
     /// Verify is_aligned returns false when the aligned flag is not set.
     #[test]
     fn test_not_aligned() {
         let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::EMPTY, false, 0);
         assert!(!t.is_aligned());
     }
+   
     /// Verify has_zero_stride returns true when HAS_ZERO_STRIDE is set.
     #[test]
     fn test_has_zero_stride_set() {
@@ -1078,6 +1093,7 @@ mod tests {
         );
         assert!(t.has_zero_stride());
     }
+   
     /// Verify has_zero_stride returns false for F-contiguous layout.
     #[test]
     fn test_has_zero_stride_clear() {
@@ -1085,19 +1101,20 @@ mod tests {
         assert!(!t.has_zero_stride());
     }
 
-
     /// Verify as_storage_ptr returns a non-null pointer.
     #[test]
     fn test_as_storage_ptr() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert!(!t.as_storage_ptr().is_null());
     }
+
     /// Verify storage_len matches the underlying storage length.
     #[test]
     fn test_storage_len() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert_eq!(t.storage_len(), 4);
     }
+   
     /// Verify as_ptr returns a non-null pointer equal to as_storage_ptr
     /// (offset = 0).
     #[test]
@@ -1107,6 +1124,7 @@ mod tests {
         assert!(!ptr.is_null());
         assert_eq!(ptr, t.as_storage_ptr());
     }
+   
     /// Verify as_mut_ptr returns a non-null pointer through which
     /// element mutation is visible.
     #[test]
@@ -1119,18 +1137,21 @@ mod tests {
         }
         assert_eq!(t.as_slice().expect("F-contiguous")[0], 99);
     }
+   
     /// Verify as_storage_mut_ptr returns a non-null pointer.
     #[test]
     fn test_as_storage_mut_ptr() {
         let mut t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert!(!t.as_storage_mut_ptr().is_null());
     }
+   
     /// Verify as_slice returns the expected contiguous data.
     #[test]
     fn test_as_slice() {
         let t = f_contig_i32(vec![1, 2, 3, 4], Ix2(2, 2));
         assert_eq!(t.as_slice().expect("F-contiguous"), &[1, 2, 3, 4]);
     }
+   
     /// Verify as_mut_slice allows in-place mutation visible through as_slice.
     #[test]
     fn test_as_mut_slice() {
@@ -1138,18 +1159,21 @@ mod tests {
         t.as_mut_slice().expect("F-contiguous")[1] = 9;
         assert_eq!(t.as_slice().expect("F-contiguous"), &[1, 9, 3]);
     }
+   
     /// Verify as_slice returns an empty slice for an empty tensor.
     #[test]
     fn test_as_slice_empty() {
         let t = f_contig_i32(Vec::new(), Ix2(0, 3));
         assert!(t.as_slice().expect("empty").is_empty());
     }
+   
     /// Verify as_mut_slice returns an empty slice for an empty tensor.
     #[test]
     fn test_as_mut_slice_empty() {
         let mut t = f_contig_i32(Vec::new(), Ix2(0, 3));
         assert!(t.as_mut_slice().expect("empty").is_empty());
     }
+   
     /// Verify as_slice returns None for non-contiguous layout.
     #[test]
     fn test_as_slice_non_contiguous() {
@@ -1167,7 +1191,6 @@ mod tests {
         assert!(t.as_slice().is_none());
     }
 
-
     /// Verify view shares data with source; mutation visible through both.
     #[test]
     fn test_view_data_shared() {
@@ -1180,6 +1203,7 @@ mod tests {
         let v2 = t.view();
         assert_eq!(v2.as_slice().expect("F-contiguous")[0], 99);
     }
+
     /// Verify view_mut allows mutable access to the underlying data.
     #[test]
     fn test_view_mut_writable() {
@@ -1187,6 +1211,7 @@ mod tests {
         t.view_mut().as_mut_slice().expect("F-contiguous")[0] = 9;
         assert_eq!(t.as_slice().expect("F-contiguous")[0], 9);
     }
+   
     /// Verify view() on ViewMut sets derived_from_view_mut and reports
     /// SharedReadOnly semantics.
     #[test]
@@ -1200,6 +1225,7 @@ mod tests {
             AccessSemantics::SharedReadOnly
         );
     }
+   
     /// Verify view_mut reborrow does not set derived_from_view_mut and
     /// reports Writable semantics.
     #[test]
@@ -1210,6 +1236,7 @@ mod tests {
         assert!(!vm2.derived_from_view_mut);
         assert_eq!(vm2.access_semantics(), AccessSemantics::Writable);
     }
+   
     /// Verify view() on Owned reports ReadOnly and does not set
     /// derived_from_view_mut.
     #[test]
@@ -1219,8 +1246,6 @@ mod tests {
         assert!(!v.derived_from_view_mut);
         assert_eq!(v.access_semantics(), AccessSemantics::ReadOnly);
     }
-
-    // ── OwnedRawParts round-trip tests ──
 
     /// `into_raw_parts` → `from_raw_parts_owned` round-trip preserves shape,
     /// strides, offset, and element contents.
@@ -1271,15 +1296,16 @@ mod tests {
     /// from_raw_parts_owned rejects non-zero offset.
     #[test]
     fn test_from_raw_parts_owned_rejects_nonzero_offset() {
-        let original = Tensor::<i32, Ix1>::from_vec(vec![1_i32, 2, 3]).expect("test input valid");
+        let original = Tensor::<i32, Ix1>::from_vec(vec![1_i32, 2, 3])
+            .expect("test input valid");
         let mut raw = original.into_raw_parts();
         raw.offset = 1;
         let err = unsafe { Tensor::<i32, Ix1>::from_raw_parts_owned(raw) }
             .expect_err("tampered raw parts");
         assert!(matches!(
             err,
-            crate::error::XenonError::InvalidLayout {
-                reason: crate::error::InvalidLayoutReason::OwnedRequiresZeroOffset,
+            XenonError::InvalidLayout {
+                reason: InvalidLayoutReason::OwnedRequiresZeroOffset,
                 ..
             }
         ));
@@ -1296,8 +1322,8 @@ mod tests {
             .expect_err("tampered raw parts");
         assert!(matches!(
             err,
-            crate::error::XenonError::InvalidLayout {
-                reason: crate::error::InvalidLayoutReason::LenShapeMismatch,
+            XenonError::InvalidLayout {
+                reason: InvalidLayoutReason::LenShapeMismatch,
                 ..
             }
         ));
@@ -1314,14 +1340,12 @@ mod tests {
             .expect_err("tampered raw parts");
         assert!(matches!(
             err,
-            crate::error::XenonError::InvalidLayout {
-                reason: crate::error::InvalidLayoutReason::OwnedRequiresCanonicalFOrder,
+            XenonError::InvalidLayout {
+                reason: InvalidLayoutReason::OwnedRequiresCanonicalFOrder,
                 ..
             }
         ));
     }
-
-    // ── construct (new_unchecked / validate / from_raw_parts) tests ──
 
     /// Validates access range for a 2×2 F-order layout with sufficient storage.
     #[test]
@@ -1397,8 +1421,8 @@ mod tests {
         assert!(tensor.is_f_contiguous());
     }
 
-    /// `from_raw_vec_unchecked` with empty vec and shape [0, 3]
-    /// produces an empty F-contiguous tensor.
+    /// `from_raw_vec_unchecked` with empty vec and shape [0, 3] produces an
+    /// empty F-contiguous tensor.
     #[test]
     fn test_from_raw_vec_unchecked_empty() {
         let tensor = unsafe {
@@ -1411,12 +1435,12 @@ mod tests {
     /// `from_raw_vec_unchecked` with a 0-dimensional shape should succeed.
     #[test]
     fn test_from_raw_vec_unchecked_zero_dim() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0)
+        };
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
     }
-
-    // ── Semantic dispatch tests ──
 
     /// Verify storage_kind returns Owned for Owned-backed tensors.
     #[test]
