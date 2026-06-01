@@ -568,6 +568,7 @@ where
     /// must be upheld by the caller as they cannot be checked from metadata
     /// alone.
     pub unsafe fn from_raw_parts_owned(raw: OwnedRawParts<A, D>) -> Result<Self> {
+        // Owned tensors always have offset 0.
         if raw.offset != 0 {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -580,6 +581,7 @@ where
             });
         }
 
+        // Shape product must be representable AND equal raw.len.
         let expected_len = raw.shape.checked_size().map_err(|_| {
             XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -603,6 +605,7 @@ where
             });
         }
 
+        // Capacity must cover len.
         if raw.cap < raw.len {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -615,6 +618,7 @@ where
             });
         }
 
+        // Alignment must be a valid power of two and at least align_of::<A>().
         if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -627,6 +631,7 @@ where
             });
         }
 
+        // Strides must equal canonical F-order strides.
         let expected_strides = Strides::f_contiguous(&raw.shape)?;
         if raw.strides.as_slice() != expected_strides.as_slice() {
             return Err(XenonError::InvalidLayout {
