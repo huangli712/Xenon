@@ -952,6 +952,8 @@ mod tests {
     use crate::storage::Owned;
     use crate::tensor::Tensor;
 
+    // ---------- Query helpers -----------------------------------------------
+
     /// Helper: construct an Owned tensor with arbitrary flags/offset
     /// for testing.
     fn make_owned(
@@ -999,6 +1001,8 @@ mod tests {
         f_contig(data, shape, 0)
     }
 
+    // ---------- Basic query -------------------------------------------------
+
     /// Verify shape and strides are correctly returned for a 3×4 tensor.
     #[test]
     fn test_tensor_shape_strides() {
@@ -1045,6 +1049,8 @@ mod tests {
         let t = f_contig_i32(Vec::<i32>::new(), Ix2(0, 3));
         assert!(t.is_empty());
     }
+
+    // ---------- Layout query ------------------------------------------------
 
     /// Verify layout_state returns FContiguous for F_CONTIGUOUS flags.
     #[test]
@@ -1125,6 +1131,8 @@ mod tests {
         );
         assert!(!t.has_zero_stride());
     }
+
+    // ---------- Pointer & slice ---------------------------------------------
 
     /// Verify as_storage_ptr returns a non-null pointer.
     #[test]
@@ -1216,6 +1224,8 @@ mod tests {
         assert!(t.as_slice().is_none());
     }
 
+    // ---------- Views & borrowing -------------------------------------------
+
     /// Verify view shares data with source; mutation visible through both.
     #[test]
     fn test_view_data_shared() {
@@ -1271,6 +1281,8 @@ mod tests {
         assert!(!v.derived_from_view_mut);
         assert_eq!(v.access_semantics(), AccessSemantics::ReadOnly);
     }
+
+    // ---------- Round-trip & error rejection --------------------------------
 
     /// `into_raw_parts` → `from_raw_parts_owned` round-trip preserves shape,
     /// strides, offset, and element contents.
@@ -1446,6 +1458,8 @@ mod tests {
         assert_eq!(data, vec![99, 2, 3, 4]);
     }
 
+    // ---------- Validation functions ----------------------------------------
+
     /// Validates access range for a 2×2 F-order layout with sufficient storage.
     #[test]
     fn test_validate_access_range_valid() {
@@ -1524,6 +1538,8 @@ mod tests {
         assert!(r.is_err());
     }
 
+    // ---------- Unchecked constructors --------------------------------------
+
     /// `from_raw_vec_unchecked` with 4-element vec and shape [2, 2]
     /// produces a valid F-contiguous tensor.
     #[test]
@@ -1555,6 +1571,8 @@ mod tests {
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
     }
+
+    // ---------- Semantic dispatch -------------------------------------------
 
     /// Verify storage_kind returns Owned for Owned-backed tensors.
     #[test]
