@@ -450,7 +450,7 @@ where
     }
 }
 
-// ---------- view() / view_mut() ---------------------------------------------
+// ---------- Owned storage methods -------------------------------------------
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
@@ -633,7 +633,7 @@ where
     }
 }
 
-// ---------- from_raw_vec_unchecked ------------------------------------------
+// ---------- Owned construction -----------------------------------------------
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
