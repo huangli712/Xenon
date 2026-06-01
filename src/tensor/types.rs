@@ -167,10 +167,13 @@ pub enum AccessSemantics {
 pub enum StorageKind {
     /// Owned storage (`Owned<A>`).
     Owned,
+
     /// Immutable borrowed view (`ViewRepr<'a, A>`).
     View,
+
     /// Mutable borrowed view (`ViewMutRepr<'a, A>`).
     ViewMut,
+    
     /// Reference-counted shared storage (`ArcRepr<A>`).
     Shared,
 }
