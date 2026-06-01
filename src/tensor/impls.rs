@@ -470,6 +470,7 @@ where
                 self.storage.len()
             )
         };
+        // SAFETY: shape/strides/offset/flags inherited from source Owned.
         unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -484,11 +485,13 @@ where
 
     /// Creates a mutable view sharing the underlying storage.
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
+        // SAFETY: exclusive &mut access guaranteed by borrow checker.
         let storage = unsafe {
             ViewMutRepr::from_raw_parts_mut(
                 self.storage.as_ptr() as *mut A, self.storage.len()
             )
         };
+        // SAFETY: shape/strides/offset/flags inherited from source Owned.
         unsafe {
             TensorBase::new_unchecked(
                 storage,
