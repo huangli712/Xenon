@@ -708,15 +708,22 @@ where
     }
 }
 
+// ---------- Immutable view (ViewRepr) ---------------------------------------
+
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
+    A: Element,
     D: Dimension + Clone,
 {
     /// Creates an immutable view, propagating `derived_from_view_mut` from
     /// the source (may be `true` if the source was already a demoted ViewMut).
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        let storage = unsafe {
+            ViewRepr::from_raw_parts(
+                self.storage.as_ptr(),
+                self.storage.len()
+            )
+        };
         unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -728,16 +735,7 @@ where
             )
         }
     }
-}
 
-// ---------- from_raw_parts (immutable view) ---------------------------------
-
-impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Constructs an immutable view from raw parts.
     ///
     /// # Safety
     ///
