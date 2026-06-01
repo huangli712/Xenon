@@ -23,6 +23,81 @@ impl EyeElement for f64 {}
 impl EyeElement for Complex<f32> {}
 impl EyeElement for Complex<f64> {}
 
+impl<A> TensorBase<Owned<A>, Ix0>
+where
+    A: Element,
+{
+    /// Construct a zero-dimensional tensor from a scalar.
+    ///
+    /// # Errors
+    ///
+    /// In practice this single-element path does not produce
+    /// `InvalidShapeKind::ElementCountMismatch` (the `vec![scalar]` length is
+    /// always 1, matching `Ix0::checked_size() == 1`). The `Result` return
+    /// type is preserved for signature uniformity with the rest of the
+    /// construction family and to leave room for future allocator-side
+    /// failure paths surfaced by `Owned::from_vec_aligned`.
+    pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
+        let storage = Owned::from_vec_aligned(vec![scalar])?;
+        let shape = Ix0;
+        let strides = layout::Strides::f_contiguous(&shape)?;
+        let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
+        // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
+        // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
+        // logical access trivially within storage.
+        // `derived_from_view_mut: false` — `from_scalar` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags, false) })
+    }
+}
+
+impl<A> TensorBase<Owned<A>, Ix1>
+where
+    A: Element,
+{
+    /// Construct a 1-D tensor from `data`. Convenience wrapper around
+    /// `from_shape_vec` with shape inferred as `[data.len()]`.
+    ///
+    /// # Errors
+    ///
+    /// Forwards `from_shape_vec` errors. Because the shape `[data.len()]` is
+    /// derived from `data` itself, `ElementCountMismatch` is unreachable; in
+    /// practice the only observable error is
+    /// `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }`
+    /// when `data.len()` overflows `usize` (impossible on 64-bit targets).
+    pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError> {
+        Self::from_shape_vec([data.len()], data)
+    }
+}
+
+impl<A> TensorBase<Owned<A>, Ix2>
+where
+    A: EyeElement,
+{
+    /// Create an n×n identity matrix.
+    ///
+    /// Diagonal elements are 1, all others are 0. F-order layout.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from `Self::zeros([n, n])`:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `n * n`
+    ///   (or its byte size) overflows `usize` / `isize::MAX`.
+    /// - `XenonError::AllocationFailed` — the underlying allocator could not
+    ///   provide the requested zero-filled aligned buffer.
+    pub fn eye(n: usize) -> Result<Self, XenonError> {
+        let mut result = Self::zeros([n, n])?;
+        for i in 0..n {
+            // SAFETY: `i < n`, so `[i, i]` is always in-bounds for the validated
+            // `[n, n]` shape created above. `eye()` uses unchecked indexing
+            // internally and does not rely on the public `IndexMut` panic sugar.
+            unsafe {
+                *result.get_unchecked_mut(&[i, i]) = A::one();
+            }
+        }
+        Ok(result)
+    }
+}
+
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
@@ -114,25 +189,6 @@ where
     }
 }
 
-impl<A> TensorBase<Owned<A>, Ix1>
-where
-    A: Element,
-{
-    /// Construct a 1-D tensor from `data`. Convenience wrapper around
-    /// `from_shape_vec` with shape inferred as `[data.len()]`.
-    ///
-    /// # Errors
-    ///
-    /// Forwards `from_shape_vec` errors. Because the shape `[data.len()]` is
-    /// derived from `data` itself, `ElementCountMismatch` is unreachable; in
-    /// practice the only observable error is
-    /// `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }`
-    /// when `data.len()` overflows `usize` (impossible on 64-bit targets).
-    pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError> {
-        Self::from_shape_vec([data.len()], data)
-    }
-}
-
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element + Clone,
@@ -204,62 +260,6 @@ where
         // temporary allocation". Do NOT switch to `Vec::from(arr)` — the
         // design uses `into_iter().collect()` as its canonical form.
         Self::from_shape_vec(shape, arr.into_iter().collect())
-    }
-}
-
-impl<A> TensorBase<Owned<A>, Ix2>
-where
-    A: EyeElement,
-{
-    /// Create an n×n identity matrix.
-    ///
-    /// Diagonal elements are 1, all others are 0. F-order layout.
-    ///
-    /// # Errors
-    ///
-    /// Propagates from `Self::zeros([n, n])`:
-    /// - `XenonError::InvalidShape { kind: ProductOverflow }` — `n * n`
-    ///   (or its byte size) overflows `usize` / `isize::MAX`.
-    /// - `XenonError::AllocationFailed` — the underlying allocator could not
-    ///   provide the requested zero-filled aligned buffer.
-    pub fn eye(n: usize) -> Result<Self, XenonError> {
-        let mut result = Self::zeros([n, n])?;
-        for i in 0..n {
-            // SAFETY: `i < n`, so `[i, i]` is always in-bounds for the validated
-            // `[n, n]` shape created above. `eye()` uses unchecked indexing
-            // internally and does not rely on the public `IndexMut` panic sugar.
-            unsafe {
-                *result.get_unchecked_mut(&[i, i]) = A::one();
-            }
-        }
-        Ok(result)
-    }
-}
-
-impl<A> TensorBase<Owned<A>, Ix0>
-where
-    A: Element,
-{
-    /// Construct a zero-dimensional tensor from a scalar.
-    ///
-    /// # Errors
-    ///
-    /// In practice this single-element path does not produce
-    /// `InvalidShapeKind::ElementCountMismatch` (the `vec![scalar]` length is
-    /// always 1, matching `Ix0::checked_size() == 1`). The `Result` return
-    /// type is preserved for signature uniformity with the rest of the
-    /// construction family and to leave room for future allocator-side
-    /// failure paths surfaced by `Owned::from_vec_aligned`.
-    pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
-        let storage = Owned::from_vec_aligned(vec![scalar])?;
-        let shape = Ix0;
-        let strides = layout::Strides::f_contiguous(&shape)?;
-        let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
-        // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
-        // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
-        // logical access trivially within storage.
-        // `derived_from_view_mut: false` — `from_scalar` is not a downgrade path.
-        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags, false) })
     }
 }
 
