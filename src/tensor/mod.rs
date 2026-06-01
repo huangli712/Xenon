@@ -18,7 +18,7 @@
 //! - 32 convenience aliases: `Tensor0`..`Tensor6`, `TensorD` and their
 //!   `View`/`ViewMut`/`Arc` counterparts
 //!
-//! `TensorBase<S, D>` is defined in [`types`] and re-exported here.
+//! `TensorBase<S, D>` is defined in `types.rs` and re-exported here.
 //! The `construct` module remains private, but it hosts both the internal
 //! `new_unchecked` constructor and the public raw-parts entry points exposed
 //! as `TensorBase`'s `from_raw_parts` and `from_raw_parts_mut`.

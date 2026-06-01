@@ -543,15 +543,19 @@ where
     }
 
     /// Reconstructs an owned tensor from raw parts obtained via
-    /// [`into_raw_parts`]. Takes ownership of memory allocated by Xenon's
-    /// aligned allocator.
+    /// `into_raw_parts`, completing the round-trip ownership transfer.
+    ///
+    /// Together with `into_raw_parts`, this method forms the zero-copy
+    /// ownership bridge: `into_raw_parts` decomposes a `Tensor<A, D>` into
+    /// [`OwnedRawParts`], and `from_raw_parts_owned` reassembles it, taking
+    /// back ownership of memory allocated by Xenon's aligned allocator.
     ///
     /// # Safety
     ///
     /// - `raw.ptr` must point to memory allocated by Xenon's aligned
     ///   allocator with the recorded `(cap, align)` pair.
     /// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator
-    ///   metadata as returned by [`into_raw_parts`].
+    ///   metadata as returned by `into_raw_parts`.
     /// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping
     ///   canonical F-order layout.
     /// - `raw.offset` must be 0.
@@ -563,8 +567,6 @@ where
     /// checkable metadata validation fails. The memory/pointer guarantees
     /// must be upheld by the caller as they cannot be checked from metadata
     /// alone.
-    ///
-    /// [`into_raw_parts`]: TensorBase::into_raw_parts
     pub unsafe fn from_raw_parts_owned(raw: OwnedRawParts<A, D>) -> Result<Self> {
         if raw.offset != 0 {
             return Err(XenonError::InvalidLayout {
