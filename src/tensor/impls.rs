@@ -4,6 +4,7 @@
 
 use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
+use core::slice;
 use std::borrow::Cow;
 
 use super::{TensorBase, OwnedRawParts};
@@ -338,7 +339,7 @@ where
     }
 }
 
-// ---------- Pointer access & slice ------------------------------------------
+// ---------- Dimension-bound query -------------------------------------------
 
 impl<S, D> TensorBase<S, D>
 where
@@ -351,7 +352,7 @@ where
     }
 }
 
-// ---------- Mutable pointer access & slice ----------------------------------
+// ---------- Immutable storage access ----------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -379,14 +380,16 @@ where
     /// or for empty tensors. Returns `None` otherwise.
     pub fn as_slice(&self) -> Option<&[A]> {
         if self.is_empty() {
-            return Some(unsafe { core::slice::from_raw_parts(self.as_ptr(), 0) });
+            return Some(unsafe { slice::from_raw_parts(self.as_ptr(), 0) });
         }
         if !self.flags.is_f_contiguous() || self.flags.has_zero_stride() {
             return None;
         }
-        Some(unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) })
+        Some(unsafe { slice::from_raw_parts(self.as_ptr(), self.len()) })
     }
 }
+
+// ---------- Mutable storage access ------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -413,14 +416,14 @@ where
     /// tensors, or for empty tensors. Returns `None` otherwise.
     pub fn as_mut_slice(&mut self) -> Option<&mut [A]> {
         if self.is_empty() {
-            return Some(unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), 0) });
+            return Some(unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), 0) });
         }
         if !self.flags.is_f_contiguous() || self.flags.has_zero_stride() {
             return None;
         }
         let len = self.len();
         let ptr = self.as_mut_ptr();
-        Some(unsafe { core::slice::from_raw_parts_mut(ptr, len) })
+        Some(unsafe { slice::from_raw_parts_mut(ptr, len) })
     }
 }
 
