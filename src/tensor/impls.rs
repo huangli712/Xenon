@@ -658,7 +658,12 @@ where
             raw.ptr
         };
 
-        let flags = compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
+        // Compute layout flags from the validated shape/strides/logical_ptr.
+        let flags = compute_layout_flags::<A, D>(
+            &raw.shape,
+            &raw.strides,
+            logical_ptr
+        );
 
         Ok(TensorBase {
             storage,
@@ -671,7 +676,7 @@ where
     }
 }
 
-// ---------- Owned construction -----------------------------------------------
+// ---------- Owned construction ----------------------------------------------
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
