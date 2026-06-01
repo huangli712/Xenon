@@ -359,11 +359,6 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Raw storage base pointer (does NOT add `offset`).
-    pub fn as_storage_ptr(&self) -> *const A {
-        self.storage.as_ptr()
-    }
-
     /// Raw pointer to the logical first element.
     ///
     /// For empty tensors returns `NonNull::dangling().as_ptr()`. Otherwise
@@ -374,6 +369,11 @@ where
         } else {
             unsafe { self.storage.as_ptr().add(self.offset) }
         }
+    }
+
+    /// Raw storage base pointer (does NOT add `offset`).
+    pub fn as_storage_ptr(&self) -> *const A {
+        self.storage.as_ptr()
     }
 
     /// Returns `Some(&[A])` for F-contiguous non-broadcast non-empty tensors,
@@ -396,11 +396,6 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    /// Raw mutable storage base pointer (does NOT add `offset`).
-    pub fn as_storage_mut_ptr(&mut self) -> *mut A {
-        self.storage.as_mut_ptr()
-    }
-
     /// Raw mutable pointer to the logical first element.
     ///
     /// For empty tensors returns `NonNull::dangling().as_ptr()`.
@@ -410,6 +405,11 @@ where
         } else {
             unsafe { self.storage.as_mut_ptr().add(self.offset) }
         }
+    }
+
+    /// Raw mutable storage base pointer (does NOT add `offset`).
+    pub fn as_storage_mut_ptr(&mut self) -> *mut A {
+        self.storage.as_mut_ptr()
     }
 
     /// Returns `Some(&mut [A])` for F-contiguous non-broadcast non-empty
@@ -451,12 +451,6 @@ where
 }
 
 // ---------- view() / view_mut() ---------------------------------------------
-
-//
-// view() is implemented per concrete storage type to avoid Rust's method
-// resolution ambiguity between generic and specific impl blocks.
-
-// ---------- view() / view_mut() / into_raw_parts() / from_raw_parts_owned() -------
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
@@ -540,6 +534,7 @@ where
             offset: this.offset,
         }
     }
+
     /// Reconstructs an owned tensor from raw parts obtained via
     /// `into_raw_parts`.
     pub unsafe fn from_raw_parts_owned(raw: OwnedRawParts<A, D>) -> Result<Self> {
@@ -624,6 +619,7 @@ where
         } else {
             raw.ptr
         };
+
         let flags = compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
 
         Ok(TensorBase {
@@ -636,7 +632,6 @@ where
         })
     }
 }
-
 
 // ---------- from_raw_vec_unchecked ------------------------------------------
 
