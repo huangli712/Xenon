@@ -1426,7 +1426,7 @@ mod tests {
     /// from_raw_parts constructs an immutable view from raw pointer data.
     #[test]
     fn test_from_raw_parts_valid() {
-        let data = vec![1_i32, 2, 3, 4];
+        let data = [1_i32, 2, 3, 4];
         let ptr = data.as_ptr();
         let view = unsafe {
             TensorBase::<ViewRepr<'_, i32>, Ix2>::from_raw_parts(
