@@ -180,20 +180,10 @@ pub enum StorageKind {
 
 #[cfg(test)]
 mod tests {
-    use super::TensorBase;
-    use super::DataLocation;
-    use crate::dimension::Ix2;
+    use super::{AccessSemantics, AliasClass, DataLocation, OwnedRawParts, StorageKind, TensorBase};
+    use crate::dimension::{Dimension as _, Ix2};
     use crate::layout::{LayoutFlags, Strides};
     use crate::storage::Owned;
-
-    /// Verify the tensor module skeleton compiles and sub-modules
-    /// (`impls`, `aliases`, `traits`) are reachable.
-    #[test]
-    fn test_module_skeleton_compile() {
-        // Reaching this point confirms: (a) all sub-module files
-        // exist, (b) `src/tensor/mod.rs` parses, (c) the crate compiled.
-        assert_ne!(0, 1);
-    }
 
     /// Verify `TensorBase` struct fields hold the values assigned to them
     /// after direct construction.
@@ -237,5 +227,70 @@ mod tests {
         };
         assert_eq!(t.data_location(), DataLocation::Cpu);
     }
+    /// Verify `DataLocation::Cpu` can be constructed and derives Debug/Clone/Copy/PartialEq/Eq.
+    #[test]
+    fn test_data_location_variants() {
+        let loc = DataLocation::Cpu;
+        let _copy = loc; // Copy
+        assert_eq!(loc, _copy); // PartialEq
+        assert_eq!(format!("{:?}", loc), "Cpu"); // Debug
+    }
 
+    /// Verify `StorageKind` variants can be constructed and derives work.
+    #[test]
+    fn test_storage_kind_variants() {
+        let v = StorageKind::Owned;
+        let _c = v; // Copy
+        assert_eq!(v, StorageKind::Owned); // PartialEq
+        assert!(!matches!(v, StorageKind::View)); // pattern match
+        let owned = StorageKind::View;
+        let shared = StorageKind::Shared;
+        let viewmut = StorageKind::ViewMut;
+        assert_eq!(format!("{:?}", owned), "View");
+        assert_eq!(format!("{:?}", shared), "Shared");
+        assert_eq!(format!("{:?}", viewmut), "ViewMut");
+    }
+
+    /// Verify `AccessSemantics` variants can be constructed and derives work.
+    #[test]
+    fn test_access_semantics_variants() {
+        let ro = AccessSemantics::ReadOnly;
+        let _c = ro; // Copy
+        let owned = AccessSemantics::Owned;
+        assert_eq!(ro, AccessSemantics::ReadOnly);
+        assert_eq!(owned, AccessSemantics::Owned);
+        assert_ne!(AccessSemantics::ReadOnly, AccessSemantics::Writable);
+        assert_eq!(format!("{:?}", AccessSemantics::SharedReadOnly), "SharedReadOnly");
+    }
+
+    /// Verify `AliasClass` variants can be constructed and derives work.
+    #[test]
+    fn test_alias_class_variants() {
+        let u = AliasClass::Unique;
+        let _c = u; // Copy
+        assert_eq!(u, AliasClass::Unique);
+        assert_ne!(u, AliasClass::BroadcastAlias);
+        assert_eq!(format!("{:?}", AliasClass::ViewMutDerived), "ViewMutDerived");
+    }
+
+    /// Verify `OwnedRawParts` fields can be constructed and are pub-crate accessible.
+    #[test]
+    fn test_owned_raw_parts_fields() {
+        let shape = Ix2(2, 3);
+        let strides = Strides::f_contiguous(&shape).expect("valid shape");
+        let raw: OwnedRawParts<f64, Ix2> = OwnedRawParts {
+            ptr: std::ptr::null_mut::<f64>(),
+            len: 6,
+            cap: 8,
+            align: 64,
+            shape,
+            strides,
+            offset: 0,
+        };
+        assert_eq!(raw.len, 6);
+        assert_eq!(raw.cap, 8);
+        assert!(raw.align.is_power_of_two());
+        assert_eq!(raw.offset, 0);
+        assert_eq!(raw.shape.slice(), &[2, 3]);
+    }
 }
