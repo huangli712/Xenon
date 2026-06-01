@@ -33,6 +33,7 @@ pub(crate) fn validate_access_range<D: Dimension>(
     op_name: &'static str,
     kind: StorageKindTag,
 ) -> Result<()> {
+    // Compute shape product — overflow means metadata is corrupt.
     let len = match shape.checked_size() {
         Ok(l) => l,
         Err(_) => {
@@ -48,6 +49,7 @@ pub(crate) fn validate_access_range<D: Dimension>(
         },
     };
 
+    // Zero-length tensors are valid if offset stays within storage.
     if len == 0 {
         if offset > storage_len {
             return Err(XenonError::InvalidLayout {
@@ -63,6 +65,7 @@ pub(crate) fn validate_access_range<D: Dimension>(
         return Ok(());
     }
 
+    // Every stride must fit in isize for safe pointer arithmetic.
     for &stride in strides.as_slice() {
         if stride > isize::MAX as usize {
             return Err(XenonError::InvalidLayout {
@@ -77,6 +80,7 @@ pub(crate) fn validate_access_range<D: Dimension>(
         }
     }
 
+    // Compute max logical offset: start from base, add span of each axis.
     let mut max_offset = offset;
     for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
         if dim == 0 {
@@ -112,6 +116,7 @@ pub(crate) fn validate_access_range<D: Dimension>(
         };
     }
 
+    // Check that the computed max offset does not exceed storage.
     if max_offset >= storage_len {
         return Err(XenonError::InvalidLayout {
             operation: Cow::Borrowed(op_name),
@@ -127,8 +132,6 @@ pub(crate) fn validate_access_range<D: Dimension>(
     Ok(())
 }
 
-// ── validate_non_overlapping_layout ──
-
 /// Validates that a mutable view's layout has no ambiguous element overlap.
 ///
 /// Rejects zero-stride axes on non-singleton dimensions (which would
@@ -141,11 +144,13 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
     offset: usize,
     storage_len: usize,
 ) -> Result<()> {
+    // Trivially non-overlapping: scalar (0D or 1-element) or empty.
     let len = shape.checked_size().unwrap_or(0);
     if len <= 1 {
         return Ok(());
     }
 
+    // Reject zero-stride axes on dimensions larger than 1.
     for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
         if dim > 1 && stride == 0 {
             return Err(XenonError::InvalidLayout {
@@ -160,6 +165,8 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
         }
     }
 
+    // Greedy overlap detection: sort axes by stride ascending, then verify
+    // each axis span starts beyond the region already covered.
     let mut axes: Vec<(usize, usize)> = shape
         .slice()
         .iter()
@@ -169,8 +176,12 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
         .collect();
     axes.sort_by_key(|&(_, stride)| stride);
 
+    // Walk sorted axes: the gap between the previous axis's covered region
+    // and the current axis's first element must be positive (non-overlap).
+    // If a stride falls inside covered region, two index tuples alias.
     let mut covered_max_offset: usize = 0;
     for (dim, stride) in axes {
+        // Ambiguous overlap: current stride falls inside previously covered region.
         if stride <= covered_max_offset {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
@@ -182,6 +193,7 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
                 reason: InvalidLayoutReason::AmbiguousOverlap,
             });
         }
+        // Span of this axis: (dim - 1) × stride elements past the first.
         let span = match (dim - 1).checked_mul(stride) {
             Some(s) => s,
             None => {
@@ -196,6 +208,7 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
                 });
             },
         };
+        // Extend covered region by this axis's span.
         covered_max_offset = match covered_max_offset.checked_add(span) {
             Some(m) => m,
             None => {
@@ -214,8 +227,6 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
 
     Ok(())
 }
-
-// ── Basic query methods ──
 
 impl<S, D> TensorBase<S, D>
 where
