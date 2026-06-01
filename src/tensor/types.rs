@@ -45,21 +45,24 @@ where
     // visibility) can violate the shape/strides/offset/flags mutual-
     // consistency invariant OR the provenance invariant encoded by
     // `derived_from_view_mut`. ANY constructor path within the crate
-    // MUST route through `new_unchecked` (or one of the
-    // validated public constructors) which is the single internal entry
-    // point for tensor metadata assembly. Tests may construct directly
-    // because their invariants are locally obvious; production code
-    // MUST NOT.
-    
+    // MUST route through `new_unchecked` (or one of the validated public
+    // constructors) which is the single internal entry point for tensor
+    // metadata assembly. Tests may construct directly because their
+    // invariants are locally obvious; production code MUST NOT.
+
     /// Opaque storage handle. Private to the type; exposed through query API.
     pub(crate) storage: S,
 
+    /// Axis lengths. Zero-copy exposed via [`TensorBase::shape`].
     pub(crate) shape: D,
-
+    
+    /// Strides in element units, may be zero for broadcast axes.
     pub(crate) strides: Strides<D>,
-
+    
+    /// Offset from storage base to logical first element.
     pub(crate) offset: usize,
     
+    /// Layout flags (F-contiguous, aligned, zero-stride).
     pub(crate) flags: LayoutFlags,
     
     /// `true` iff this view was demoted from a [`ViewMutRepr`] via `view()`.
@@ -72,8 +75,6 @@ where
     /// provenance-aware constructors.
     pub(crate) derived_from_view_mut: bool,
 }
-
-// ── OwnedRawParts ──
 
 /// Decomposition of an owned tensor into raw pointer + allocator metadata.
 ///
@@ -171,8 +172,6 @@ pub enum StorageKind {
     /// Reference-counted shared storage (`ArcRepr<A>`).
     Shared,
 }
-
-
 
 #[cfg(test)]
 mod tests {
