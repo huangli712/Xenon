@@ -952,7 +952,8 @@ mod tests {
     use crate::storage::Owned;
     use crate::tensor::Tensor;
 
-    /// Helper: construct an Owned tensor with arbitrary flags/offset for testing.
+    /// Helper: construct an Owned tensor with arbitrary flags/offset
+    /// for testing.
     fn make_owned(
         shape: Ix2,
         data: Vec<f64>,
@@ -1048,7 +1049,13 @@ mod tests {
     /// Verify layout_state returns FContiguous for F_CONTIGUOUS flags.
     #[test]
     fn test_layout_state_f_contiguous() {
-        let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
+        let t = make_owned(
+            Ix2(2, 3),
+            vec![0.0; 6],
+            LayoutFlags::F_CONTIGUOUS,
+            false,
+            0
+        );
         assert!(t.is_f_contiguous());
         assert_eq!(t.layout_state(), LayoutState::FContiguous);
     }
@@ -1056,7 +1063,13 @@ mod tests {
     /// Verify layout_state returns NonContiguous for EMPTY flags.
     #[test]
     fn test_layout_state_non_contiguous() {
-        let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::EMPTY, false, 0);
+        let t = make_owned(
+            Ix2(2, 3),
+            vec![0.0; 6],
+            LayoutFlags::EMPTY,
+            false,
+            0
+        );
         assert!(!t.is_f_contiguous());
         assert_eq!(t.layout_state(), LayoutState::NonContiguous);
     }
@@ -1077,7 +1090,13 @@ mod tests {
     /// Verify is_aligned returns false when the aligned flag is not set.
     #[test]
     fn test_not_aligned() {
-        let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::EMPTY, false, 0);
+        let t = make_owned(
+            Ix2(2, 3),
+            vec![0.0; 6],
+            LayoutFlags::EMPTY,
+            false,
+            0
+        );
         assert!(!t.is_aligned());
     }
    
@@ -1097,7 +1116,13 @@ mod tests {
     /// Verify has_zero_stride returns false for F-contiguous layout.
     #[test]
     fn test_has_zero_stride_clear() {
-        let t = make_owned(Ix2(2, 3), vec![0.0; 6], LayoutFlags::F_CONTIGUOUS, false, 0);
+        let t = make_owned(
+            Ix2(2, 3),
+            vec![0.0; 6],
+            LayoutFlags::F_CONTIGUOUS,
+            false,
+            0
+        );
         assert!(!t.has_zero_stride());
     }
 
@@ -1258,8 +1283,9 @@ mod tests {
         assert!(raw.cap >= 6);
         assert_eq!(raw.offset, 0);
         assert_eq!(raw.shape.slice(), &[2, 3]);
-        let restored: Tensor<i32, Ix2> =
-            unsafe { Tensor::from_raw_parts_owned(raw) }.expect("round-trip must succeed");
+        let restored: Tensor<i32, Ix2> = 
+            unsafe { Tensor::from_raw_parts_owned(raw) }
+                .expect("round-trip must succeed");
         assert_eq!(restored.shape(), &[2, 3]);
         assert_eq!(
             restored.as_slice().expect("test input valid"),
@@ -1270,11 +1296,12 @@ mod tests {
     /// Round-trip for 1D tensors via the from_vec convenience path.
     #[test]
     fn test_into_raw_parts_roundtrip_1d() {
-        let original =
-            Tensor::<f64, Ix1>::from_vec(vec![1.0, 2.0, 3.0, 4.0]).expect("test input valid");
+        let original = Tensor::<f64, Ix1>::from_vec(vec![1.0, 2.0, 3.0, 4.0])
+            .expect("test input valid");
         let raw = original.into_raw_parts();
         let restored: Tensor<f64, Ix1> =
-            unsafe { Tensor::from_raw_parts_owned(raw) }.expect("test input valid");
+            unsafe { Tensor::from_raw_parts_owned(raw) }
+                .expect("test input valid");
         assert_eq!(
             restored.as_slice().expect("test input valid"),
             &[1.0, 2.0, 3.0, 4.0]
@@ -1284,12 +1311,13 @@ mod tests {
     /// Empty tensor round-trip uses dangling sentinel for compute_layout_flags.
     #[test]
     fn test_into_raw_parts_roundtrip_empty() {
-        let original =
-            Tensor::<i32, Ix1>::from_shape_vec([0], Vec::new()).expect("test input valid");
+        let original = Tensor::<i32, Ix1>::from_shape_vec([0], Vec::new())
+            .expect("test input valid");
         let raw = original.into_raw_parts();
         assert_eq!(raw.len, 0);
         let restored: Tensor<i32, Ix1> =
-            unsafe { Tensor::from_raw_parts_owned(raw) }.expect("test input valid");
+            unsafe { Tensor::from_raw_parts_owned(raw) }
+                .expect("test input valid");
         assert_eq!(restored.len(), 0);
     }
 
@@ -1317,7 +1345,7 @@ mod tests {
         let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
             .expect("test input valid");
         let mut raw = original.into_raw_parts();
-        raw.shape = crate::dimension::Ix2(3, 3);
+        raw.shape = Ix2(3, 3);
         let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }
             .expect_err("tampered raw parts");
         assert!(matches!(
@@ -1392,21 +1420,36 @@ mod tests {
     /// Dense 2×3 F-order layout should be non-overlapping.
     #[test]
     fn test_validate_non_overlap_dense_prefix_ok() {
-        let r = validate_non_overlapping_layout(&Ix2(2, 3), &Strides::new(Ix2(1, 2)), 0, 6);
+        let r = validate_non_overlapping_layout(
+            &Ix2(2, 3),
+            &Strides::new(Ix2(1, 2)),
+            0,
+            6
+        );
         assert!(r.is_ok());
     }
 
     /// Zero-stride axis on a 2×3 layout should be rejected.
     #[test]
     fn test_validate_non_overlap_zero_stride_rejected() {
-        let r = validate_non_overlapping_layout(&Ix2(2, 3), &Strides::new(Ix2(0, 1)), 0, 6);
+        let r = validate_non_overlapping_layout(
+            &Ix2(2, 3),
+            &Strides::new(Ix2(0, 1)),
+            0,
+            6
+        );
         assert!(r.is_err());
     }
 
     /// Ambiguous overlap (stride [1, 1] for 2×2) should be rejected.
     #[test]
     fn test_validate_non_overlap_ambiguous_rejected() {
-        let r = validate_non_overlapping_layout(&Ix2(2, 2), &Strides::new(Ix2(1, 1)), 0, 4);
+        let r = validate_non_overlapping_layout(
+            &Ix2(2, 2),
+            &Strides::new(Ix2(1, 1)),
+            0,
+            4
+        );
         assert!(r.is_err());
     }
 
