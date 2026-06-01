@@ -40,7 +40,6 @@ where
     S: RawStorage,
     D: Dimension,
 {
-    /// Opaque storage handle. Private to the type; exposed through query API.
     // SAFETY INVARIANT: the six fields below together encode the tensor
     // layout contract. Direct field mutation (possible via `pub(crate)`
     // visibility) can violate the shape/strides/offset/flags mutual-
@@ -51,11 +50,18 @@ where
     // point for tensor metadata assembly. Tests may construct directly
     // because their invariants are locally obvious; production code
     // MUST NOT.
+    
+    /// Opaque storage handle. Private to the type; exposed through query API.
     pub(crate) storage: S,
+
     pub(crate) shape: D,
+
     pub(crate) strides: Strides<D>,
+
     pub(crate) offset: usize,
+    
     pub(crate) flags: LayoutFlags,
+    
     /// `true` iff this view was demoted from a [`ViewMutRepr`] via `view()`.
     ///
     /// Enables [`access_semantics`](TensorBase::access_semantics) and
