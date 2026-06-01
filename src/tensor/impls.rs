@@ -796,7 +796,7 @@ where
 }
 
 
-// ---------- Mutable view (ViewMutRepr) ------------------------------------
+// ---------- Mutable view (ViewMutRepr) --------------------------------------
 
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
@@ -808,8 +808,15 @@ where
     /// Sets `derived_from_view_mut = true` so that `access_semantics()` and
     /// `alias_class()` correctly report the ViewMut origin.
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        // SAFETY: storage exposes valid base pointer + len
+        let storage = unsafe {
+            ViewRepr::from_raw_parts(
+                self.storage.as_ptr(),
+                self.storage.len()
+            )
+        };
+        // SAFETY: shape/strides/offset/flags are inherited from the source
+        // ViewMutRepr; derived_from_view_mut is set to true for provenance.
         unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -824,9 +831,12 @@ where
 
     /// Creates a reborrowed mutable view. Does NOT set the ViewMut provenance bit.
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
+        // SAFETY: storage exposes valid base pointer + len
         let storage = unsafe {
             ViewMutRepr::from_raw_parts_mut(self.storage.as_ptr() as *mut A, self.storage.len())
         };
+        // SAFETY: shape/strides/offset/flags are inherited; provenance not set
+        // (reborrow does not demote to immutable).
         unsafe {
             TensorBase::new_unchecked(
                 storage,
