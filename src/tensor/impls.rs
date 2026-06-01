@@ -228,6 +228,8 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
     Ok(())
 }
 
+// ---------- Basic query, layout & construction ------------------------------
+
 impl<S, D> TensorBase<S, D>
 where
     S: RawStorage,
