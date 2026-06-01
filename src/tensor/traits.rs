@@ -124,7 +124,7 @@ mod tests {
     use super::*;
     use crate::layout::LayoutFlags;
 
-    // ── Owned ──
+    // ------ Owned -----------------------------------------------------------
 
     /// Owned storage kind is Owned.
     #[test]
@@ -164,7 +164,7 @@ mod tests {
         );
     }
 
-    // ── ViewRepr ──
+    // ------ ViewRepr --------------------------------------------------------
 
     /// ViewRepr access_semantics: ReadOnly for plain, SharedReadOnly for
     /// zero-stride or ViewMut-derived.
@@ -202,7 +202,7 @@ mod tests {
         );
     }
 
-    // ── ViewMutRepr ──
+    // ------ ViewMutRepr -----------------------------------------------------
 
     /// ViewMutRepr access_semantics always returns Writable.
     #[test]
@@ -227,7 +227,7 @@ mod tests {
         );
     }
 
-    // ── ArcRepr ──
+    // ------ ArcRepr ---------------------------------------------------------
 
     /// ArcRepr access_semantics always returns SharedReadOnly.
     #[test]
