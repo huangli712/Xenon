@@ -1,4 +1,9 @@
-//! Core tensor type: [`TensorBase<S, D>`] and [`OwnedRawParts`].
+//! Public types of the tensor module.
+//!
+//! This module defines [`TensorBase<S, D>`] — the central n‑dimensional array
+//! — together with its raw‑parts decomposition [`OwnedRawParts`] and the
+//! semantic query enums [`DataLocation`], [`StorageKind`], [`AccessSemantics`],
+//! and [`AliasClass`].
 
 use crate::dimension::Dimension;
 use crate::layout::{LayoutFlags, Strides};
