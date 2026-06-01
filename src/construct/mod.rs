@@ -29,8 +29,8 @@
 //   W22T2 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn zeros }  in from.rs
 //   W22T3 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn ones }   in from.rs
 //   W22T4 → pub trait EyeElement + impl<A: EyeElement> TensorBase<Owned<A>, Ix2> { fn eye }
-//           in eye.rs
-//           W22T4 additionally adds `pub use eye::EyeElement;` here.
+//           in from.rs
+//           W22T4 additionally adds `pub use from::EyeElement;` here.
 //   W22T5 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn from_shape_vec }
 //         + impl<A: Element> TensorBase<Owned<A>, Ix1> { fn from_vec }  in from.rs
 //   W22T6 → impl<A: Element + Clone, D: Dimension> TensorBase<Owned<A>, D> { fn from_shape_slice }
@@ -38,25 +38,23 @@
 //   W22T7 → impl<A: Element, D: Dimension> TensorBase<Owned<A>, D> { fn from_array<const N: usize> }
 //           in from.rs
 //   W22T8 → impl<A: Element> TensorBase<Owned<A>, Ix0> { fn from_scalar }  in from.rs
-/// Identity matrix constructor (`eye`).
-pub mod eye;
-pub use eye::EyeElement;
-/// Tensor constructors (`zeros`, `ones`, `from_shape_vec`, `from_vec`,
+pub use from::EyeElement;
+/// Tensor constructors (`zeros`, `ones`, `eye`, `from_shape_vec`, `from_vec`,
 /// `from_shape_slice`, `from_array`, `from_scalar`).
 pub mod from;
 
 #[cfg(test)]
 mod tests {
     /// Compile-time anchor: each sub-module path must resolve. If any of the
-    /// two `pub mod` declarations is removed or its target file is missing,
+    /// one `pub mod` declaration is removed or its target file is missing,
     /// this `use` block fails to compile, surfacing the breakage at the
     /// W22T1 acceptance gate rather than at a downstream sub-task.
     #[allow(unused_imports)]
-    use super::{eye, from};
+    use super::from;
 
     #[test]
     fn compile_anchor_construct_submodule_paths_resolve() {
-        // No assertion needed — the `use super::{eye, from};`
+        // No assertion needed — the `use super::from;`
         // statement above is itself the test. The empty body documents that
         // constructor behavior is tested by W22T2 (zeros), W22T3 (ones),
         // W22T4 (eye + EyeElement), W22T5 (from_shape_vec + from_vec),
