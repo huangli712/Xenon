@@ -181,6 +181,34 @@ where
         // `derived_from_view_mut: false` — `from_shape_vec` is not a downgrade path.
         Ok(unsafe { Self::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
+
+    /// Construct a tensor from a fixed-size array.
+    ///
+    /// The const generic `N` provides compile-time length for the input array;
+    /// runtime shape validation (`shape.checked_size() == N`) is still performed
+    /// inside `from_shape_vec`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates from [`Self::from_shape_vec`]:
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }` if
+    ///   `shape.checked_size()` overflows `usize`.
+    /// - `XenonError::InvalidShape { kind: ElementCountMismatch { expected, actual } }`
+    ///   if `shape.checked_size() != N`.
+    /// - `XenonError::AllocationFailed` if the underlying aligned allocator
+    ///   cannot satisfy the buffer request.
+    pub fn from_array<Sh, const N: usize>(shape: Sh, arr: [A; N]) -> Result<Self, XenonError>
+    where
+        Sh: IntoDimension<Dim = D>,
+    {
+        // Per 18-construction.md §5.3 line 432-452: the `into_iter().collect()`
+        // hop introduces one temporary `Vec<A>` of length N. Combined with the
+        // potential repack inside `Owned::from_vec_aligned`, `from_array` is
+        // documented as "necessary data movement" rather than "avoidable
+        // temporary allocation". Do NOT switch to `Vec::from(arr)` — the
+        // design uses `into_iter().collect()` as its canonical form.
+        Self::from_shape_vec(shape, arr.into_iter().collect())
+    }
 }
 
 impl<A, D> TensorBase<Owned<A>, D>
@@ -220,40 +248,6 @@ where
         // Length already validated; pass the already-normalized `dim` to avoid
         // a second `IntoDimension` traversal inside `from_shape_vec`.
         Self::from_shape_vec(dim, slice.to_vec())
-    }
-}
-
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Construct a tensor from a fixed-size array.
-    ///
-    /// The const generic `N` provides compile-time length for the input array;
-    /// runtime shape validation (`shape.checked_size() == N`) is still performed
-    /// inside `from_shape_vec`.
-    ///
-    /// # Errors
-    ///
-    /// Propagates from [`Self::from_shape_vec`]:
-    /// - `XenonError::InvalidShape { kind: ProductOverflow }` if
-    ///   `shape.checked_size()` overflows `usize`.
-    /// - `XenonError::InvalidShape { kind: ElementCountMismatch { expected, actual } }`
-    ///   if `shape.checked_size() != N`.
-    /// - `XenonError::AllocationFailed` if the underlying aligned allocator
-    ///   cannot satisfy the buffer request.
-    pub fn from_array<Sh, const N: usize>(shape: Sh, arr: [A; N]) -> Result<Self, XenonError>
-    where
-        Sh: IntoDimension<Dim = D>,
-    {
-        // Per 18-construction.md §5.3 line 432-452: the `into_iter().collect()`
-        // hop introduces one temporary `Vec<A>` of length N. Combined with the
-        // potential repack inside `Owned::from_vec_aligned`, `from_array` is
-        // documented as "necessary data movement" rather than "avoidable
-        // temporary allocation". Do NOT switch to `Vec::from(arr)` — the
-        // design uses `into_iter().collect()` as its canonical form.
-        Self::from_shape_vec(shape, arr.into_iter().collect())
     }
 }
 
