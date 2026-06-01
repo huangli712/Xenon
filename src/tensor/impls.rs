@@ -456,10 +456,12 @@ where
 // view() is implemented per concrete storage type to avoid Rust's method
 // resolution ambiguity between generic and specific impl blocks.
 
+// ---------- view() / view_mut() / into_raw_parts() / from_raw_parts_owned() -------
+
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    A: Element,
-    D: Dimension + Clone,
+    A: Element + Clone,
+    D: Dimension + Clone + PartialEq,
 {
     /// Creates an immutable view sharing the underlying storage.
     ///
@@ -519,45 +521,7 @@ where
             )
         }
     }
-}
 
-// ---------- from_raw_vec_unchecked ------------------------------------------
-
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Construct an Owned tensor from a Vec, skipping all consistency checks.
-    ///
-    /// # Safety
-    ///
-    /// - `data.as_ptr()` remains valid for construction.
-    /// - `shape.checked_size()` was previously validated (no overflow).
-    /// - `data.len() == shape.checked_size()` — mismatch is undefined behaviour.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `Strides::f_contiguous(&shape)` returns an error (shape product
-    /// overflow), or if `Owned::from_vec(data)` returns an error (allocation
-    /// failure or byte-size overflow). Both are unreachable when the caller
-    /// upholds the `# Safety` precondition that `shape.checked_size()` was
-    /// previously validated.
-    pub unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
-        let strides = crate::layout::Strides::f_contiguous(&shape).expect("caller-proved valid shape");
-        let storage = Owned::from_vec(data).expect("caller-proved valid vec");
-        let flags = compute_layout_flags::<A, D>(&shape, &strides, storage.as_ptr());
-        unsafe { Self::new_unchecked(storage, shape, strides, 0, flags, false) }
-    }
-}
-
-// ---------- into_raw_parts / from_raw_parts_owned ---------------------------
-
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element + Clone,
-    D: Dimension + Clone,
-{
     /// Consumes the tensor, returning owned raw parts.
     ///
     /// This method consumes `self`. The caller must eventually reconstruct
@@ -576,13 +540,6 @@ where
             offset: this.offset,
         }
     }
-}
-
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element,
-    D: Dimension + Clone + PartialEq,
-{
     /// Reconstructs an owned tensor from raw parts obtained via
     /// `into_raw_parts`.
     pub unsafe fn from_raw_parts_owned(raw: OwnedRawParts<A, D>) -> Result<Self> {
@@ -677,6 +634,37 @@ where
             flags,
             derived_from_view_mut: false,
         })
+    }
+}
+
+
+// ---------- from_raw_vec_unchecked ------------------------------------------
+
+impl<A, D> TensorBase<Owned<A>, D>
+where
+    A: Element,
+    D: Dimension,
+{
+    /// Construct an Owned tensor from a Vec, skipping all consistency checks.
+    ///
+    /// # Safety
+    ///
+    /// - `data.as_ptr()` remains valid for construction.
+    /// - `shape.checked_size()` was previously validated (no overflow).
+    /// - `data.len() == shape.checked_size()` — mismatch is undefined behaviour.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Strides::f_contiguous(&shape)` returns an error (shape product
+    /// overflow), or if `Owned::from_vec(data)` returns an error (allocation
+    /// failure or byte-size overflow). Both are unreachable when the caller
+    /// upholds the `# Safety` precondition that `shape.checked_size()` was
+    /// previously validated.
+    pub unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
+        let strides = crate::layout::Strides::f_contiguous(&shape).expect("caller-proved valid shape");
+        let storage = Owned::from_vec(data).expect("caller-proved valid vec");
+        let flags = compute_layout_flags::<A, D>(&shape, &strides, storage.as_ptr());
+        unsafe { Self::new_unchecked(storage, shape, strides, 0, flags, false) }
     }
 }
 
