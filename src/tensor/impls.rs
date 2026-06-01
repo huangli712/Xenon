@@ -874,6 +874,7 @@ where
         strides: Strides<D>,
         offset: usize,
     ) -> Result<Self> {
+        // Validate the layout fits within storage before constructing.
         validate_access_range(
             &shape,
             &strides,
@@ -882,11 +883,14 @@ where
             "TensorViewMut::from_raw_parts_mut",
             StorageKindTag::ViewMut,
         )?;
+
+        // Also validate mutable views have non-overlapping layouts.
         validate_non_overlapping_layout(&shape, &strides, offset, storage_len)?;
 
         // SAFETY: layout validated above; ptr is valid per caller contract.
         let storage = unsafe { ViewMutRepr::from_raw_parts_mut(ptr, storage_len) };
 
+        // Determine logical first-element pointer for flag computation.
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
             NonNull::<A>::dangling().as_ptr() as *const A
         } else {
