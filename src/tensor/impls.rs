@@ -789,6 +789,7 @@ where
         // Compute layout flags from the validated shape/strides/logical_ptr.
         let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
 
+        // SAFETY: layout, access range, overlap, and flags all validated above.
         Ok(unsafe {
             Self::new_unchecked(storage, shape, strides, offset, flags, false)
         })
