@@ -15,8 +15,8 @@ use super::{AccessSemantics, AliasClass, StorageKind};
 /// `TensorBase<S, D>`.
 ///
 /// This trait is intentionally public so downstream code can name the bound
-/// required by [`TensorBase::storage_kind`], [`TensorBase::access_semantics`],
-/// and [`TensorBase::alias_class`] on generic `S`. It remains sealed because
+/// required by `TensorBase::storage_kind`, `TensorBase::access_semantics`,
+/// and `TensorBase::alias_class` on generic `S`. It remains sealed because
 /// [`RawStorage`] is sealed, so external crates cannot implement it for custom
 /// storage types.
 pub trait StorageSemantics: RawStorage {

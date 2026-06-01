@@ -502,8 +502,9 @@ where
     /// Zero-copy conversion from `Tensor<A, D>` to `ArcTensor<A, D>`.
     ///
     /// Wraps the storage-layer `Owned<A>::into_shared(self) -> ArcRepr<A>`.
-    /// Shape, strides, offset, and layout flags are preserved; `derived_from_view_mut` is `false` since
-    /// `Owned`-backed tensors are never derived from a `ViewMut`.
+    /// Shape, strides, offset, and layout flags are preserved;
+    /// `derived_from_view_mut` is `false` since `Owned`-backed tensors are
+    /// never derived from a `ViewMut`.
     pub fn into_shared(self) -> TensorBase<ArcRepr<A>, D> {
         let storage = self.storage.into_shared();
         // SAFETY: shape/strides/offset/flags are inherited verbatim from a
