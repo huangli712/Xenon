@@ -1375,6 +1375,77 @@ mod tests {
         ));
     }
 
+    /// Tampered capacity (cap < len) rejects.
+    #[test]
+    fn test_from_raw_parts_owned_rejects_capacity_below_len() {
+        let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+            .expect("test input valid");
+        let mut raw = original.into_raw_parts();
+        raw.cap = raw.len - 1;
+        let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }
+            .expect_err("tampered raw parts");
+        assert!(matches!(
+            err,
+            XenonError::InvalidLayout {
+                reason: InvalidLayoutReason::CapacityBelowLen,
+                ..
+            }
+        ));
+    }
+
+    /// Tampered alignment (not power of two) rejects.
+    #[test]
+    fn test_from_raw_parts_owned_rejects_invalid_alignment() {
+        let original = Tensor::<i32, Ix1>::from_vec(vec![1_i32, 2, 3])
+            .expect("test input valid");
+        let mut raw = original.into_raw_parts();
+        raw.align = 3; // not a power of two
+        let err = unsafe { Tensor::<i32, Ix1>::from_raw_parts_owned(raw) }
+            .expect_err("tampered raw parts");
+        assert!(matches!(
+            err,
+            XenonError::InvalidLayout {
+                reason: InvalidLayoutReason::AlignmentInvalid,
+                ..
+            }
+        ));
+    }
+
+    /// from_raw_parts constructs an immutable view from raw pointer data.
+    #[test]
+    fn test_from_raw_parts_valid() {
+        let data = vec![1_i32, 2, 3, 4];
+        let ptr = data.as_ptr();
+        let view = unsafe {
+            TensorBase::<ViewRepr<'_, i32>, Ix2>::from_raw_parts(
+                ptr,
+                data.len(),
+                Ix2(2, 2),
+                Strides::new(Ix2(1, 2)),
+                0,
+            )
+        }.expect("valid layout");
+        assert_eq!(view.as_slice().expect("F-contiguous"), &[1, 2, 3, 4]);
+    }
+
+    /// from_raw_parts_mut constructs a mutable view and allows in-place mutation.
+    #[test]
+    fn test_from_raw_parts_mut_valid() {
+        let mut data = vec![1_i32, 2, 3, 4];
+        let ptr = data.as_mut_ptr();
+        let mut view = unsafe {
+            TensorBase::<ViewMutRepr<'_, i32>, Ix2>::from_raw_parts_mut(
+                ptr,
+                data.len(),
+                Ix2(2, 2),
+                Strides::new(Ix2(1, 2)),
+                0,
+            )
+        }.expect("valid layout");
+        view.as_mut_slice().expect("F-contiguous")[0] = 99;
+        assert_eq!(data, vec![99, 2, 3, 4]);
+    }
+
     /// Validates access range for a 2×2 F-order layout with sufficient storage.
     #[test]
     fn test_validate_access_range_valid() {
