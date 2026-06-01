@@ -96,21 +96,25 @@ where
 {
     /// Pointer to the storage base.
     pub ptr: *mut A,
+
     /// Logical length in elements.
     pub len: usize,
+
     /// Allocator capacity in elements.
     pub cap: usize,
+    
     /// Allocator alignment in bytes.
     pub align: usize,
+    
     /// Owned tensor shape.
     pub shape: D,
+    
     /// Canonical F-order strides matching shape.
     pub strides: Strides<D>,
+    
     /// Logical offset in element units.
     pub offset: usize,
 }
-
-// ── DataLocation ──
 
 /// Physical data location of the tensor payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
