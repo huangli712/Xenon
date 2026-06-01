@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.17] — 2026-06-01
+
+### Added
+
+- Doc comments and SAFETY comments to all unsafe blocks in tensor impls.
+- Inline step comments for validation functions in `from_raw_parts_owned`.
+- Section separator comments grouping related tests in `impls.rs`.
+- Test: `from_raw_parts_owned` rejects capacity-below-len and invalid alignment.
+- Test: `from_raw_parts` and `from_raw_parts_mut` valid-construction.
+
+### Removed
+
+- Stale intra-doc links and section separator comments (`// ── X ──`).
+- Skeleton compile tests superseded by functional tests.
+
+### Changed
+
+- Consolidated multiple `impl` blocks into one per storage type (Owned, ViewRepr, ViewMutRepr).
+- Unified section separator comments to `// ----------` style across tensor module.
+- Reordered methods for logical grouping in query and Owned impl blocks.
+- Replaced fully-qualified paths with local imports; reorganized `use` groups.
+- Simplified tensor module doc comment to table format.
+- Reformatted long function calls and unsafe blocks for consistency.
+
 ## [v0.0.16] — 2026-05-30
 
 ### Added
