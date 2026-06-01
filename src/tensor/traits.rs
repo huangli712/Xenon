@@ -1,9 +1,15 @@
-//! Storage semantics trait: [`StorageSemantics`].
+//! Sealed dispatch trait for storage-type-dependent queries.
+//!
+//! [`StorageSemantics`] maps each concrete storage representation to its
+//! [`StorageKind`], [`AccessSemantics`], and [`AliasClass`]. Code generic
+//! over `S: StorageSemantics` can call [`TensorBase::storage_kind`],
+//! [`TensorBase::access_semantics`], and [`TensorBase::alias_class`] without
+//! knowing the concrete `S`.
 
-use super::{AccessSemantics, AliasClass, StorageKind};
 use crate::element::Element;
 use crate::layout::LayoutFlags;
 use crate::storage::{ArcRepr, Owned, RawStorage, ViewMutRepr, ViewRepr};
+use super::{AccessSemantics, AliasClass, StorageKind};
 
 /// Sealed helper trait for callers writing generic helpers over
 /// `TensorBase<S, D>`.
@@ -21,11 +27,14 @@ pub trait StorageSemantics: RawStorage {
     /// state (the `derived_from_view_mut` flag on `TensorBase`).
     fn access_semantics(
         flags: LayoutFlags,
-        derived_from_view_mut: bool,
+        derived_from_view_mut: bool
     ) -> AccessSemantics;
 
     /// Compute [`AliasClass`] for the given layout flags and provenance state.
-    fn alias_class(flags: LayoutFlags, derived_from_view_mut: bool) -> AliasClass;
+    fn alias_class(
+        flags: LayoutFlags,
+        derived_from_view_mut: bool
+    ) -> AliasClass;
 }
 
 // ── Implementations for the four sealed storage types ──
