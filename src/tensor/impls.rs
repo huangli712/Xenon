@@ -243,7 +243,8 @@ where
         self.strides.as_slice()
     }
 
-    /// Number of dimensions (compile-time const for `Ix0`–`Ix6`, runtime for `IxDyn`).
+    /// Number of dimensions (compile-time const for `Ix0`–`Ix6`,
+    /// runtime for `IxDyn`).
     pub fn ndim(&self) -> usize {
         self.shape.ndim()
     }
@@ -280,7 +281,8 @@ where
         DataLocation::Cpu
     }
 
-    /// Returns the layout-state classification (`FContiguous` / `NonContiguous` / `BroadcastView`).
+    /// Returns the layout-state classification (`FContiguous` /
+    /// `NonContiguous` / `BroadcastView`).
     pub fn layout_state(&self) -> crate::layout::LayoutState {
         self.flags.classify()
     }
@@ -295,7 +297,8 @@ where
         self.flags.is_aligned()
     }
 
-    /// Returns `true` iff `LayoutFlags::HAS_ZERO_STRIDE` is set (broadcast-induced zero stride).
+    /// Returns `true` iff `LayoutFlags::HAS_ZERO_STRIDE` is set (broadcast-
+    /// induced zero stride).
     pub fn has_zero_stride(&self) -> bool {
         self.flags.has_zero_stride()
     }
