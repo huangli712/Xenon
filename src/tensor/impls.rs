@@ -2,9 +2,9 @@
 //! views, raw‑parts, pointer access, slice extraction, semantic dispatch,
 //! and associated tests.
 
+use core::slice;
 use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
-use core::slice;
 use std::borrow::Cow;
 
 use super::{TensorBase, OwnedRawParts};
@@ -15,8 +15,8 @@ use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
-use crate::layout::{LayoutFlags, Strides, compute_layout_flags};
-use crate::storage::{Owned, ViewMutRepr, ViewRepr, ArcRepr};
+use crate::layout::{LayoutFlags, LayoutState, Strides, compute_layout_flags};
+use crate::storage::{Owned, ViewRepr, ViewMutRepr, ArcRepr};
 use crate::storage::{RawStorage, Storage, StorageMut, StorageOwned};
 
 /// Validates that the logical access range defined by shape/strides/offset
@@ -281,7 +281,7 @@ where
 
     /// Returns the layout-state classification (`FContiguous` /
     /// `NonContiguous` / `BroadcastView`).
-    pub fn layout_state(&self) -> crate::layout::LayoutState {
+    pub fn layout_state(&self) -> LayoutState {
         self.flags.classify()
     }
 
