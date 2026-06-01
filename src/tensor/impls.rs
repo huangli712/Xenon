@@ -10,15 +10,13 @@ use super::{TensorBase, OwnedRawParts};
 use super::{DataLocation, StorageKind, AccessSemantics, AliasClass};
 use super::StorageSemantics;
 
+use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
 use crate::Result;
 use crate::dimension::Dimension;
 use crate::element::Element;
-use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
 use crate::layout::{LayoutFlags, Strides, compute_layout_flags};
 use crate::storage::{Owned, ViewMutRepr, ViewRepr, ArcRepr};
 use crate::storage::{RawStorage, Storage, StorageMut, StorageOwned};
-
-// ── validate_access_range ──
 
 /// Validates that the logical access range defined by shape/strides/offset
 /// fits within the given storage length.
