@@ -739,6 +739,7 @@ where
         }
     }
 
+    /// Constructs an immutable view from raw parts.
     ///
     /// # Safety
     ///
@@ -764,6 +765,7 @@ where
         strides: Strides<D>,
         offset: usize,
     ) -> Result<Self> {
+        // Validate the layout before constructing the view.
         validate_access_range(
             &shape,
             &strides,
@@ -773,16 +775,23 @@ where
             StorageKindTag::View,
         )?;
 
+        // SAFETY: layout validated above; ptr is valid per caller contract.
         let storage = unsafe { ViewRepr::from_raw_parts(ptr, storage_len) };
 
+        // Determine logical first-element pointer. Empty tensors use
+        // a dangling sentinel; otherwise ptr + offset is the first element.
         let logical_first: *const A = if shape.checked_size().unwrap_or(0) == 0 {
             NonNull::<A>::dangling().as_ptr() as *const A
         } else {
             unsafe { ptr.add(offset) }
         };
+
+        // Compute layout flags from the validated shape/strides/logical_ptr.
         let flags = compute_layout_flags::<A, D>(&shape, &strides, logical_first);
 
-        Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
+        Ok(unsafe {
+            Self::new_unchecked(storage, shape, strides, offset, flags, false)
+        })
     }
 }
 
