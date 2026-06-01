@@ -718,12 +718,15 @@ where
     /// Creates an immutable view, propagating `derived_from_view_mut` from
     /// the source (may be `true` if the source was already a demoted ViewMut).
     pub fn view(&self) -> TensorBase<ViewRepr<'_, A>, D> {
+        // SAFETY: storage exposes valid base pointer + len
         let storage = unsafe {
             ViewRepr::from_raw_parts(
                 self.storage.as_ptr(),
                 self.storage.len()
             )
         };
+        // SAFETY: all parameters are inherited from a previously validated
+        // ViewRepr tensor; provenance is preserved via derived_from_view_mut.
         unsafe {
             TensorBase::new_unchecked(
                 storage,
