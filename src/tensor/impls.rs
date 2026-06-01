@@ -338,6 +338,8 @@ where
     }
 }
 
+// ---------- Pointer access & slice ------------------------------------------
+
 impl<S, D> TensorBase<S, D>
 where
     S: RawStorage,
@@ -349,8 +351,7 @@ where
     }
 }
 
-
-// ── Pointer access & slice ──
+// ---------- Mutable pointer access & slice ----------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
