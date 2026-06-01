@@ -795,6 +795,9 @@ where
     }
 }
 
+
+// ---------- Mutable view (ViewMutRepr) ------------------------------------
+
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
     A: Element,
@@ -818,12 +821,7 @@ where
             )
         }
     }
-}
 
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    D: Dimension + Clone,
-{
     /// Creates a reborrowed mutable view. Does NOT set the ViewMut provenance bit.
     pub fn view_mut(&mut self) -> TensorBase<ViewMutRepr<'_, A>, D> {
         let storage = unsafe {
@@ -840,15 +838,7 @@ where
             )
         }
     }
-}
 
-// ---------- from_raw_parts_mut (mutable view) -------------------------------
-
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
     /// Constructs a mutable view from raw parts.
     ///
     /// # Safety
@@ -897,6 +887,7 @@ where
         Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
     }
 }
+
 
 impl<A, D> TensorBase<ArcRepr<A>, D>
 where
