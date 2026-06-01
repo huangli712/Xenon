@@ -67,12 +67,10 @@ where
     
     /// `true` iff this view was demoted from a [`ViewMutRepr`] via `view()`.
     ///
-    /// Enables [`access_semantics`](TensorBase::access_semantics) and
-    /// [`alias_class`](TensorBase::alias_class) to correctly report
+    /// Enables [`access_semantics`] and [`alias_class`] to correctly report
     /// `SharedReadOnly` / `ViewMutDerived` for ViewMut-demoted views.
     /// **Do NOT mutate this field directly**; always set it through
-    /// [`new_unchecked`](super::impls::TensorBase::new_unchecked) or the
-    /// provenance-aware constructors.
+    /// [`new_unchecked`] or the provenance-aware constructors.
     pub(crate) derived_from_view_mut: bool,
 }
 
