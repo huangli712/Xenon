@@ -227,7 +227,9 @@ mod tests {
         };
         assert_eq!(t.data_location(), DataLocation::Cpu);
     }
-    /// Verify `DataLocation::Cpu` can be constructed and derives Debug/Clone/Copy/PartialEq/Eq.
+
+    /// Verify `DataLocation::Cpu` can be constructed and derives
+    /// Debug/Clone/Copy/PartialEq/Eq.
     #[test]
     fn test_data_location_variants() {
         let loc = DataLocation::Cpu;
@@ -273,7 +275,8 @@ mod tests {
         assert_eq!(format!("{:?}", AliasClass::ViewMutDerived), "ViewMutDerived");
     }
 
-    /// Verify `OwnedRawParts` fields can be constructed and are pub-crate accessible.
+    /// Verify `OwnedRawParts` fields can be constructed and are pub-crate
+    /// accessible.
     #[test]
     fn test_owned_raw_parts_fields() {
         let shape = Ix2(2, 3);
