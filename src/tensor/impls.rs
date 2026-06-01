@@ -901,7 +901,9 @@ where
 
         // SAFETY: all parameters validated; derived_from_view_mut is false for
         // a fresh mutable view.
-        Ok(unsafe { Self::new_unchecked(storage, shape, strides, offset, flags, false) })
+        Ok(unsafe {
+            Self::new_unchecked(storage, shape, strides, offset, flags, false)
+        })
     }
 }
 
