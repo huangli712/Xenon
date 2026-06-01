@@ -427,7 +427,7 @@ where
     }
 }
 
-// ── Semantic dispatch (storage_kind / access_semantics / alias_class) ──
+// ---------- Semantic dispatch -----------------------------------------------
 
 impl<S, D> TensorBase<S, D>
 where
@@ -450,7 +450,8 @@ where
     }
 }
 
-// ── view() / view_mut() ──
+// ---------- view() / view_mut() ---------------------------------------------
+
 //
 // view() is implemented per concrete storage type to avoid Rust's method
 // resolution ambiguity between generic and specific impl blocks.
@@ -520,7 +521,7 @@ where
     }
 }
 
-// ── from_raw_vec_unchecked ──
+// ---------- from_raw_vec_unchecked ------------------------------------------
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
@@ -550,7 +551,7 @@ where
     }
 }
 
-// ── into_raw_parts / from_raw_parts_owned ──
+// ---------- into_raw_parts / from_raw_parts_owned ---------------------------
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
@@ -701,7 +702,7 @@ where
     }
 }
 
-// ── from_raw_parts (immutable view) ──
+// ---------- from_raw_parts (immutable view) ---------------------------------
 
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
@@ -803,7 +804,7 @@ where
     }
 }
 
-// ── from_raw_parts_mut (mutable view) ──
+// ---------- from_raw_parts_mut (mutable view) -------------------------------
 
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
