@@ -180,8 +180,8 @@ pub enum StorageKind {
 
 #[cfg(test)]
 mod tests {
-    use super::{AccessSemantics, AliasClass, DataLocation, OwnedRawParts, StorageKind, TensorBase};
-    use crate::dimension::{Dimension as _, Ix2};
+    use super::*;
+    use crate::dimension::Ix2;
     use crate::layout::{LayoutFlags, Strides};
     use crate::storage::Owned;
 
