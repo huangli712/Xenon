@@ -146,13 +146,7 @@ where
         // derived_from_view_mut: false — ones is not a downgrade path.
         Ok(unsafe { Self::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
-}
 
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
     /// Construct a tensor from `shape` and `data`, consuming the Vec.
     ///
     /// # Errors
