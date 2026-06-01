@@ -300,6 +300,15 @@ where
         self.flags.has_zero_stride()
     }
 
+    /// Underlying storage buffer length in elements.
+    ///
+    /// Distinct from [`len`](Self::len) which returns the logical element
+    /// count (product of axis dimensions). The storage buffer may be larger
+    /// than the logical count for views into larger allocations.
+    pub fn storage_len(&self) -> usize {
+        self.storage.len()
+    }
+
     /// Canonical unchecked tensor metadata assembly.
     ///
     /// # Safety
@@ -346,11 +355,6 @@ where
     /// Raw storage base pointer (does NOT add `offset`).
     pub fn as_storage_ptr(&self) -> *const A {
         self.storage.as_ptr()
-    }
-
-    /// Underlying storage buffer length in elements.
-    pub fn storage_len(&self) -> usize {
-        self.storage.len()
     }
 
     /// Raw pointer to the logical first element.
