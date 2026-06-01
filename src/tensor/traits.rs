@@ -39,10 +39,12 @@ pub trait StorageSemantics: RawStorage {
 
 impl<A> StorageSemantics for Owned<A> {
     const KIND: StorageKind = StorageKind::Owned;
+
     /// Owned storage always reports [`AccessSemantics::Owned`].
     fn access_semantics(_: LayoutFlags, _: bool) -> AccessSemantics {
         AccessSemantics::Owned
     }
+
     /// Alias class depends on layout flags: [`AliasClass::BroadcastAlias`]
     /// for zero-stride, [`AliasClass::ViewMutDerived`] when demoted from
     /// ViewMut, otherwise [`AliasClass::Unique`].
@@ -59,6 +61,7 @@ impl<A> StorageSemantics for Owned<A> {
 
 impl<A> StorageSemantics for ViewRepr<'_, A> {
     const KIND: StorageKind = StorageKind::View;
+
     /// Returns [`AccessSemantics::SharedReadOnly`] for zero-stride or
     /// ViewMut-derived views, [`AccessSemantics::ReadOnly`] otherwise.
     fn access_semantics(flags: LayoutFlags, derived: bool) -> AccessSemantics {
@@ -68,6 +71,7 @@ impl<A> StorageSemantics for ViewRepr<'_, A> {
             AccessSemantics::ReadOnly
         }
     }
+
     /// Alias class: [`AliasClass::BroadcastAlias`] for zero-stride,
     /// [`AliasClass::ViewMutDerived`] when demoted from ViewMut,
     /// [`AliasClass::Unique`] otherwise.
@@ -84,10 +88,12 @@ impl<A> StorageSemantics for ViewRepr<'_, A> {
 
 impl<A> StorageSemantics for ViewMutRepr<'_, A> {
     const KIND: StorageKind = StorageKind::ViewMut;
+
     /// ViewMutRepr always reports [`AccessSemantics::Writable`].
     fn access_semantics(_: LayoutFlags, _: bool) -> AccessSemantics {
         AccessSemantics::Writable
     }
+
     /// Alias class: [`AliasClass::BroadcastAlias`] for zero-stride,
     /// [`AliasClass::Unique`] otherwise.
     fn alias_class(flags: LayoutFlags, _: bool) -> AliasClass {
@@ -101,10 +107,12 @@ impl<A> StorageSemantics for ViewMutRepr<'_, A> {
 
 impl<A: Element> StorageSemantics for ArcRepr<A> {
     const KIND: StorageKind = StorageKind::Shared;
+
     /// ArcRepr always reports [`AccessSemantics::SharedReadOnly`].
     fn access_semantics(_: LayoutFlags, _: bool) -> AccessSemantics {
         AccessSemantics::SharedReadOnly
     }
+
     /// ArcRepr always reports [`AliasClass::ArcShared`].
     fn alias_class(_: LayoutFlags, _: bool) -> AliasClass {
         AliasClass::ArcShared
