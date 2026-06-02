@@ -136,7 +136,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::InvalidShape` aligned with `26-error.md §5.1`:
+    /// Returns `XenonError::InvalidShape`:
     /// - `kind: InvalidShapeKind::ProductOverflow` if `dim.checked_size()` overflows usize.
     /// - `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }` if `data.len() != expected`.
     pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
@@ -186,7 +186,7 @@ where
     where
         Sh: IntoDimension<Dim = D>,
     {
-        // Per 18-construction.md §5.3 line 432-452: the `into_iter().collect()`
+        // The `into_iter().collect()` hop introduces one temporary `Vec<A>`
         // hop introduces one temporary `Vec<A>` of length N. Combined with the
         // potential repack inside `Owned::from_vec_aligned`, `from_array` is
         // documented as "necessary data movement" rather than "avoidable
@@ -206,7 +206,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::InvalidShape` aligned with `26-error.md §5.1`:
+    /// Returns `XenonError::InvalidShape`:
     /// - `kind: InvalidShapeKind::ProductOverflow` if `dim.checked_size()` overflows usize.
     /// - `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }` if `slice.len() != expected`.
     ///
@@ -242,12 +242,14 @@ mod tests {
     use crate::error::{InvalidShapeKind, XenonError};
     use crate::tensor::Tensor;
 
+    /// `zeros` produces a tensor with the expected shape.
     #[test]
     fn test_zeros_shape() {
         let tensor = Tensor::<f64, _>::zeros([3, 4]).expect("zeros [3,4]");
         assert_eq!(tensor.shape(), &[3, 4]);
     }
 
+    /// All elements of a `zeros` tensor evaluate to zero.
     #[test]
     fn test_zeros_values() {
         let tensor = Tensor::<i32, _>::zeros([2, 3]).expect("test input must be valid");
@@ -255,14 +257,15 @@ mod tests {
         assert!(tensor.iter().all(|value| *value == 0));
     }
 
+    /// Zero-length axis produces a valid empty tensor.
     #[test]
     fn test_zeros_empty() {
-        // Zero-length axis produces valid empty tensor
         let tensor = Tensor::<f64, _>::zeros([0, 5]).expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 5]);
         assert_eq!(tensor.len(), 0);
     }
 
+    /// All elements of a `ones` tensor evaluate to the multiplicative identity.
     #[test]
     fn test_ones_values() {
         let tensor = Tensor::<bool, _>::ones([2, 2]).expect("test input must be valid");
@@ -270,11 +273,10 @@ mod tests {
         assert!(tensor.iter().all(|value| *value));
     }
 
+    /// Zero-dimensional tensor: shape = [], product = 1, len() == 1,
+    /// distinct from `ones([0])` which yields an empty tensor.
     #[test]
     fn test_ones_zero_dim() {
-        // Zero-dimensional tensor: shape = [], product = 1, len() == 1.
-        // (Per 18-construction §8.3: `from_scalar(42)` / `ones([])` both yield
-        // ndim=0 tensors of length 1; this is distinct from `ones([0])`.)
         let tensor = Tensor::<i32, _>::ones([]).expect("test input must be valid");
         assert_eq!(tensor.shape(), &[]);
         assert_eq!(tensor.ndim(), 0);
@@ -287,15 +289,15 @@ mod tests {
         );
     }
 
+    /// Zero-length axis produces a valid empty tensor with len() == 0.
     #[test]
     fn test_ones_empty() {
-        // Zero-length axis produces a valid empty tensor with len() == 0.
-        // This is the canonical "empty tensor" case from 18-construction §8.3.
         let tensor = Tensor::<i32, _>::ones([0, 5]).expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 5]);
         assert_eq!(tensor.len(), 0);
     }
 
+    /// A 3×3 identity matrix has ones on the diagonal and zeros elsewhere.
     #[test]
     fn test_eye_3x3() {
         let tensor = Tensor::<i32, Ix2>::eye(3).expect("test input must be valid");
@@ -304,17 +306,17 @@ mod tests {
         assert_eq!(*tensor.get(&[2, 2]).expect("test input must be valid"), 1);
     }
 
+    /// Empty identity matrix: eye(0) produces a 0×0 tensor with len() == 0.
     #[test]
     fn test_eye_zero() {
-        // Empty identity matrix: eye(0) produces 0×0 tensor with len=0.
         let tensor = Tensor::<f64, Ix2>::eye(0).expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 0]);
         assert_eq!(tensor.len(), 0);
     }
 
+    /// n×n identity matrix overflows `checked_size` when `n` approaches `usize::MAX`.
     #[test]
     fn test_eye_overflow() {
-        // n * n overflows checked_size when n approaches usize::MAX.
         let err = Tensor::<i32, Ix2>::eye(usize::MAX).expect_err("usize::MAX overflows");
         assert!(matches!(
             err,
@@ -325,6 +327,7 @@ mod tests {
         ));
     }
 
+    /// `from_shape_vec` constructs a tensor with the correct shape and element count.
     #[test]
     fn test_from_shape_vec_success() {
         let tensor =
@@ -333,6 +336,7 @@ mod tests {
         assert_eq!(tensor.len(), 4);
     }
 
+    /// Mismatched shape-element count returns `ElementCountMismatch` error.
     #[test]
     fn test_from_shape_vec_mismatch() {
         let err =
@@ -349,10 +353,10 @@ mod tests {
         ));
     }
 
+    /// Verify that `InvalidShape` carries the correct `operation` field
+    /// identifying the constructor (`"from_shape_vec"`).
     #[test]
     fn test_from_shape_vec_mismatch_operation_field() {
-        // Verify `operation` field carries "from_shape_vec" — exercises the
-        // structured-diagnostic contract from 26-error.md §5.1.
         let err =
             Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
         if let XenonError::InvalidShape { operation, .. } = err {
@@ -362,6 +366,7 @@ mod tests {
         }
     }
 
+    /// `from_vec` infers a 1-D shape `[data.len()]` from the input vec.
     #[test]
     fn test_from_vec_success() {
         let tensor = Tensor::<i32, Ix1>::from_vec(vec![1i32, 2, 3]).expect("test input valid");
@@ -369,16 +374,18 @@ mod tests {
         assert_eq!(tensor.len(), 3);
     }
 
+    /// `from_shape_slice` copies data into an owned tensor and preserves the source.
     #[test]
     fn test_from_shape_slice_success() {
         let source = [1.0f64, 2.0, 3.0, 4.0];
         let tensor = Tensor::<f64, _>::from_shape_slice([2, 2], &source).expect("test input valid");
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(*tensor.get(&[0, 0]).expect("test input valid"), 1.0);
-        // Source is not consumed — original array is untouched
+        // Source is not consumed — original array is untouched.
         assert_eq!(source[0], 1.0);
     }
 
+    /// Slice-element count mismatch returns `ElementCountMismatch` error.
     #[test]
     fn test_from_shape_slice_mismatch() {
         let source = [1, 2, 3];
@@ -396,10 +403,10 @@ mod tests {
         ));
     }
 
+    /// Verify `InvalidShape` carries `operation: "from_shape_slice"`,
+    /// not the internal `"from_shape_vec"` delegation target.
     #[test]
     fn test_from_shape_slice_operation_field() {
-        // `operation` must read "from_shape_slice", not "from_shape_vec",
-        // even though the implementation eventually delegates.
         let source = [1, 2, 3];
         let err =
             Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
@@ -410,6 +417,7 @@ mod tests {
         }
     }
 
+    /// `from_array` constructs a tensor from a fixed-size array.
     #[test]
     fn test_from_array_success() {
         let tensor =
@@ -418,6 +426,7 @@ mod tests {
         assert_eq!(*tensor.get(&[0, 0]).expect("test input valid"), 1);
     }
 
+    /// Array length mismatch returns `ElementCountMismatch` error.
     #[test]
     fn test_from_array_mismatch() {
         let err = Tensor::<i32, _>::from_array([3, 3], [1i32; 4]).expect_err("mismatched shape");
@@ -433,6 +442,7 @@ mod tests {
         ));
     }
 
+    /// `from_scalar` produces a 0-D tensor of length 1 containing the value.
     #[test]
     fn test_from_scalar() {
         let tensor = Tensor::<i32, Ix0>::from_scalar(42i32).expect("test input must be valid");
@@ -446,10 +456,10 @@ mod tests {
         );
     }
 
+    /// `from_scalar` accepts `bool` (bound is `A: Element`), unlike `eye`
+    /// which requires the stricter `EyeElement` trait.
     #[test]
     fn test_from_scalar_bool() {
-        // from_scalar allows `Element`-bound types including `bool` (more
-        // permissive than `eye`'s `EyeElement` constraint).
         let tensor = Tensor::<bool, Ix0>::from_scalar(true).expect("test input must be valid");
         assert_eq!(tensor.len(), 1);
         assert!(
