@@ -95,8 +95,6 @@ where
     }
 }
 
-// ── cast() method ──
-
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -137,8 +135,6 @@ where
         Ok(unsafe { from_shape_vec_aligned_unchecked(self.raw_dim(), data) })
     }
 }
-
-// ── to_owned() / into_owned() methods on TensorBase ──
 
 impl<S, D, A> TensorBase<S, D>
 where
