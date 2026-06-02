@@ -1,7 +1,7 @@
-//! Type conversion traits and tier-based impls.
+//! Type conversion trait and tier-based impls.
 //!
-//! Defines the crate-private `CastTo` and `ConvertTo` dispatch
-//! shim, and all Tier-0/1/2/3 conversion impls for the 6×6 element matrix.
+//! Defines the crate-private `ConvertTo` dispatch trait and all
+//! Tier-0/1/2/3 conversion impls for the 6×6 element matrix.
 //!
 //! Tensor-level `cast()`, `to_owned()`, and `into_owned()` methods
 //! on `TensorBase` are in `super::impls`.
@@ -14,34 +14,16 @@ use crate::convert::CastElement;
 use crate::element::Element;
 use crate::error::{ConversionFailureReason, Result, XenonError};
 
-/// Type conversion trait for element types.
-///
-/// Defines fallible conversion between element types. Lossy conversions
-/// (e.g., `f64` → `i32` truncation, overflow) return
-/// `Err(XenonError::TypeConversion)`.
-///
-/// # Sealed
-///
-/// Only Xenon's closed element set may implement this trait.
-pub(crate) trait CastTo<T: Element>: Element {
-    /// Attempts to convert `self` to type `T`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::TypeConversion` if the conversion is lossy or
-    /// the value cannot be represented in the target type.
-    fn cast_to(self) -> std::result::Result<T, XenonError>;
-}
-
 /// Crate-private sealed conversion dispatch trait.
 ///
 /// Serves as the static dispatch entry point for the three-tier conversion
-/// architecture (Tier-0 identity, Tier-1 lossless `From`, Tier-2/Tier-3
-/// `CastTo`-based). Sealed via `CastElement: Element: Sealed`, preventing
+/// architecture (Tier-0 identity, Tier-1 lossless `From`, Tier-2 static lossy,
+/// Tier-3 dynamic). Sealed via `CastElement: Element: Sealed`, preventing
 /// external crates from extending the conversion matrix.
 ///
-/// Tier-1 impls return `Ok(B::from(self))` directly without instantiating
-/// `CastTo`; Tier-2/Tier-3 impls delegate to `<A as CastTo<B>>::cast_to(self)`.
+/// Tier-0/Tier-1 impls return `Ok(..)` directly; Tier-2 impls return a typed
+/// `Err(XenonError::TypeConversion {..})`; Tier-3 impls perform a dynamic
+/// `im == 0` check before delegating to the inner real conversion.
 pub(crate) trait ConvertTo<B>: CastElement
 where
     B: CastElement,
@@ -159,11 +141,11 @@ impl ConvertTo<Complex<f64>> for Complex<f32> {
     }
 }
 
-// ── Tier-2: Lossy-by-default CastTo impls (14 cells) ──
+// ── Tier-2: Lossy-by-default conversions (14 cells) ──
 
-impl CastTo<f32> for f64 {
+impl ConvertTo<f32> for f64 {
     #[inline]
-    fn cast_to(self) -> Result<f32> {
+    fn convert(self) -> Result<f32> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <f64 as Element>::ELEMENT_TYPE_NAME,
@@ -174,9 +156,9 @@ impl CastTo<f32> for f64 {
     }
 }
 
-impl CastTo<i32> for f64 {
+impl ConvertTo<i32> for f64 {
     #[inline]
-    fn cast_to(self) -> Result<i32> {
+    fn convert(self) -> Result<i32> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <f64 as Element>::ELEMENT_TYPE_NAME,
@@ -187,9 +169,9 @@ impl CastTo<i32> for f64 {
     }
 }
 
-impl CastTo<i64> for f64 {
+impl ConvertTo<i64> for f64 {
     #[inline]
-    fn cast_to(self) -> Result<i64> {
+    fn convert(self) -> Result<i64> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <f64 as Element>::ELEMENT_TYPE_NAME,
@@ -200,9 +182,9 @@ impl CastTo<i64> for f64 {
     }
 }
 
-impl CastTo<i32> for f32 {
+impl ConvertTo<i32> for f32 {
     #[inline]
-    fn cast_to(self) -> Result<i32> {
+    fn convert(self) -> Result<i32> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <f32 as Element>::ELEMENT_TYPE_NAME,
@@ -213,9 +195,9 @@ impl CastTo<i32> for f32 {
     }
 }
 
-impl CastTo<i64> for f32 {
+impl ConvertTo<i64> for f32 {
     #[inline]
-    fn cast_to(self) -> Result<i64> {
+    fn convert(self) -> Result<i64> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <f32 as Element>::ELEMENT_TYPE_NAME,
@@ -226,9 +208,9 @@ impl CastTo<i64> for f32 {
     }
 }
 
-impl CastTo<i32> for i64 {
+impl ConvertTo<i32> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<i32> {
+    fn convert(self) -> Result<i32> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i64 as Element>::ELEMENT_TYPE_NAME,
@@ -239,9 +221,9 @@ impl CastTo<i32> for i64 {
     }
 }
 
-impl CastTo<f32> for i64 {
+impl ConvertTo<f32> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<f32> {
+    fn convert(self) -> Result<f32> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i64 as Element>::ELEMENT_TYPE_NAME,
@@ -252,9 +234,9 @@ impl CastTo<f32> for i64 {
     }
 }
 
-impl CastTo<f64> for i64 {
+impl ConvertTo<f64> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<f64> {
+    fn convert(self) -> Result<f64> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i64 as Element>::ELEMENT_TYPE_NAME,
@@ -265,9 +247,9 @@ impl CastTo<f64> for i64 {
     }
 }
 
-impl CastTo<f32> for i32 {
+impl ConvertTo<f32> for i32 {
     #[inline]
-    fn cast_to(self) -> Result<f32> {
+    fn convert(self) -> Result<f32> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i32 as Element>::ELEMENT_TYPE_NAME,
@@ -278,9 +260,9 @@ impl CastTo<f32> for i32 {
     }
 }
 
-impl CastTo<Complex<f32>> for i32 {
+impl ConvertTo<Complex<f32>> for i32 {
     #[inline]
-    fn cast_to(self) -> Result<Complex<f32>> {
+    fn convert(self) -> Result<Complex<f32>> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i32 as Element>::ELEMENT_TYPE_NAME,
@@ -291,9 +273,9 @@ impl CastTo<Complex<f32>> for i32 {
     }
 }
 
-impl CastTo<Complex<f32>> for i64 {
+impl ConvertTo<Complex<f32>> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<Complex<f32>> {
+    fn convert(self) -> Result<Complex<f32>> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i64 as Element>::ELEMENT_TYPE_NAME,
@@ -304,9 +286,9 @@ impl CastTo<Complex<f32>> for i64 {
     }
 }
 
-impl CastTo<Complex<f64>> for i64 {
+impl ConvertTo<Complex<f64>> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<Complex<f64>> {
+    fn convert(self) -> Result<Complex<f64>> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <i64 as Element>::ELEMENT_TYPE_NAME,
@@ -317,9 +299,9 @@ impl CastTo<Complex<f64>> for i64 {
     }
 }
 
-impl CastTo<Complex<f32>> for f64 {
+impl ConvertTo<Complex<f32>> for f64 {
     #[inline]
-    fn cast_to(self) -> Result<Complex<f32>> {
+    fn convert(self) -> Result<Complex<f32>> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <f64 as Element>::ELEMENT_TYPE_NAME,
@@ -330,9 +312,9 @@ impl CastTo<Complex<f32>> for f64 {
     }
 }
 
-impl CastTo<Complex<f32>> for Complex<f64> {
+impl ConvertTo<Complex<f32>> for Complex<f64> {
     #[inline]
-    fn cast_to(self) -> Result<Complex<f32>> {
+    fn convert(self) -> Result<Complex<f32>> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed("cast_to"),
             source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
@@ -343,112 +325,12 @@ impl CastTo<Complex<f32>> for Complex<f64> {
     }
 }
 
-// ── Tier-2: ConvertTo forwarding impls (14 cells) ──
-
-impl ConvertTo<f32> for f64 {
-    #[inline]
-    fn convert(self) -> Result<f32> {
-        <f64 as CastTo<f32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<i32> for f64 {
-    #[inline]
-    fn convert(self) -> Result<i32> {
-        <f64 as CastTo<i32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<i64> for f64 {
-    #[inline]
-    fn convert(self) -> Result<i64> {
-        <f64 as CastTo<i64>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<i32> for f32 {
-    #[inline]
-    fn convert(self) -> Result<i32> {
-        <f32 as CastTo<i32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<i64> for f32 {
-    #[inline]
-    fn convert(self) -> Result<i64> {
-        <f32 as CastTo<i64>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<i32> for i64 {
-    #[inline]
-    fn convert(self) -> Result<i32> {
-        <i64 as CastTo<i32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<f32> for i64 {
-    #[inline]
-    fn convert(self) -> Result<f32> {
-        <i64 as CastTo<f32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<f64> for i64 {
-    #[inline]
-    fn convert(self) -> Result<f64> {
-        <i64 as CastTo<f64>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<f32> for i32 {
-    #[inline]
-    fn convert(self) -> Result<f32> {
-        <i32 as CastTo<f32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<Complex<f32>> for i32 {
-    #[inline]
-    fn convert(self) -> Result<Complex<f32>> {
-        <i32 as CastTo<Complex<f32>>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<Complex<f32>> for i64 {
-    #[inline]
-    fn convert(self) -> Result<Complex<f32>> {
-        <i64 as CastTo<Complex<f32>>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<Complex<f64>> for i64 {
-    #[inline]
-    fn convert(self) -> Result<Complex<f64>> {
-        <i64 as CastTo<Complex<f64>>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<Complex<f32>> for f64 {
-    #[inline]
-    fn convert(self) -> Result<Complex<f32>> {
-        <f64 as CastTo<Complex<f32>>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<Complex<f32>> for Complex<f64> {
-    #[inline]
-    fn convert(self) -> Result<Complex<f32>> {
-        <Complex<f64> as CastTo<Complex<f32>>>::cast_to(self)
-    }
-}
-
-// ── Tier-3: Dynamic CastTo impls (8 cells) ──
+// ── Tier-3: Dynamic conversions (8 cells) ──
 
 // Group A: 同精度，直接返回实部 (cells #1, #2)
-impl CastTo<f32> for Complex<f32> {
+impl ConvertTo<f32> for Complex<f32> {
     #[inline]
-    fn cast_to(self) -> Result<f32> {
+    fn convert(self) -> Result<f32> {
         if self.im == 0.0 {
             Ok(self.re)
         } else {
@@ -463,9 +345,9 @@ impl CastTo<f32> for Complex<f32> {
     }
 }
 
-impl CastTo<f64> for Complex<f64> {
+impl ConvertTo<f64> for Complex<f64> {
     #[inline]
-    fn cast_to(self) -> Result<f64> {
+    fn convert(self) -> Result<f64> {
         if self.im == 0.0 {
             Ok(self.re)
         } else {
@@ -482,9 +364,9 @@ impl CastTo<f64> for Complex<f64> {
 
 // Group B: 内层 Tier-1 std From widening (cell #3 only)
 // Complex<f32> → f64: im == 0 → Ok(f64::from(self.re))
-impl CastTo<f64> for Complex<f32> {
+impl ConvertTo<f64> for Complex<f32> {
     #[inline]
-    fn cast_to(self) -> Result<f64> {
+    fn convert(self) -> Result<f64> {
         if self.im == 0.0 {
             Ok(f64::from(self.re))
         } else {
@@ -500,11 +382,11 @@ impl CastTo<f64> for Complex<f32> {
 }
 
 // Group C: 内层 Tier-2 静态有损 (cells #4, #5, #6, #7, #8)
-impl CastTo<f32> for Complex<f64> {
+impl ConvertTo<f32> for Complex<f64> {
     #[inline]
-    fn cast_to(self) -> Result<f32> {
+    fn convert(self) -> Result<f32> {
         if self.im == 0.0 {
-            <f64 as CastTo<f32>>::cast_to(self.re)
+            <f64 as ConvertTo<f32>>::convert(self.re)
         } else {
             Err(XenonError::TypeConversion {
                 operation: Cow::Borrowed("cast_to"),
@@ -517,129 +399,71 @@ impl CastTo<f32> for Complex<f64> {
     }
 }
 
-impl CastTo<i32> for Complex<f32> {
-    #[inline]
-    fn cast_to(self) -> Result<i32> {
-        if self.im == 0.0 {
-            <f32 as CastTo<i32>>::cast_to(self.re)
-        } else {
-            Err(XenonError::TypeConversion {
-                operation: Cow::Borrowed("cast_to"),
-                source_type: <Complex<f32> as Element>::ELEMENT_TYPE_NAME,
-                target_type: <i32 as Element>::ELEMENT_TYPE_NAME,
-                reason: ConversionFailureReason::NonZeroImaginaryPart,
-                element_index: None,
-            })
-        }
-    }
-}
-
-impl CastTo<i64> for Complex<f32> {
-    #[inline]
-    fn cast_to(self) -> Result<i64> {
-        if self.im == 0.0 {
-            <f32 as CastTo<i64>>::cast_to(self.re)
-        } else {
-            Err(XenonError::TypeConversion {
-                operation: Cow::Borrowed("cast_to"),
-                source_type: <Complex<f32> as Element>::ELEMENT_TYPE_NAME,
-                target_type: <i64 as Element>::ELEMENT_TYPE_NAME,
-                reason: ConversionFailureReason::NonZeroImaginaryPart,
-                element_index: None,
-            })
-        }
-    }
-}
-
-impl CastTo<i32> for Complex<f64> {
-    #[inline]
-    fn cast_to(self) -> Result<i32> {
-        if self.im == 0.0 {
-            <f64 as CastTo<i32>>::cast_to(self.re)
-        } else {
-            Err(XenonError::TypeConversion {
-                operation: Cow::Borrowed("cast_to"),
-                source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
-                target_type: <i32 as Element>::ELEMENT_TYPE_NAME,
-                reason: ConversionFailureReason::NonZeroImaginaryPart,
-                element_index: None,
-            })
-        }
-    }
-}
-
-impl CastTo<i64> for Complex<f64> {
-    #[inline]
-    fn cast_to(self) -> Result<i64> {
-        if self.im == 0.0 {
-            <f64 as CastTo<i64>>::cast_to(self.re)
-        } else {
-            Err(XenonError::TypeConversion {
-                operation: Cow::Borrowed("cast_to"),
-                source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
-                target_type: <i64 as Element>::ELEMENT_TYPE_NAME,
-                reason: ConversionFailureReason::NonZeroImaginaryPart,
-                element_index: None,
-            })
-        }
-    }
-}
-
-// ── Tier-3: ConvertTo forwarding impls (8 cells) ──
-
-impl ConvertTo<f32> for Complex<f32> {
-    #[inline]
-    fn convert(self) -> Result<f32> {
-        <Complex<f32> as CastTo<f32>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<f64> for Complex<f64> {
-    #[inline]
-    fn convert(self) -> Result<f64> {
-        <Complex<f64> as CastTo<f64>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<f64> for Complex<f32> {
-    #[inline]
-    fn convert(self) -> Result<f64> {
-        <Complex<f32> as CastTo<f64>>::cast_to(self)
-    }
-}
-
-impl ConvertTo<f32> for Complex<f64> {
-    #[inline]
-    fn convert(self) -> Result<f32> {
-        <Complex<f64> as CastTo<f32>>::cast_to(self)
-    }
-}
-
 impl ConvertTo<i32> for Complex<f32> {
     #[inline]
     fn convert(self) -> Result<i32> {
-        <Complex<f32> as CastTo<i32>>::cast_to(self)
+        if self.im == 0.0 {
+            <f32 as ConvertTo<i32>>::convert(self.re)
+        } else {
+            Err(XenonError::TypeConversion {
+                operation: Cow::Borrowed("cast_to"),
+                source_type: <Complex<f32> as Element>::ELEMENT_TYPE_NAME,
+                target_type: <i32 as Element>::ELEMENT_TYPE_NAME,
+                reason: ConversionFailureReason::NonZeroImaginaryPart,
+                element_index: None,
+            })
+        }
     }
 }
 
 impl ConvertTo<i64> for Complex<f32> {
     #[inline]
     fn convert(self) -> Result<i64> {
-        <Complex<f32> as CastTo<i64>>::cast_to(self)
+        if self.im == 0.0 {
+            <f32 as ConvertTo<i64>>::convert(self.re)
+        } else {
+            Err(XenonError::TypeConversion {
+                operation: Cow::Borrowed("cast_to"),
+                source_type: <Complex<f32> as Element>::ELEMENT_TYPE_NAME,
+                target_type: <i64 as Element>::ELEMENT_TYPE_NAME,
+                reason: ConversionFailureReason::NonZeroImaginaryPart,
+                element_index: None,
+            })
+        }
     }
 }
 
 impl ConvertTo<i32> for Complex<f64> {
     #[inline]
     fn convert(self) -> Result<i32> {
-        <Complex<f64> as CastTo<i32>>::cast_to(self)
+        if self.im == 0.0 {
+            <f64 as ConvertTo<i32>>::convert(self.re)
+        } else {
+            Err(XenonError::TypeConversion {
+                operation: Cow::Borrowed("cast_to"),
+                source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
+                target_type: <i32 as Element>::ELEMENT_TYPE_NAME,
+                reason: ConversionFailureReason::NonZeroImaginaryPart,
+                element_index: None,
+            })
+        }
     }
 }
 
 impl ConvertTo<i64> for Complex<f64> {
     #[inline]
     fn convert(self) -> Result<i64> {
-        <Complex<f64> as CastTo<i64>>::cast_to(self)
+        if self.im == 0.0 {
+            <f64 as ConvertTo<i64>>::convert(self.re)
+        } else {
+            Err(XenonError::TypeConversion {
+                operation: Cow::Borrowed("cast_to"),
+                source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
+                target_type: <i64 as Element>::ELEMENT_TYPE_NAME,
+                reason: ConversionFailureReason::NonZeroImaginaryPart,
+                element_index: None,
+            })
+        }
     }
 }
 
@@ -735,6 +559,4 @@ mod tests {
             Err(XenonError::TypeConversion { .. })
         ));
     }
-
-
 }
