@@ -7,11 +7,11 @@
 
 use std::borrow::Cow;
 
-use crate::dimension::{Dimension, IntoDimension, Ix0, Ix1, Ix2};
-use crate::element::Element;
 use crate::error::{InvalidShapeKind, XenonError};
-use crate::layout;
+use crate::dimension::{Dimension, IntoDimension, Ix0, Ix1, Ix2};
 use crate::storage::{Owned, RawStorage, StorageOwned};
+use crate::layout::{Strides, compute_layout_flags};
+use crate::element::Element;
 use crate::tensor::TensorBase;
 use super::EyeElement;
 
@@ -32,8 +32,8 @@ where
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
         let shape = Ix0;
-        let strides = layout::Strides::f_contiguous(&shape)?;
-        let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
+        let strides = Strides::f_contiguous(&shape)?;
+        let flags = compute_layout_flags(&shape, &strides, storage.as_ptr());
         // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
         // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
         // logical access trivially within storage.
@@ -108,9 +108,9 @@ where
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
-        let strides = layout::Strides::f_contiguous(&dim)?;
+        let strides = Strides::f_contiguous(&dim)?;
         let storage = <Owned<A> as StorageOwned>::from_elem(len, A::zero());
-        let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
+        let flags = compute_layout_flags(&dim, &strides, storage.as_ptr());
         // SAFETY: shape validated by checked_size; strides from compute_f_strides;
         // flags from compute_layout_flags; storage length = len; offset 0;
         // derived_from_view_mut: false — zeros is not a downgrade path.
@@ -130,9 +130,9 @@ where
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
-        let strides = layout::Strides::f_contiguous(&dim)?;
+        let strides = Strides::f_contiguous(&dim)?;
         let storage = <Owned<A> as StorageOwned>::from_elem(len, A::one());
-        let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
+        let flags = compute_layout_flags(&dim, &strides, storage.as_ptr());
         // SAFETY: shape validated by checked_size; strides from compute_f_strides;
         // flags from compute_layout_flags; storage length = len; offset 0;
         // derived_from_view_mut: false — ones is not a downgrade path.
@@ -163,9 +163,9 @@ where
                 offending_dim: None,
             });
         }
-        let strides = layout::Strides::f_contiguous(&dim)?;
+        let strides = Strides::f_contiguous(&dim)?;
         let storage = Owned::from_vec_aligned(data)?;
-        let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
+        let flags = compute_layout_flags(&dim, &strides, storage.as_ptr());
         // SAFETY: `dim` validated by `IntoDimension` + `checked_size`; `data.len()
         // == expected` already enforced via ElementCountMismatch check; `strides`
         // from `compute_f_strides(&dim)?`; `flags` from `compute_layout_flags`;
