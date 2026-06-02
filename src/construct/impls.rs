@@ -485,7 +485,8 @@ mod tests {
     /// `from_scalar` produces a 0-D tensor of length 1 containing the value.
     #[test]
     fn test_from_scalar() {
-        let tensor = Tensor::<i32, Ix0>::from_scalar(42i32).expect("test input must be valid");
+        let tensor = Tensor::<i32, Ix0>::from_scalar(42i32)
+            .expect("test input must be valid");
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
         assert_eq!(
@@ -500,7 +501,8 @@ mod tests {
     /// which requires the stricter `EyeElement` trait.
     #[test]
     fn test_from_scalar_bool() {
-        let tensor = Tensor::<bool, Ix0>::from_scalar(true).expect("test input must be valid");
+        let tensor = Tensor::<bool, Ix0>::from_scalar(true)
+            .expect("test input must be valid");
         assert_eq!(tensor.len(), 1);
         assert!(
             *tensor
