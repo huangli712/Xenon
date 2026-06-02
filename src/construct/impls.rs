@@ -158,8 +158,10 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::InvalidShape`:
-    /// - `kind: InvalidShapeKind::ProductOverflow` if `dim.checked_size()` overflows usize.
-    /// - `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }` if `data.len() != expected`.
+    /// - `kind: InvalidShapeKind::ProductOverflow`
+    ///   if `dim.checked_size()` overflows usize.
+    /// - `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`
+    ///   if `data.len() != expected`.
     pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
     where
         Sh: IntoDimension<Dim = D>,
