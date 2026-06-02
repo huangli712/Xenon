@@ -7,31 +7,6 @@ use crate::error::{InvalidLayoutReason, Result, StorageKindTag, XenonError};
 use crate::layout::Strides;
 use crate::private::Sealed;
 
-/// Sealed trait for types that can be used as multi-dimensional indices.
-pub trait NdIndex<D: Dimension>: Sealed {
-    /// Validates the index against `dim` and computes the linear offset via `strides`.
-    ///
-    /// # Errors
-    ///
-    /// Per `17-indexing §5.1`:
-    /// - rank mismatch (`self.to_index_vec().len() != dim.ndim()`)
-    ///   → `XenonError::DimensionMismatch`
-    /// - per-axis out of bounds (`index[i] >= dim[i]`)
-    ///   → `XenonError::IndexOutOfBounds`
-    /// - `strides[i] * index[i]` or the offset accumulator overflows `usize`
-    ///   → `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }`
-    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Result<usize>;
-
-    /// Computes the linear offset without any validation.
-    ///
-    /// # Safety
-    /// The caller must ensure rank match, per-axis bounds, and no offset overflow.
-    unsafe fn index_unchecked(&self, strides: &Strides<D>) -> usize;
-
-    /// Converts the index to a flat `Vec<usize>` for error diagnostics.
-    fn to_index_vec(&self) -> Vec<usize>;
-}
-
 fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result<usize> {
     if index.len() != shape.len() {
         return Err(XenonError::DimensionMismatch {
@@ -89,6 +64,32 @@ impl Sealed for (usize, usize, usize) {}
 impl Sealed for (usize, usize, usize, usize) {}
 impl Sealed for (usize, usize, usize, usize, usize) {}
 impl Sealed for (usize, usize, usize, usize, usize, usize) {}
+impl Sealed for &[usize] {}
+
+/// Sealed trait for types that can be used as multi-dimensional indices.
+pub trait NdIndex<D: Dimension>: Sealed {
+    /// Validates the index against `dim` and computes the linear offset via `strides`.
+    ///
+    /// # Errors
+    ///
+    /// Per `17-indexing §5.1`:
+    /// - rank mismatch (`self.to_index_vec().len() != dim.ndim()`)
+    ///   → `XenonError::DimensionMismatch`
+    /// - per-axis out of bounds (`index[i] >= dim[i]`)
+    ///   → `XenonError::IndexOutOfBounds`
+    /// - `strides[i] * index[i]` or the offset accumulator overflows `usize`
+    ///   → `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }`
+    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Result<usize>;
+
+    /// Computes the linear offset without any validation.
+    ///
+    /// # Safety
+    /// The caller must ensure rank match, per-axis bounds, and no offset overflow.
+    unsafe fn index_unchecked(&self, strides: &Strides<D>) -> usize;
+
+    /// Converts the index to a flat `Vec<usize>` for error diagnostics.
+    fn to_index_vec(&self) -> Vec<usize>;
+}
 
 impl NdIndex<Ix0> for () {
     fn index_checked(&self, _dim: &Ix0, _strides: &Strides<Ix0>) -> Result<usize> {
@@ -192,7 +193,6 @@ impl NdIndex<Ix6> for (usize, usize, usize, usize, usize, usize) {
     }
 }
 
-impl Sealed for &[usize] {}
 impl NdIndex<IxDyn> for &[usize] {
     fn index_checked(&self, dim: &IxDyn, strides: &Strides<IxDyn>) -> Result<usize> {
         checked_offset(self, dim.slice(), strides.as_slice())
