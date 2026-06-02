@@ -23,11 +23,7 @@
 //! - `InvalidShapeKind::ElementCountMismatch` — data length ≠ expected size
 //! - `AllocationFailed` — underlying allocator cannot satisfy request
 
-pub use types::EyeElement;
-
-/// Tensor constructors (`zeros`, `ones`, `eye`, `from_shape_vec`, `from_vec`,
-/// `from_shape_slice`, `from_array`, `from_scalar`).
+pub mod types;
 pub mod impls;
 
-/// Construction trait definitions (`EyeElement`).
-pub mod types;
+pub use types::EyeElement;
