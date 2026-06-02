@@ -1,3 +1,10 @@
+//! Axis-wise sub-view iterators.
+//!
+//! `AxisIter` yields read-only sub-views along a selected axis;
+//! `AxisIterMut` yields mutable sub-views. Each sub-view reduces the
+//! tensor dimensionality by one, producing a `TensorView` or
+//! `TensorViewMut` of rank `D::Smaller`.
+
 use core::marker::PhantomData;
 use std::borrow::Cow;
 

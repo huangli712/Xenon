@@ -1,4 +1,9 @@
 //! Entry methods on `TensorBase` — iterator constructors.
+//!
+//! Provides `iter()`, `iter_mut()`, `indexed_iter()`, `indexed_iter_mut()`,
+//! `axis_iter()`, and `axis_iter_mut()` for `TensorBase`. These are the
+//! primary public API for obtaining iterators over tensor elements, views,
+//! and sub-views.
 
 use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::error::XenonError;

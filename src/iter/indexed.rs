@@ -1,3 +1,10 @@
+//! Index-paired element iterators.
+//!
+//! `IndexedIter` and `IndexedIterMut` wrap the flat element iterators
+//! and pair each element with its multi-dimensional logical index `D`.
+//! Indices increment in F-order (column-major), matching the underlying
+//! element traversal order.
+
 use crate::dimension::Dimension;
 use crate::iter::primitives::{Iter, IterMut};
 use crate::iter::types::StrideState;
