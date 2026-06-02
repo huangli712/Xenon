@@ -71,19 +71,17 @@ impl StrideState {
 
     /// Whether the state machine has exhausted all logical positions.
     #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
-    /// Whether the state machine has exhausted all logical positions.
     pub(crate) fn is_finished(&self) -> bool {
         self.finished
     }
 }
 
-// ── Tests ──
-
 #[cfg(test)]
 mod tests {
     use super::StrideState;
 
-    /// F-order increment: index[0] varies fastest; carry propagates to higher axes.
+    /// F-order increment: index[0] varies fastest; carry propagates to
+    /// higher axes.
     #[test]
     fn test_stride_state_increment() {
         let mut state = StrideState::new(&[2, 3]);
