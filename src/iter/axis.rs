@@ -196,10 +196,13 @@ pub struct AxisIterMut<'a, A, D: Dimension> {
 impl<'a, A, D: Dimension> AxisIterMut<'a, A, D> {
     /// Construct a mutable axis iterator for the given view and axis.
     ///
-    /// Returns `InvalidAxis` if `axis` is out of range. The
-    /// `debug_assert!` rejects broadcast (zero-stride) layouts which
-    /// violate `&mut` aliasing guarantees.
-    pub(crate) fn new(view: TensorViewMut<'a, A, D>, axis: Axis) -> Result<Self, XenonError> {
+    /// Returns `InvalidAxis` if `axis` is out of range. The `debug_assert!`
+    /// rejects broadcast (zero-stride) layouts which violate `&mut` aliasing
+    /// guarantees.
+    pub(crate) fn new(
+        view: TensorViewMut<'a, A, D>,
+        axis: Axis
+    ) -> Result<Self, XenonError> {
         let ndim = view.ndim();
         if axis.0 >= ndim {
             return Err(XenonError::InvalidAxis {
