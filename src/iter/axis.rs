@@ -3,9 +3,9 @@
 use core::marker::PhantomData;
 use std::borrow::Cow;
 
+use crate::error::XenonError;
 use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::element::Element;
-use crate::error::XenonError;
 use crate::layout::Strides;
 use crate::tensor::{TensorView, TensorViewMut};
 
