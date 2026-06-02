@@ -14,7 +14,6 @@
 
 // Conversion traits
 pub use crate::convert::{
-    CastTo,
     CastElement,
 };
 

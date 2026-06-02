@@ -1,6 +1,6 @@
 //! Type conversion traits and tier-based impls.
 //!
-//! Defines the public `CastTo` trait, the crate-private `ConvertTo` dispatch
+//! Defines the crate-private `CastTo` and `ConvertTo` dispatch
 //! shim, and all Tier-0/1/2/3 conversion impls for the 6×6 element matrix.
 //!
 //! Tensor-level `cast()`, `to_owned()`, and `into_owned()` methods
@@ -23,7 +23,7 @@ use crate::error::{ConversionFailureReason, Result, XenonError};
 /// # Sealed
 ///
 /// Only Xenon's closed element set may implement this trait.
-pub trait CastTo<T: Element>: Element {
+pub(crate) trait CastTo<T: Element>: Element {
     /// Attempts to convert `self` to type `T`.
     ///
     /// # Errors

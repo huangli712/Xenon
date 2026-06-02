@@ -7,7 +7,6 @@
 mod cast;
 mod impls;
 mod types;
-pub use cast::CastTo;
 pub use types::CastElement;
 
 #[cfg(test)]

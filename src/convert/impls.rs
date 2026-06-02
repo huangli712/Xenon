@@ -3,7 +3,7 @@
 //! Contains the three `impl TensorBase<S, D>` blocks with helpers that
 //! provide tensor-level type conversion and ownership transfer.
 //!
-//! `CastTo` / `ConvertTo` traits and tier impls are in `super::cast`.
+//! `ConvertTo` trait and tier impls are in `super::cast`.
 //! `CastElement` is defined in `super::types`.
 
 use std::borrow::Cow;
