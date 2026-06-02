@@ -45,33 +45,27 @@ impl StrideState {
     }
 
     /// Advance one step in F-order; mark finished after the last position.
-    ///
-    /// Pseudocode:
-    ///
-    /// ```text
-    /// for i in 0..ndim:
-    ///     index[i] += 1
-    ///     if index[i] < shape[i]:
-    ///         return  // no carry
-    ///     index[i] = 0  // carry to next dimension
-    /// ```
     pub(crate) fn advance(&mut self) {
         if self.finished {
             return;
         }
+        
+        // Ix0 / rank-0 IxDyn: yield exactly one (empty) index, then finish.
         if self.shape.is_empty() {
-            // Ix0 / rank-0 IxDyn: yield exactly one (empty) index, then finish.
             self.finished = true;
             return;
         }
+   
+        // Increment index from innermost axis outward, carrying on overflow.
         for axis in 0..self.shape.len() {
             self.index[axis] += 1;
             if self.index[axis] < self.shape[axis] {
-                return;
+                return; // no carry — done for this step
             }
-            self.index[axis] = 0;
+            self.index[axis] = 0; // carry to next axis
         }
-        // All axes carried out → exhausted.
+        
+        // All axes carried out — no more positions.
         self.finished = true;
     }
 
