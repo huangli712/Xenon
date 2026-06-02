@@ -105,6 +105,8 @@ where
 {
     type Item = TensorView<'a, A, D::Smaller>;
 
+    /// Yields the next sub-view at the current axis position, then
+    /// advances `pos` by one.
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos == self.len {
             return None;
@@ -128,6 +130,7 @@ where
         Some(view)
     }
 
+    /// Returns the exact remaining sub-view count.
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.len - self.pos;
         (remaining, Some(remaining))
@@ -188,6 +191,11 @@ pub struct AxisIterMut<'a, A, D: Dimension> {
 }
 
 impl<'a, A, D: Dimension> AxisIterMut<'a, A, D> {
+    /// Construct a mutable axis iterator for the given view and axis.
+    ///
+    /// Returns `InvalidAxis` if `axis` is out of range. The
+    /// `debug_assert!` rejects broadcast (zero-stride) layouts which
+    /// violate `&mut` aliasing guarantees.
     pub(crate) fn new(view: TensorViewMut<'a, A, D>, axis: Axis) -> Result<Self, XenonError> {
         let ndim = view.ndim();
         if axis.0 >= ndim {
@@ -244,6 +252,8 @@ where
 {
     type Item = TensorViewMut<'a, A, D::Smaller>;
 
+    /// Yields the next mutable sub-view at the current axis position,
+    /// then advances `pos` by one.
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos == self.len {
             return None;
@@ -267,6 +277,7 @@ where
         Some(view)
     }
 
+    /// Returns the exact remaining mutable sub-view count.
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.len - self.pos;
         (remaining, Some(remaining))
