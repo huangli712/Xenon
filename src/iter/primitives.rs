@@ -273,7 +273,9 @@ mod tests {
     /// Non-contiguous view (transpose) exercises the stride-based slow path.
     #[test]
     fn test_elements_non_contiguous() {
-        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2)) };
+        let tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2))
+        };
         let transposed = tensor.transpose();
         assert!(!transposed.is_f_contiguous());
         let values: Vec<_> = Iter::new(transposed).copied().collect();
@@ -283,7 +285,9 @@ mod tests {
     /// Empty array: `iter()` finishes immediately, count == 0.
     #[test]
     fn test_elements_empty() {
-        let tensor = unsafe { make_tensor(Vec::<f64>::new(), Ix2(0, 3)) };
+        let tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(0, 3))
+        };
         assert_eq!(Iter::new(tensor.view()).count(), 0);
         assert_eq!(Iter::new(tensor.view()).len(), 0);
     }
@@ -291,18 +295,20 @@ mod tests {
     /// Ix0 / rank-0 tensor: `iter()` yields exactly 1 element.
     #[test]
     fn test_elements_ix0() {
-        let scalar = unsafe { make_tensor(vec![7i32], Ix0) };
+        let scalar = unsafe {
+            make_tensor(vec![7i32], Ix0)
+        };
         let values: Vec<_> = Iter::new(scalar.view()).copied().collect();
         assert_eq!(values, vec![7]);
         assert_eq!(Iter::new(scalar.view()).len(), 1);
     }
 
-    // ── IterMut ──
-
     /// `iter_mut()` writes propagate back through the source tensor.
     #[test]
     fn test_elements_mut_write() {
-        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3], Ix2(3, 1)) };
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3], Ix2(3, 1))
+        };
         for value in IterMut::new(tensor.view_mut()) {
             *value *= 2;
         }
