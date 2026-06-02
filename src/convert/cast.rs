@@ -545,6 +545,18 @@ mod tests {
         ));
     }
 
+    /// Tier-2 integer → float conversions report `IntegerToFloatPrecisionLoss`.
+    #[test]
+    fn test_cast_int_to_float_precision_loss() {
+        assert!(matches!(
+            <i32 as CastTo<f32>>::cast_to(1),
+            Err(XenonError::TypeConversion {
+                reason: ConversionFailureReason::IntegerToFloatPrecisionLoss,
+                ..
+            })
+        ));
+    }
+
     /// Tier-3 `Complex<f64>` → `f64` succeeds only when the imaginary part
     /// is zero, otherwise it reports a conversion error.
     #[test]
@@ -579,6 +591,24 @@ mod tests {
         let err_inner = Complex::new(1.0_f64, 0.0);
         assert!(matches!(
             <Complex<f64> as CastTo<i32>>::cast_to(err_inner),
+            Err(XenonError::TypeConversion { .. })
+        ));
+    }
+
+    /// Tier-3 `Complex<f32>` → `f64` succeeds when `im == 0` via inner
+    /// Tier-1 `std::From` widening.
+    #[test]
+    fn test_cast_complex_f32_to_f64_zero_imag_succeeds() {
+        let ok = Complex::new(1.0_f32, 0.0);
+        assert_eq!(
+            <Complex<f32> as CastTo<f64>>::cast_to(ok)
+                .expect("Complex<f32>→f64 with im=0 should succeed"),
+            1.0_f64
+        );
+
+        let err = Complex::new(1.0_f32, 0.5);
+        assert!(matches!(
+            <Complex<f32> as CastTo<f64>>::cast_to(err),
             Err(XenonError::TypeConversion { .. })
         ));
     }
