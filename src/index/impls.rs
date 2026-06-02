@@ -8,9 +8,10 @@ use crate::error::{InvalidArgumentKind, InvalidLayoutReason, Result, StorageKind
 use crate::dimension::Dimension;
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, StorageMut, ViewRepr};
-use crate::tensor::{StorageKind, TensorBase, TensorView};
+use crate::tensor::{StorageKind, StorageSemantics, TensorBase, TensorView};
 
 use super::{NdIndex, SliceInfo, SliceInfoElem};
+use std::ptr::NonNull;
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -281,7 +282,7 @@ where
 
 impl<S, D, A> TensorBase<S, D>
 where
-    S: Storage<Elem = A> + crate::tensor::StorageSemantics,
+    S: Storage<Elem = A> + StorageSemantics,
     D: Dimension,
 {
     /// Creates a read-only sliced view of the tensor.
@@ -309,10 +310,17 @@ where
 
         let shape = self.shape();
         let strides = self.strides();
+
+        // Accumulate the output shape and strides. Index entries fold an axis
+        // (not added to output); Range entries preserve an axis (pushed to output).
         let mut out_shape = Vec::with_capacity(info.output_dim().ndim());
         let mut out_strides = Vec::with_capacity(info.output_dim().ndim());
+
+        // slice_delta accumulates the offset contributed by fixed Index entries
+        // and Range starts, all verified with checked arithmetic.
         let mut slice_delta = 0usize;
 
+        // Shared error constructor for checked arithmetic overflow.
         let overflow_err = |partial_offset: usize| XenonError::InvalidLayout {
             operation: "TensorBase::slice".into(),
             storage_kind: StorageKindTag::View,
@@ -323,9 +331,14 @@ where
             reason: InvalidLayoutReason::AccessRangeExceedsStorage,
         };
 
+        // Walk each axis of the slice descriptor. Index entries shift the
+        // base offset and fold the axis; Range entries also shift the base
+        // offset but preserve the axis in the output.
         for (axis, elem) in info.indices().iter().enumerate() {
             match elem {
+                // --- Index: fold this axis ---
                 SliceInfoElem::Index(idx) => {
+                    // Per-axis bounds check against the source shape.
                     if idx >= shape[axis] {
                         return Err(XenonError::IndexOutOfBounds {
                             operation: "TensorBase::slice".into(),
@@ -334,6 +347,7 @@ where
                             shape: shape.to_vec(),
                         });
                     }
+                    // term = idx * stride, checked.
                     let term = idx
                         .checked_mul(strides[axis])
                         .ok_or_else(|| overflow_err(slice_delta))?;
@@ -341,7 +355,10 @@ where
                         .checked_add(term)
                         .ok_or_else(|| overflow_err(slice_delta))?;
                 },
+
+                // --- Range: preserve this axis in output ---
                 SliceInfoElem::Range { start, end } => {
+                    // end must not exceed the source shape.
                     if end > shape[axis] {
                         return Err(XenonError::InvalidArgument {
                             operation: "TensorBase::slice".into(),
@@ -353,37 +370,53 @@ where
                             },
                         });
                     }
+                    // term = start * stride, contributes to slice_delta.
                     let term = start
                         .checked_mul(strides[axis])
                         .ok_or_else(|| overflow_err(slice_delta))?;
                     slice_delta = slice_delta
                         .checked_add(term)
                         .ok_or_else(|| overflow_err(slice_delta))?;
+
+                    // The output axis has length (end - start) and inherits
+                    // the source stride for this axis.
                     out_shape.push(end - start);
                     out_strides.push(strides[axis]);
                 },
             }
         }
 
+        // The view's base offset = source offset + accumulated slice_delta.
         let new_offset = self
             .offset()
             .checked_add(slice_delta)
             .ok_or_else(|| overflow_err(slice_delta))?;
 
+        // --- Construct the output view ---
+
+        // Build the output dimension type from the accumulated shape.
         let new_dim = I::try_from_slice(&out_shape)?;
         let new_strides = Strides::<I>::from_slice(&out_strides)?;
 
+        // Degenerate case: if any axis has size 0, the view is empty.
+        // Use a dangling pointer so that pointer provenance is always valid.
         let is_empty = out_shape.contains(&0);
         let logical_ptr: *const A = if is_empty {
-            core::ptr::NonNull::<A>::dangling().as_ptr()
+            NonNull::<A>::dangling().as_ptr()
         } else {
             // SAFETY: slice_delta validated via per-axis bounds and
             // checked-offset arithmetic; the resulting offset lies within
             // the source's reachable storage range.
             unsafe { self.as_ptr().add(slice_delta) }
         };
-        let new_flags = compute_layout_flags::<A, I>(&new_dim, &new_strides, logical_ptr);
+        let new_flags = compute_layout_flags::<A, I>(
+            &new_dim, &new_strides, logical_ptr
+        );
 
+        // Propagate the `derived_from_view_mut` flag: if the source is a
+        // ViewMut, or the source is a View that was itself derived from
+        // a ViewMut, this flag stays true so that aliasing rules are
+        // preserved across chained slices.
         let derived_from_view_mut = match self.storage_kind() {
             StorageKind::ViewMut => true,
             StorageKind::View => self.derived_from_view_mut,
@@ -391,8 +424,10 @@ where
         };
 
         // SAFETY: ViewRepr::from_raw_parts with valid ptr/len from storage contract.
-        let view_storage: ViewRepr<'_, A> =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        let view_storage: ViewRepr<'_, A> = unsafe {
+            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
+        };
+
         // SAFETY: all metadata fields validated above.
         let view = unsafe {
             TensorBase::new_unchecked(
@@ -404,6 +439,7 @@ where
                 derived_from_view_mut,
             )
         };
+
         Ok(view)
     }
 }
