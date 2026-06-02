@@ -11,7 +11,7 @@ use crate::private::Sealed;
 ///
 /// Implementors: `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
 /// `bool` and `usize`/`isize`/`u8` etc. are intentionally excluded.
-pub(crate) trait EyeElement: Sealed + Element {}
+pub trait EyeElement: Sealed + Element {}
 
 impl EyeElement for i32 {}
 impl EyeElement for i64 {}
