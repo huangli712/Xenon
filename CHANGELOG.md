@@ -21,7 +21,7 @@ All notable changes to this project are documented in this file.
 - Refactored convert module: `types.rs` (`CastElement`), `cast.rs` (trait+impls), `impls.rs` (methods).
 - Renamed `from.rs` to `impls.rs` in construct module, extracted `types.rs` for `CastElement`.
 - Consolidated construct submodules (eye, init, scalar) into single `impls.rs`.
-- Standardized section separator comments across tensor/convert.
+- Standardized section separator comments across `tensor/convert`.
 - Replaced fully-qualified `crate::dimension::Ix1` with imported `Ix1` in tests.
 - Unified imports ordering and formatting across construct and convert modules.
 
