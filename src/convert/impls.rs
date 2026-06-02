@@ -176,15 +176,18 @@ where
 mod tests {
     use super::*;
     use crate::error::ConversionFailureReason;
+    use crate::dimension::Ix1;
     use crate::tensor::Tensor1;
 
     /// Tensor-level `cast()` performs Tier-1 `i32` → `f64` conversion
     /// element-wise and returns an owned tensor.
     #[test]
     fn test_cast_i32_to_f64() {
-        let tensor: Tensor1<i32> =
-            unsafe { Tensor1::from_raw_vec_unchecked(vec![1_i32, 2, 3], crate::dimension::Ix1(3)) };
-        let converted: Tensor1<f64> = tensor.cast().expect("i32→f64 cast should succeed");
+        let tensor: Tensor1<i32> = unsafe {
+            Tensor1::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix1(3))
+        };
+        let converted: Tensor1<f64> = tensor.cast()
+            .expect("i32→f64 cast should succeed");
         let result: Vec<f64> = converted.iter().copied().collect();
         assert_eq!(result, vec![1.0, 2.0, 3.0]);
     }
@@ -193,9 +196,10 @@ mod tests {
     #[test]
     fn test_cast_reports_element_index() {
         let tensor: Tensor1<f64> = unsafe {
-            Tensor1::from_raw_vec_unchecked(vec![1.0_f64, 2.0], crate::dimension::Ix1(2))
+            Tensor1::from_raw_vec_unchecked(vec![1.0_f64, 2.0], Ix1(2))
         };
-        let error = tensor.cast::<f32>().expect_err("f64→f32 cast should fail");
+        let error = tensor.cast::<f32>()
+            .expect_err("f64→f32 cast should fail");
         assert!(matches!(
             error,
             XenonError::TypeConversion {
@@ -208,9 +212,11 @@ mod tests {
     /// Casting `NaN` to an integer type fails with `FloatToInteger`.
     #[test]
     fn test_cast_nan_to_int_returns_error() {
-        let tensor: Tensor1<f64> =
-            unsafe { Tensor1::from_raw_vec_unchecked(vec![f64::NAN], crate::dimension::Ix1(1)) };
-        let error = tensor.cast::<i32>().expect_err("NaN→i32 cast should fail");
+        let tensor: Tensor1<f64> = unsafe {
+            Tensor1::from_raw_vec_unchecked(vec![f64::NAN], Ix1(1))
+        };
+        let error = tensor.cast::<i32>()
+            .expect_err("NaN→i32 cast should fail");
         assert!(matches!(
             error,
             XenonError::TypeConversion {
@@ -227,10 +233,11 @@ mod tests {
         let tensor: Tensor1<f64> = unsafe {
             Tensor1::from_raw_vec_unchecked(
                 vec![f64::INFINITY, f64::NEG_INFINITY],
-                crate::dimension::Ix1(2),
+                Ix1(2),
             )
         };
-        let error = tensor.cast::<i32>().expect_err("inf→i32 cast should fail");
+        let error = tensor.cast::<i32>()
+            .expect_err("inf→i32 cast should fail");
         assert!(matches!(
             error,
             XenonError::TypeConversion {
@@ -244,8 +251,9 @@ mod tests {
     /// `to_owned()` on a view clones logical elements into a fresh owned tensor.
     #[test]
     fn test_to_owned_from_view() {
-        let tensor: Tensor1<i32> =
-            unsafe { Tensor1::from_raw_vec_unchecked(vec![1, 2, 3], crate::dimension::Ix1(3)) };
+        let tensor: Tensor1<i32> = unsafe {
+            Tensor1::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3))
+        };
         let view = tensor.view();
         let owned = view.to_owned();
         let result: Vec<i32> = owned.iter().copied().collect();
@@ -255,8 +263,9 @@ mod tests {
     /// `into_owned()` on an owned tensor returns its elements unchanged.
     #[test]
     fn test_into_owned_tensor() {
-        let tensor: Tensor1<f64> =
-            unsafe { Tensor1::from_raw_vec_unchecked(vec![4.0, 5.0], crate::dimension::Ix1(2)) };
+        let tensor: Tensor1<f64> = unsafe {
+            Tensor1::from_raw_vec_unchecked(vec![4.0, 5.0], Ix1(2))
+        };
         let owned = tensor.into_owned();
         let result: Vec<f64> = owned.iter().copied().collect();
         assert_eq!(result, vec![4.0, 5.0]);
