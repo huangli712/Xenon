@@ -7,23 +7,24 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Test: overflow, zero-dim, and element index reporting for constructors and cast.
-- Sealed supertrait to CastElement.
+- Sealed supertrait to `CastElement`.
 - Module-level doc comments to convert submodules.
 
 ### Removed
 
-- CastTo intermediate trait and 44 forwarding ConvertTo impls (inlined into CastTo).
-- Empty compile anchor tests from construct and convert modules.
+- `CastTo` intermediate trait and 44 forwarding `ConvertTo` impls (inlined into `CastTo`).
+- Empty compile anchor tests from `construct` and `convert` modules.
 - Stale Chinese comments and design-doc cross-references.
 
 ### Changed
 
-- Refactored convert module: types.rs (CastElement), cast.rs (trait+impls), impls.rs (methods).
-- Renamed from.rs to impls.rs in construct module, extracted types.rs for EyeElement.
-- Consolidated construct submodules (eye, init, scalar) into single impls.rs.
+- Refactored convert module: `types.rs` (`CastElement`), `cast.rs` (trait+impls), `impls.rs` (methods).
+- Renamed `from.rs` to `impls.rs` in construct module, extracted `types.rs` for `CastElement`.
+- Consolidated construct submodules (eye, init, scalar) into single `impls.rs`.
 - Standardized section separator comments across tensor/convert.
-- Replaced fully-qualified crate::dimension::Ix1 with imported Ix1 in tests.
+- Replaced fully-qualified `crate::dimension::Ix1` with imported `Ix1` in tests.
 - Unified imports ordering and formatting across construct and convert modules.
+
 ## [v0.0.18] — 2026-06-01
 
 ### Added
