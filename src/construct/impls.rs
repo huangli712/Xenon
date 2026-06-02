@@ -88,9 +88,10 @@ where
     pub fn eye(n: usize) -> Result<Self, XenonError> {
         let mut result = Self::zeros([n, n])?;
         for i in 0..n {
-            // SAFETY: `i < n`, so `[i, i]` is always in-bounds for the validated
-            // `[n, n]` shape created above. `eye()` uses unchecked indexing
-            // internally and does not rely on the public `IndexMut` panic sugar.
+            // SAFETY: `i < n`, so `[i, i]` is always in-bounds for the
+            // validated `[n, n]` shape created above. `eye()` uses unchecked
+            // indexing internally and does not rely on the public `IndexMut`
+            // panic sugar.
             unsafe {
                 *result.get_unchecked_mut(&[i, i]) = A::one();
             }
