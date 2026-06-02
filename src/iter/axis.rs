@@ -313,12 +313,15 @@ mod tests {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
-    /// Verifies that `AxisIter::len()` and `count()` both report the size of the
-    /// selected axis (axis 0 of a 2x3 tensor yields 2 sub-views).
+    /// Verifies that `AxisIter::len()` and `count()` both report the size of
+    /// the selected axis (axis 0 of a 2x3 tensor yields 2 sub-views).
     #[test]
     fn test_axis_iter_count() {
-        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
-        let iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
+        let tensor = unsafe {
+            make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3))
+        };
+        let iter = AxisIter::new(tensor.view(), Axis(0))
+            .expect("Axis(0) is valid for 2-D tensor");
         assert_eq!(iter.len(), 2);
         assert_eq!(iter.count(), 2);
     }
@@ -327,7 +330,9 @@ mod tests {
     /// tensor has the reduced shape `[3]` (the remaining axis).
     #[test]
     fn test_axis_iter_shape() {
-        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let tensor = unsafe {
+            make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3))
+        };
         let mut iter =
             AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
         let sub = iter
