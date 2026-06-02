@@ -246,22 +246,26 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IterMut<'a, A, D> {}
 #[cfg(test)]
 mod tests {
     use super::{Iter, IterMut};
-    use crate::dimension::{Ix0, Ix2};
+    use crate::dimension::{Ix0, Ix2, Dimension};
+    use crate::element::Element;
+    use crate::storage::Owned;
     use crate::tensor::TensorBase;
 
-    unsafe fn make_tensor<A: crate::element::Element, D: crate::dimension::Dimension>(
+    /// Test helper: construct an owned tensor from raw data without layout
+    /// validation, assuming the caller provides consistent shape and strides.
+    unsafe fn make_tensor<A: Element, D: Dimension>(
         data: Vec<A>,
         shape: D,
-    ) -> TensorBase<crate::storage::Owned<A>, D> {
+    ) -> TensorBase<Owned<A>, D> {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
-
-    // ── Iter ──
 
     /// F-order contiguous tensor: iter order == physical layout.
     #[test]
     fn test_elements_f_contig() {
-        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
+        let tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2))
+        };
         let values: Vec<_> = Iter::new(tensor.view()).copied().collect();
         assert_eq!(values, vec![1, 2, 3, 4]);
     }
