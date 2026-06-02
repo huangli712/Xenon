@@ -1,16 +1,17 @@
 //! The [`NdIndex`] trait and tuple/slice index implementations.
 
+use crate::private::Sealed;
 use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
 use crate::error::{InvalidLayoutReason, Result, StorageKindTag, XenonError};
 use crate::layout::Strides;
-use crate::private::Sealed;
 
-/// Compute the linear offset for a multi-dimensional index,
-/// with full per-axis bounds and overflow checking.
+/// Compute the linear offset for a multi-dimensional index, with full
+/// per-axis bounds and overflow checking.
 ///
-/// Returns the offset as `usize` on success, or the appropriate
-/// [`XenonError`] on failure.
+/// Returns the offset as `usize` on success, or the appropriate [`XenonError`]
+/// on failure.
 fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result<usize> {
+    // ── Rank check ──
     if index.len() != shape.len() {
         return Err(XenonError::DimensionMismatch {
             operation: "NdIndex::index_checked".into(),
@@ -18,8 +19,18 @@ fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result
             actual: index.len(),
         });
     }
+
     let mut offset = 0usize;
-    for (axis, ((&idx, &extent), &stride)) in index.iter().zip(shape).zip(strides).enumerate() {
+
+    // Standard multi-dimensional linear offset:
+    //
+    //   offset = Σ (index[axis] × strides[axis])
+    //
+    // Each term is computed with checked arithmetic to prevent overflow.
+    for (axis, ((&idx, &extent), &stride)) in
+        index.iter().zip(shape).zip(strides).enumerate()
+    {
+        // ── Per-axis bounds ──
         if idx >= extent {
             return Err(XenonError::IndexOutOfBounds {
                 operation: "NdIndex::index_checked".into(),
@@ -28,6 +39,9 @@ fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result
                 shape: shape.to_vec(),
             });
         }
+
+        // ── term = idx × stride ──
+        // Checked multiply: idx × stride must not overflow usize.
         let term = idx
             .checked_mul(stride)
             .ok_or_else(|| XenonError::InvalidLayout {
@@ -39,6 +53,9 @@ fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result
                 storage_len: 0,
                 reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?;
+
+        // ── offset += term ──
+        // Checked add: accumulator must not overflow usize.
         offset = offset
             .checked_add(term)
             .ok_or_else(|| XenonError::InvalidLayout {
