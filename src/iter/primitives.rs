@@ -6,8 +6,6 @@ use crate::dimension::Dimension;
 use crate::tensor::{TensorView, TensorViewMut};
 use super::types::StrideState;
 
-// ── offset_of_index helper ──
-
 /// `pub(crate)` helper used by both `Iter` and `IterMut` slow paths.
 ///
 /// `offset = base_offset + Σ(strides[i] * index[i])`. The function only sums
@@ -15,7 +13,11 @@ use super::types::StrideState;
 /// constructed via the safe tensor paths; no overflow check is needed because
 /// tensor construction has already verified representability.
 #[inline]
-pub(crate) fn offset_of_index(strides: &[usize], base_offset: usize, index: &[usize]) -> usize {
+pub(crate) fn offset_of_index(
+    strides: &[usize],
+    base_offset: usize,
+    index: &[usize]
+) -> usize {
     debug_assert_eq!(strides.len(), index.len());
     let mut offset = base_offset;
     for (s, i) in strides.iter().zip(index.iter()) {
