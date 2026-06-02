@@ -12,7 +12,7 @@ use crate::error::{Result, XenonError};
 use crate::dimension::Dimension;
 use crate::element::Element;
 use crate::layout::{Strides, compute_layout_flags};
-use crate::storage::{Owned, RawStorage, Storage, StorageIntoOwned};
+use crate::storage::{RawStorage, Storage, StorageIntoOwned, Owned};
 use crate::tensor::{Tensor, TensorBase};
 use super::{cast::CastTo, CastElement};
 
