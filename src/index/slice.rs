@@ -1,4 +1,5 @@
-//! Slice descriptor types: [`SliceInfoElem`], [`SliceInfoIndices`], and [`SliceInfo`].
+//! Slice descriptor types: `SliceInfoElem`, `SliceInfoIndices`, `SliceInfo`,
+//! and `SliceInfoIter`.
 //!
 //! The `TensorBase::slice` method that consumes these types lives in
 //! [`super::impls`] alongside the other index access methods.
@@ -13,10 +14,12 @@ use crate::error::{InvalidArgumentKind, Result, XenonError};
 pub enum SliceInfoElem {
     /// Select a single element along the axis (axis folded in output).
     Index(usize),
+
     /// Select a range of elements along the axis (axis preserved in output).
     Range {
         /// Inclusive start index.
         start: usize,
+
         /// Exclusive end index.
         end: usize,
     },
