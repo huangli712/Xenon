@@ -272,13 +272,6 @@ mod tests {
             }
         ));
     }
-}
-
-#[cfg(test)]
-mod mut_tests {
-    use super::*;
-    use crate::dimension::Ix2;
-    use crate::tensor::Tensor;
 
     fn tensor_ix2_mut<A: crate::element::Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
         unsafe { Tensor::from_raw_vec_unchecked(data, shape) }
