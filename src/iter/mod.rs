@@ -9,6 +9,7 @@
 
 mod axis;
 mod primitives;
+mod types;
 mod indexed;
 
 pub use axis::{AxisIter, AxisIterMut};

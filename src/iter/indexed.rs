@@ -1,5 +1,6 @@
 use crate::dimension::Dimension;
-use crate::iter::primitives::{Iter, IterMut, StrideState};
+use crate::iter::primitives::{Iter, IterMut};
+use crate::iter::types::StrideState;
 
 /// Element iterator paired with the multi-dimensional logical index.
 /// Yields `(D, &'a A)` tuples; indices increment in F-order.
