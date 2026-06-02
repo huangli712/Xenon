@@ -4,14 +4,13 @@
 //! counterparts (`try_at_mut`, `get_mut`, `get_unchecked`), and the
 //! unsafe unchecked variants (`get_unchecked`, `get_unchecked_mut`).
 
-use crate::dimension::Dimension;
 use crate::error::{InvalidArgumentKind, InvalidLayoutReason, Result, StorageKindTag, XenonError};
-use crate::index::NdIndex;
-use crate::index::slice::{SliceInfo, SliceInfoElem};
+use crate::dimension::Dimension;
 use crate::layout::{Strides, compute_layout_flags};
-use crate::storage::Storage;
-use crate::storage::ViewRepr;
+use crate::storage::{Storage, ViewRepr};
 use crate::tensor::{StorageKind, TensorBase, TensorView};
+
+use super::{NdIndex, SliceInfo, SliceInfoElem};
 
 impl<S, D, A> TensorBase<S, D>
 where
