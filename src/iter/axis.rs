@@ -52,6 +52,10 @@ pub struct AxisIter<'a, A, D: Dimension> {
 }
 
 impl<'a, A, D: Dimension> AxisIter<'a, A, D> {
+    /// Construct an axis iterator for the given view and axis.
+    ///
+    /// Returns `InvalidAxis` if `axis` is out of range for the tensor's
+    /// dimensionality.
     pub(crate) fn new(view: TensorView<'a, A, D>, axis: Axis) -> Result<Self, XenonError> {
         let ndim = view.ndim();
         if axis.0 >= ndim {
