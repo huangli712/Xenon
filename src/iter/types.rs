@@ -1,15 +1,26 @@
-//! F-order stride state machine.
-//!
-//! `StrideState` is an internal implementation detail. It is `pub(crate)` so
-//! `IndexedIter` / `Iter` in sibling modules can reuse it without leaking the
-//! type into the public API surface.
+//! Core iterator types — `StrideState` and its tests.
 
-// ── StrideState ──
-
+/// F-order (column-major) stride state machine.
+///
+/// Drives traversal over every logical position in an N-dimensional index
+/// space exactly once. Index `[0]` varies fastest (innermost); when it
+/// overflows `shape[0]`, it resets to 0 and carries into index `[1]`, and
+/// so on. When all axes have carried out, the state is exhausted.
+///
+/// This is an internal implementation detail shared by the flat and indexed
+/// iterators. It is `pub(crate)` so sibling modules can reuse it without
+/// exposing the type publicly.
 #[derive(Debug, Clone)]
 pub(crate) struct StrideState {
+    /// Shape of the index space — `shape[axis]` is the exclusive upper
+    /// bound for `index[axis]`.
     shape: Vec<usize>,
+
+    /// Current logical position. `index[0]` is the innermost (fastest-varying)
+    /// axis in F-order.
     index: Vec<usize>,
+    
+    /// Whether the state machine has visited all logical positions.
     finished: bool,
 }
 
