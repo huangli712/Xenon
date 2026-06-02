@@ -246,7 +246,7 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IterMut<'a, A, D> {}
 #[cfg(test)]
 mod tests {
     use super::{Iter, IterMut};
-    use crate::dimension::{Ix0, Ix2, Dimension};
+    use crate::dimension::{Ix0, Ix2, Ix3, Dimension};
     use crate::element::Element;
     use crate::storage::Owned;
     use crate::tensor::TensorBase;
@@ -314,5 +314,61 @@ mod tests {
         }
         let collected: Vec<_> = Iter::new(tensor.view()).copied().collect();
         assert_eq!(collected, vec![2, 4, 6]);
+    }
+
+    /// `iter_mut()` on a 3-D tensor exercises multi-axis traversal.
+    #[test]
+    fn test_elements_mut_3d() {
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4, 5, 6, 7, 8], Ix3(2, 2, 2))
+        };
+        for value in IterMut::new(tensor.view_mut()) {
+            *value *= 10;
+        }
+        let collected: Vec<_> = Iter::new(tensor.view()).copied().collect();
+        assert_eq!(collected, vec![10, 20, 30, 40, 50, 60, 70, 80]);
+    }
+
+    /// `iter_mut()` on an empty tensor finishes immediately with zero yields.
+    #[test]
+    fn test_elements_mut_empty() {
+        let mut tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(0, 3))
+        };
+        let mut iter = IterMut::new(tensor.view_mut());
+        assert_eq!(iter.len(), 0);
+        assert!(iter.next().is_none());
+    }
+
+    /// `iter_mut()` on a rank-0 tensor yields exactly one mutable element.
+    #[test]
+    fn test_elements_mut_ix0() {
+        let mut scalar = unsafe {
+            make_tensor(vec![7i32], Ix0)
+        };
+        let mut iter = IterMut::new(scalar.view_mut());
+        assert_eq!(iter.len(), 1);
+        assert_eq!(iter.size_hint(), (1, Some(1)));
+        let value = iter.next().expect("rank-0 tensor has 1 element");
+        *value = 99;
+        let result: Vec<_> = Iter::new(scalar.view()).copied().collect();
+        assert_eq!(result, vec![99]);
+    }
+
+    /// `size_hint` returns the exact remaining count; `count` consumes
+    /// correctly.
+    #[test]
+    fn test_elements_mut_size_hint() {
+        let mut tensor = unsafe {
+            make_tensor(vec![0i32; 6], Ix2(3, 2))
+        };
+        let iter = IterMut::new(tensor.view_mut());
+        assert_eq!(iter.len(), 6);
+        // Manually advance to verify size_hint decrements.
+        let mut iter = IterMut::new(tensor.view_mut());
+        assert_eq!(iter.size_hint(), (6, Some(6)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (5, Some(5)));
+        assert_eq!(iter.count(), 5);
     }
 }
