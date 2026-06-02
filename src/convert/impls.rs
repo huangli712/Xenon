@@ -8,17 +8,13 @@
 
 use std::borrow::Cow;
 
-use super::CastElement;
+use crate::error::{Result, XenonError};
 use crate::dimension::Dimension;
 use crate::element::Element;
-use crate::error::{Result, XenonError};
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, Storage, StorageIntoOwned};
 use crate::tensor::{Tensor, TensorBase};
-
-use super::cast::CastTo;
-
-// ── helpers ──
+use super::{cast::CastTo, CastElement};
 
 /// Thin wrapper around `TensorBase::new_unchecked` for zero-overhead Owned
 /// construction from a validated `(shape, Vec<A>)` pair.
@@ -32,7 +28,10 @@ use super::cast::CastTo;
 /// Used by `cast()` and `to_owned()` after they have already proven
 /// length / shape consistency at the call site.
 #[inline]
-pub(crate) unsafe fn from_shape_vec_aligned_unchecked<A, D>(shape: D, data: Vec<A>) -> Tensor<A, D>
+pub(crate) unsafe fn from_shape_vec_aligned_unchecked<A, D>(
+    shape: D,
+    data: Vec<A>
+) -> Tensor<A, D>
 where
     A: Element,
     D: Dimension,
