@@ -130,4 +130,80 @@ mod tests {
         let state = StrideState::new(&[0, 3]);
         assert!(state.is_finished());
     }
+
+    /// 1-D single axis: index increments without carry until exhaustion.
+    #[test]
+    fn test_stride_state_1d() {
+        let mut state = StrideState::new(&[3]);
+        assert!(!state.is_finished());
+        assert_eq!(state.index(), &[0]);
+
+        state.advance();
+        assert_eq!(state.index(), &[1]);
+        assert!(!state.is_finished());
+
+        state.advance();
+        assert_eq!(state.index(), &[2]);
+        assert!(!state.is_finished());
+
+        // Last advance exhausts the state.
+        state.advance();
+        assert!(state.is_finished());
+    }
+
+    /// 3-D shape: multi-level carry chain through all axes.
+    #[test]
+    fn test_stride_state_3d() {
+        let mut state = StrideState::new(&[2, 2, 2]);
+        assert_eq!(state.index(), &[0, 0, 0]);
+
+        state.advance();
+        assert_eq!(state.index(), &[1, 0, 0]);
+
+        // Carry from axis 0 into axis 1.
+        state.advance();
+        assert_eq!(state.index(), &[0, 1, 0]);
+
+        state.advance();
+        assert_eq!(state.index(), &[1, 1, 0]);
+
+        // Carry from axis 0→1→2.
+        state.advance();
+        assert_eq!(state.index(), &[0, 0, 1]);
+
+        state.advance();
+        assert_eq!(state.index(), &[1, 0, 1]);
+
+        state.advance();
+        assert_eq!(state.index(), &[0, 1, 1]);
+
+        state.advance();
+        assert_eq!(state.index(), &[1, 1, 1]);
+
+        // Final advance exhausts the state.
+        state.advance();
+        assert!(state.is_finished());
+    }
+
+    /// Clone creates an independent copy that does not interfere with
+    /// the original.
+    #[test]
+    fn test_stride_state_clone() {
+        let mut state = StrideState::new(&[2, 3]);
+        let mut cloned = state.clone();
+
+        // Clone has the same state as the original.
+        assert_eq!(cloned.index(), state.index());
+        assert_eq!(cloned.is_finished(), state.is_finished());
+
+        state.advance();
+        assert_eq!(state.index(), &[1, 0]);
+        // Cloned copy is unaffected by original's advance.
+        assert_eq!(cloned.index(), &[0, 0]);
+
+        cloned.advance();
+        assert_eq!(cloned.index(), &[1, 0]);
+        // Original is unaffected by clone's advance.
+        assert_eq!(state.index(), &[1, 0]);
+    }
 }
