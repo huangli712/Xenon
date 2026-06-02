@@ -172,6 +172,7 @@ impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
                 },
             });
         }
+
         // Check 2: output rank == Range count.
         let ranges = indices
             .iter()
@@ -186,6 +187,7 @@ impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
                 },
             });
         }
+
         // Check 3: Range start <= end.
         for (axis, elem) in indices.iter().enumerate() {
             if let SliceInfoElem::Range { start, end } = elem
@@ -220,7 +222,6 @@ impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,15 +241,15 @@ mod tests {
         assert!(info.is_ok());
     }
 
-    /// [`SliceInfo::new`] rejects an index count that does not match the input rank.
+    /// [`SliceInfo::new`] rejects an index count that does not match the
+    /// input rank.
     #[test]
     fn test_slice_info_rank_mismatch() {
         let err = SliceInfo::new(
             SliceInfoIndices::from_vec(vec![SliceInfoElem::Index(0)]),
             Ix2(2, 3),
             Ix1(0),
-        )
-        .expect_err("rank mismatch");
+        ).expect_err("rank mismatch");
         assert!(matches!(
             err,
             XenonError::InvalidArgument {
@@ -269,8 +270,7 @@ mod tests {
             ]),
             Ix2(2, 3),
             Ix1(2),
-        )
-        .expect_err("output rank mismatch");
+        ).expect_err("output rank mismatch");
         assert!(matches!(
             err,
             XenonError::InvalidArgument {
@@ -290,8 +290,7 @@ mod tests {
             ]),
             Ix2(10, 3),
             Ix1(3),
-        )
-        .expect_err("start > end");
+        ).expect_err("start > end");
         assert!(matches!(
             err,
             XenonError::InvalidArgument {
@@ -320,9 +319,10 @@ mod tests {
     /// when the element count exceeds 6.
     #[test]
     fn test_slice_info_indices_falls_back_to_dynamic() {
-        let elems: Vec<SliceInfoElem> = (0..7).map(SliceInfoElem::Index).collect();
+        let elems: Vec<SliceInfoElem> = (0..7)
+            .map(SliceInfoElem::Index)
+            .collect();
         let indices = SliceInfoIndices::from_vec(elems);
         assert!(matches!(indices, SliceInfoIndices::Dynamic(_)));
     }
 }
-
