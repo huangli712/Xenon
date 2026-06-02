@@ -23,7 +23,7 @@
 //! Constructors use `<Owned<A> as StorageOwned>::from_elem(len, value)` for
 //! element-level initialization with canonical F-order strides.
 
-pub use types::EyeElement;
+pub(crate) use types::EyeElement;
 /// Tensor constructors (`zeros`, `ones`, `eye`, `from_shape_vec`, `from_vec`,
 /// `from_shape_slice`, `from_array`, `from_scalar`).
 pub mod impls;
