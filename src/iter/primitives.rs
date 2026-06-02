@@ -26,8 +26,6 @@ pub(crate) fn offset_of_index(
     offset
 }
 
-// ── Iter ──
-
 /// Flat element iterator. Yields elements in logical F-order.
 ///
 /// `'a` and `A` are anchored by the embedded `tensor: TensorView<'a, A, D>`,
