@@ -16,4 +16,3 @@ pub mod slice;
 pub use ndindex::NdIndex; // W21T2
 // pub use impls::{/* inherent methods live on TensorBase */};    // W21T3/W21T5
 pub use slice::{SliceInfo, SliceInfoElem, SliceInfoIndices}; // W21T4
-

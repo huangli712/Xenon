@@ -196,10 +196,12 @@ impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
     pub fn indices(&self) -> &SliceInfoIndices {
         &self.indices
     }
+
     /// Returns the input dimension.
     pub fn input_dim(&self) -> &D {
         &self.in_dim
     }
+
     /// Returns the output dimension.
     pub fn output_dim(&self) -> &I {
         &self.out_dim
