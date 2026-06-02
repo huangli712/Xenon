@@ -1,12 +1,15 @@
-//! Type conversion: `CastTo` and `CastElement` traits with tier-based impls.
+//! Type conversion: `CastTo` trait with tier-based impls.
 //!
-//! Defines the public `CastTo` and `CastElement` traits, the crate-private
-//! `ConvertTo` dispatch shim, and provides tensor-level `cast()`, `to_owned()`,
-//! and `into_owned()` methods on `TensorBase`.
+//! Defines the public `CastTo` trait, the crate-private `ConvertTo` dispatch
+//! shim, and provides tensor-level `cast()`, `to_owned()`, and `into_owned()`
+//! methods on `TensorBase`.
+//!
+//! `CastElement` is defined in `super::types`.
 
 use std::borrow::Cow;
 
 use crate::complex::Complex;
+use crate::convert::CastElement;
 use crate::dimension::Dimension;
 use crate::element::Element;
 use crate::error::{ConversionFailureReason, Result, XenonError};
@@ -32,24 +35,6 @@ pub trait CastTo<T: Element>: Element {
     /// the value cannot be represented in the target type.
     fn cast_to(self) -> std::result::Result<T, XenonError>;
 }
-
-/// Public sealed marker for element types in the cast matrix.
-///
-/// `cast()` public signature `where A: CastElement, T: CastElement` uses this
-/// trait to exclude `bool` from conversion at compile time and narrow the
-/// element set to the 6 numeric types.
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub trait CastElement: Element {}
-
-impl CastElement for i32 {}
-impl CastElement for i64 {}
-impl CastElement for f32 {}
-impl CastElement for f64 {}
-impl CastElement for Complex<f32> {}
-impl CastElement for Complex<f64> {}
 
 /// Crate-private sealed conversion dispatch trait.
 ///
@@ -828,17 +813,6 @@ impl ConvertTo<i64> for Complex<f64> {
 mod tests {
     use super::*;
     use crate::tensor::Tensor1;
-
-    #[test]
-    fn test_convert_to_trait_signature_accepts_cast_elements() {
-        fn require_cast_element<A: CastElement>() {}
-        require_cast_element::<i32>();
-        require_cast_element::<i64>();
-        require_cast_element::<f32>();
-        require_cast_element::<f64>();
-        require_cast_element::<Complex<f32>>();
-        require_cast_element::<Complex<f64>>();
-    }
 
     #[test]
     fn test_cast_f32_to_f64() {
