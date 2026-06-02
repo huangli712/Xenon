@@ -243,4 +243,37 @@ mod tests {
         assert_eq!(iter.size_hint(), (3, Some(3)));
         assert_eq!(iter.count(), 3);
     }
+
+    /// `IndexedIterMut` on a rank-0 tensor yields exactly one `(Ix0, &mut A)`
+    /// pair, and the mutation propagates.
+    #[test]
+    fn test_indexed_iter_mut_ix0() {
+        let mut scalar = unsafe {
+            make_tensor(vec![7i32], Ix0)
+        };
+        let shape = [0usize; 0];
+        let iter = IndexedIterMut::new(IterMut::new(scalar.view_mut()), &shape);
+        for (idx, value) in iter {
+            assert_eq!(idx, Ix0);
+            *value = 99;
+        }
+        assert_eq!(scalar.iter().copied().collect::<Vec<_>>(), vec![99]);
+    }
+
+    /// `IndexedIterMut::size_hint` returns the exact remaining count and
+    /// decrements after each `next()`.
+    #[test]
+    fn test_indexed_iter_mut_size_hint() {
+        let mut tensor = unsafe {
+            make_tensor(vec![0i32; 6], Ix2(3, 2))
+        };
+        let shape = [3usize, 2];
+        let mut iter =
+            IndexedIterMut::new(IterMut::new(tensor.view_mut()), &shape);
+        assert_eq!(iter.len(), 6);
+        assert_eq!(iter.size_hint(), (6, Some(6)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (5, Some(5)));
+        assert_eq!(iter.count(), 5);
+    }
 }
