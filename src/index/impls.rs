@@ -7,7 +7,7 @@
 use crate::error::{InvalidArgumentKind, InvalidLayoutReason, Result, StorageKindTag, XenonError};
 use crate::dimension::Dimension;
 use crate::layout::{Strides, compute_layout_flags};
-use crate::storage::{Storage, ViewRepr};
+use crate::storage::{Storage, StorageMut, ViewRepr};
 use crate::tensor::{StorageKind, TensorBase, TensorView};
 
 use super::{NdIndex, SliceInfo, SliceInfoElem};
@@ -152,8 +152,6 @@ where
         }
     }
 }
-
-use crate::storage::StorageMut;
 
 impl<S, D, A> TensorBase<S, D>
 where
