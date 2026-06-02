@@ -1,9 +1,4 @@
-//! Axis-wise sub-view iterators.
-//!
-//! `AxisIter` yields read-only sub-views along a selected axis;
-//! `AxisIterMut` yields mutable sub-views. Each sub-view reduces the
-//! tensor dimensionality by one, producing a `TensorView` or
-//! `TensorViewMut` of rank `D::Smaller`.
+//! Axis-wise sub-view iterators — `AxisIter` and `AxisIterMut`.
 
 use core::marker::PhantomData;
 use std::borrow::Cow;
@@ -14,25 +9,45 @@ use crate::error::XenonError;
 use crate::layout::Strides;
 use crate::tensor::{TensorView, TensorViewMut};
 
-/// Axis iterator: yields `D::Smaller` sub-views along the selected axis.
+/// Read-only axis iterator.
 ///
-/// The struct retains the minimal `D: Dimension` bound; the public iterator
-/// trait impls add `D: RemoveAxis` so the yielded item type can be
+/// Yields [`TensorView`] sub-views of rank `D::Smaller` by slicing along
+/// the selected axis. Each sub-view spans all remaining dimensions. The
+/// iterator itself requires only `D: Dimension`; the `Iterator` impl
+/// further constrains to `D: RemoveAxis` so the item type can be
 /// `TensorView<'a, A, D::Smaller>`.
-#[expect(
-    missing_debug_implementations,
-    reason = "iterator is not meant to be introspected"
-)]
+#[expect(missing_debug_implementations)]
 pub struct AxisIter<'a, A, D: Dimension> {
+    /// Storage base pointer, captured from the source view at construction.
     base_ptr: *const A,
+
+    /// Offset from storage base to the logical first element of the tensor.
     base_offset: usize,
+
+    /// Shape of a single sub-view (all axes except the iteration axis).
     sub_shape: Vec<usize>,
+
+    /// Strides of a single sub-view, in the same axis order as `sub_shape`.
     sub_strides: Vec<usize>,
+
+    /// Stride (in elements) between consecutive positions along the
+    /// iteration axis.
     axis_stride: usize,
+
+    /// Number of sub-views (length of the iteration axis).
     len: usize,
+
+    /// Current position along the iteration axis (0-based).
     pos: usize,
+
+    /// Total number of elements in the underlying storage, used for bounds
+    /// validation when constructing sub-views.
     storage_len: usize,
+
+    /// Lifetime anchor — ties yielded references to the source borrow.
     _marker: PhantomData<&'a A>,
+
+    /// Consumes the dimension type parameter so the struct is well-formed.
     _dim: PhantomData<D>,
 }
 
@@ -121,27 +136,50 @@ where
     D: RemoveAxis,
 {
 }
-/// Mutable axis iterator: yields `D::Smaller` mutable sub-views.
+/// Mutable axis iterator.
+///
+/// Yields [`TensorViewMut`] sub-views of rank `D::Smaller` by slicing
+/// along the selected axis. The construction-time `debug_assert!` enforces
+/// that broadcast (zero-stride) layouts are rejected — these violate the
+/// aliasing guarantees of `&mut`.
 ///
 /// # Safety
 ///
-/// Each `next()` advances `pos` by 1 monotonically; consecutive yields are
-/// separated by `axis_stride` elements, so the produced `&mut`-backed views
-/// cover non-overlapping logical regions.
-#[expect(
-    missing_debug_implementations,
-    reason = "iterator is not meant to be introspected"
-)]
+/// Each `next()` advances `pos` by 1 monotonically; consecutive yields
+/// are separated by `axis_stride` elements, so the produced `&mut`-backed
+/// views cover non-overlapping logical regions.
+#[expect(missing_debug_implementations)]
 pub struct AxisIterMut<'a, A, D: Dimension> {
+    /// Storage base pointer, captured from the mutable source view.
     base_ptr: *mut A,
+
+    /// Offset from storage base to the logical first element of the tensor.
     base_offset: usize,
+
+    /// Shape of a single sub-view (all axes except the iteration axis).
     sub_shape: Vec<usize>,
+
+    /// Strides of a single sub-view, in the same axis order as `sub_shape`.
     sub_strides: Vec<usize>,
+
+    /// Stride (in elements) between consecutive positions along the
+    /// iteration axis.
     axis_stride: usize,
+
+    /// Number of sub-views (length of the iteration axis).
     len: usize,
+
+    /// Current position along the iteration axis (0-based).
     pos: usize,
+
+    /// Total number of elements in the underlying storage.
     storage_len: usize,
+
+    /// Lifetime anchor — ties yielded mutable references to the source
+    /// borrow.
     _marker: PhantomData<&'a mut A>,
+
+    /// Consumes the dimension type parameter so the struct is well-formed.
     _dim: PhantomData<D>,
 }
 
