@@ -376,8 +376,8 @@ mod tests {
     /// Mismatched shape-element count returns `ElementCountMismatch` error.
     #[test]
     fn test_from_shape_vec_mismatch() {
-        let err =
-            Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
+        let err = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3])
+            .expect_err("mismatched shape");
         assert!(matches!(
             err,
             XenonError::InvalidShape {
@@ -394,8 +394,8 @@ mod tests {
     /// identifying the constructor (`"from_shape_vec"`).
     #[test]
     fn test_from_shape_vec_mismatch_operation_field() {
-        let err =
-            Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
+        let err = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3])
+            .expect_err("mismatched shape");
         if let XenonError::InvalidShape { operation, .. } = err {
             assert_eq!(operation.as_ref(), "from_shape_vec");
         } else {
@@ -406,7 +406,8 @@ mod tests {
     /// `from_vec` infers a 1-D shape `[data.len()]` from the input vec.
     #[test]
     fn test_from_vec_success() {
-        let tensor = Tensor::<i32, Ix1>::from_vec(vec![1i32, 2, 3]).expect("test input valid");
+        let tensor = Tensor::<i32, Ix1>::from_vec(vec![1i32, 2, 3])
+            .expect("test input valid");
         assert_eq!(tensor.shape(), &[3]);
         assert_eq!(tensor.len(), 3);
     }
@@ -415,7 +416,8 @@ mod tests {
     #[test]
     fn test_from_shape_slice_success() {
         let source = [1.0f64, 2.0, 3.0, 4.0];
-        let tensor = Tensor::<f64, _>::from_shape_slice([2, 2], &source).expect("test input valid");
+        let tensor = Tensor::<f64, _>::from_shape_slice([2, 2], &source)
+            .expect("test input valid");
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(*tensor.get(&[0, 0]).expect("test input valid"), 1.0);
         // Source is not consumed — original array is untouched.
@@ -426,8 +428,8 @@ mod tests {
     #[test]
     fn test_from_shape_slice_mismatch() {
         let source = [1, 2, 3];
-        let err =
-            Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
+        let err = Tensor::<i32, _>::from_shape_slice([2, 2], &source)
+            .expect_err("mismatched shape");
         assert!(matches!(
             err,
             XenonError::InvalidShape {
