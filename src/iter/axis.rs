@@ -299,13 +299,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::{Axis, IxDyn};
+    use crate::dimension::{Axis, Dimension, IxDyn};
+    use crate::element::Element;
+    use crate::storage::Owned;
     use crate::tensor::TensorBase;
 
-    unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(
+    /// Test helper: construct an owned tensor from raw data without layout
+    /// validation, assuming the caller provides consistent shape and strides.
+    unsafe fn make_tensor<A: Element, D: Dimension>(
         data: Vec<A>,
         shape: D,
-    ) -> TensorBase<crate::storage::Owned<A>, D> {
+    ) -> TensorBase<Owned<A>, D> {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
