@@ -219,7 +219,11 @@ impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
             off
         } else {
             // Slow path: stride-based offset, computed from validated metadata.
-            let off = offset_of_index(&self.strides, self.base_offset, self.state.index());
+            let off = offset_of_index(
+                &self.strides,
+                self.base_offset,
+                self.state.index()
+            );
             self.state.advance();
             off
         };
@@ -238,8 +242,6 @@ impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
 }
 
 impl<'a, A, D: Dimension> ExactSizeIterator for IterMut<'a, A, D> {}
-
-// ── Tests ──
 
 #[cfg(test)]
 mod tests {
