@@ -16,7 +16,7 @@ fn test_conversion_respects_element_boundaries() {
 // §8.3 L939 compile-time boundary: bool must NOT satisfy CastTo<f32>.
 // This is verified at compile time — attempting to use `cast::<f32>()` on
 // a `Tensor<bool, _>` fails because `bool: CastElement` but there is no
-// `impl ConvertTo<f32> for bool`.
+// `impl CastTo<f32> for bool`.
 //
 // ```compile_fail
 // # use xenon::element::CastTo;
