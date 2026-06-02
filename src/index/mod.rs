@@ -5,7 +5,7 @@
 //! is implemented. Each `pub use` line is enabled by the task indicated in
 //! the adjacent comment.
 
-pub mod access;
+pub mod impls;
 pub mod ndindex;
 pub mod slice;
 
@@ -14,7 +14,7 @@ pub mod slice;
 // referencing symbols that do not yet exist.
 //
 pub use ndindex::NdIndex; // W21T2
-// pub use access::{/* inherent methods live on TensorBase */};    // W21T3/W21T5
+// pub use impls::{/* inherent methods live on TensorBase */};    // W21T3/W21T5
 pub use slice::{SliceInfo, SliceInfoElem, SliceInfoIndices}; // W21T4
 
 #[cfg(test)]
@@ -23,7 +23,7 @@ mod tests {
     // sub-module file exists and parses. If any of the three files is
     // missing or malformed, the test target refuses to compile.
     #[allow(unused_imports)]
-    use crate::index::access;
+    use crate::index::impls;
     #[allow(unused_imports)]
     use crate::index::ndindex;
     #[allow(unused_imports)]
