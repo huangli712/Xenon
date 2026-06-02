@@ -218,39 +218,11 @@ impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
 
 impl<'a, A, D: Dimension> ExactSizeIterator for IterMut<'a, A, D> {}
 
-// ── IterMut tests (W12T4) ──
+// ── Tests (W12T3, W12T4) ──
 
 #[cfg(test)]
-mod tests_mut {
-    use super::IterMut;
-    use crate::dimension::Ix2;
-    use crate::tensor::TensorBase;
-
-    unsafe fn make_tensor<A: crate::element::Element, D: crate::dimension::Dimension>(
-        data: Vec<A>,
-        shape: D,
-    ) -> TensorBase<crate::storage::Owned<A>, D> {
-        unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
-    }
-
-    /// `iter_mut()` writes propagate back through the source tensor.
-    /// Reference: 10-iterator §8.2 `test_elements_mut_write`.
-    #[test]
-    fn test_elements_mut_write() {
-        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3], Ix2(3, 1)) };
-        for value in IterMut::new(tensor.view_mut()) {
-            *value *= 2;
-        }
-        let collected: Vec<_> = super::Iter::new(tensor.view()).copied().collect();
-        assert_eq!(collected, vec![2, 4, 6]);
-    }
-}
-
-// ── Iter tests (W12T3) ──
-
-#[cfg(test)]
-mod tests_iter {
-    use super::Iter;
+mod tests {
+    use super::{Iter, IterMut};
     use crate::dimension::{Ix0, Ix2};
     use crate::tensor::TensorBase;
 
@@ -260,6 +232,8 @@ mod tests_iter {
     ) -> TensorBase<crate::storage::Owned<A>, D> {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
+
+    // ── Iter (W12T3) ──
 
     /// F-order contiguous tensor: iter order == physical layout.
     /// Reference: 10-iterator §8.2 `test_elements_f_contig`.
@@ -299,4 +273,18 @@ mod tests_iter {
         assert_eq!(values, vec![7]);
         assert_eq!(Iter::new(scalar.view()).len(), 1);
     }
-} // ── IterMut (W12T4) ──
+
+    // ── IterMut (W12T4) ──
+
+    /// `iter_mut()` writes propagate back through the source tensor.
+    /// Reference: 10-iterator §8.2 `test_elements_mut_write`.
+    #[test]
+    fn test_elements_mut_write() {
+        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3], Ix2(3, 1)) };
+        for value in IterMut::new(tensor.view_mut()) {
+            *value *= 2;
+        }
+        let collected: Vec<_> = Iter::new(tensor.view()).copied().collect();
+        assert_eq!(collected, vec![2, 4, 6]);
+    }
+}
