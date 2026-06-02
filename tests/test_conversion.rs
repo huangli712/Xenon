@@ -13,14 +13,16 @@ fn test_conversion_respects_element_boundaries() {
     assert_eq!(converted.as_slice().expect("F-contiguous"), &[1.0, 2.0]);
 }
 
-// §8.3 L939 compile-time boundary: bool must NOT satisfy CastTo<f32>.
-// This is verified at compile time — attempting to use `cast::<f32>()` on
-// a `Tensor<bool, _>` fails because `bool: CastElement` but there is no
-// `impl CastTo<f32> for bool`.
+// §8.3 L939 compile-time boundary: `bool` does NOT implement `CastElement`,
+// the public sealed marker that gates `cast()`, so `cast::<f32>()` on a
+// `Tensor<bool, _>` is rejected at compile time rather than failing at
+// runtime. (The internal per-pair dispatch trait `CastTo` is `pub(crate)`
+// in `convert` and cannot be named from external crates; the boundary is
+// observed below through the public `CastElement` marker.)
 //
 // ```compile_fail
-// # use xenon::element::CastTo;
-// fn _assert_bool_cast<A: CastTo<f32>>() {}
+// # use xenon::prelude::CastElement;
+// fn _assert_bool_cast<A: CastElement>() {}
 // _assert_bool_cast::<bool>();
 // ```
 
