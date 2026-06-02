@@ -278,7 +278,7 @@ impl NdIndex<IxDyn> for &[usize] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::Ix2;
+    use crate::dimension::{Ix0, Ix2, IxDyn};
 
     /// `checked_offset` returns [`IndexOutOfBounds`] when an index component
     /// exceeds the corresponding shape dimension.
@@ -305,6 +305,49 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// `checked_offset` returns [`InvalidLayout`] when `idx * stride`
+    /// overflows `usize`.
+    #[test]
+    fn test_checked_offset_overflow() {
+        // idx < extent, but idx * stride overflows usize.
+        let err = checked_offset(
+            &[usize::MAX / 2 + 1],
+            &[usize::MAX],
+            &[2],
+        ).expect_err("overflow");
+        assert!(matches!(
+            err,
+            XenonError::InvalidLayout {
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
+                ..
+            }
+        ));
+    }
+
+    /// `NdIndex<Ix0> for ()` always returns `Ok(0)`.
+    #[test]
+    fn test_ndindex_ix0_checked() {
+        let dim = Ix0;
+        let strides = Strides::from_slice(&[]).expect("empty strides");
+        assert_eq!(().index_checked(&dim, &strides).expect("Ix0"), 0);
+    }
+
+    /// `NdIndex<IxDyn> for &[usize]` delegates to `checked_offset`.
+    #[test]
+    fn test_ndindex_ixdyn_checked() {
+        let dim = IxDyn::from_slice(&[3, 4]);
+        let strides = Strides::from_slice(&[1, 3]).expect("valid strides");
+        let idx: &[usize] = &[2, 1];
+        assert_eq!(idx.index_checked(&dim, &strides).expect("valid"), 5);
+    }
+
+    /// `to_index_vec` on a 2D tuple returns the index components as a `Vec`.
+    #[test]
+    fn test_to_index_vec_tuple_2d() {
+        let idx = (1usize, 2usize);
+        assert_eq!(idx.to_index_vec(), vec![1, 2]);
     }
 
     /// A valid 2D tuple index computes the correct linear offset
