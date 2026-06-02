@@ -232,8 +232,10 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::InvalidShape`:
-    /// - `kind: InvalidShapeKind::ProductOverflow` if `dim.checked_size()` overflows usize.
-    /// - `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }` if `slice.len() != expected`.
+    /// - `kind: InvalidShapeKind::ProductOverflow`
+    ///   if `dim.checked_size()` overflows usize.
+    /// - `kind: InvalidShapeKind::ElementCountMismatch`
+    ///   if `slice.len() != expected`.
     ///
     /// The `operation` field is set to `"from_shape_slice"` so downstream
     /// diagnostics reflect the actual entry point rather than the internal
