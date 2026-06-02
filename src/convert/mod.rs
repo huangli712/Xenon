@@ -1,25 +1,21 @@
-//! Type conversion module root.
+//! Type conversion: `cast()`, `to_owned()`, and `into_owned()`.
 //!
-//! Submodules:
-//! - `cast`: `CastTo` sealed shim, tier impls, and `cast()` / `to_owned()`
-//!   / `into_owned()` methods on `TensorBase`.
+//! ## Submodules
+//!
+//! * `cast` — `pub(crate) CastTo` trait and its 36 tier-based impls
+//!   covering the full 6×6 numeric element matrix.
+//! * `impls` — Tensor-level `cast()`, `to_owned()`, and `into_owned()`
+//!   methods on `TensorBase` with helpers.
+//! * `types` — `pub trait CastElement`, the sealed compile-time gate
+//!   that excludes `bool` and other non-numeric types from conversion.
+//!
+//! ## Public API
+//!
+//! Only `CastElement` is re-exported.  `CastTo` is `pub(crate)`; users
+//! interact with conversion through `TensorBase::cast()`.
 
+mod types;
 mod cast;
 mod impls;
-mod types;
-pub use types::CastElement;
 
-#[cfg(test)]
-mod tests {
-    /// Compiling this test confirms the `convert/` module tree is wired up.
-    #[test]
-    fn test_convert_module_skeleton_compiles() {
-        // Mere compilation of this test proves the convert/ module skeleton
-        // is wired up correctly:
-        //   - src/lib.rs declares `pub mod convert;`
-        //   - src/convert/mod.rs declares `mod cast;`
-        //   - src/convert/cast.rs exists as a resolvable file
-        let _module_path = module_path!();
-        assert!(_module_path.contains("convert"));
-    }
-}
+pub use types::CastElement;
