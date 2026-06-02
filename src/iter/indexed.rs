@@ -1,8 +1,8 @@
 //! Index-paired element iterators — `IndexedIter` and `IndexedIterMut`.
 
 use crate::dimension::Dimension;
-use crate::iter::primitives::{Iter, IterMut};
-use crate::iter::types::StrideState;
+use super::primitives::{Iter, IterMut};
+use super::types::StrideState;
 
 /// Read-only indexed iterator.
 ///
