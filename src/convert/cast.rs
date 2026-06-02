@@ -47,7 +47,7 @@ where
     fn cast_to(self) -> Result<B>;
 }
 
-// ── Tier-0: Same-type identity (6 cells) ──
+// --- Tier-0: Same-type identity (6 cells) -----------------------------------
 
 impl CastTo<i32> for i32 {
     #[inline]
@@ -91,7 +91,7 @@ impl CastTo<Complex<f64>> for Complex<f64> {
     }
 }
 
-// ── Tier-1: std `From` arithmetic widening (3 cells) ──
+// --- Tier-1: std `From` arithmetic widening (3 cells) -----------------------
 
 impl CastTo<i64> for i32 {
     #[inline]
@@ -114,7 +114,7 @@ impl CastTo<f64> for i32 {
     }
 }
 
-// ── Tier-1: real → complex zero-imaginary widening (4 cells) ──
+// --- Tier-1: real → complex zero-imaginary widening (4 cells) ---------------
 
 impl CastTo<Complex<f32>> for f32 {
     #[inline]
@@ -144,7 +144,7 @@ impl CastTo<Complex<f64>> for i32 {
     }
 }
 
-// ── Tier-1: complex → complex widening (1 cell) ──
+// --- Tier-1: complex → complex widening (1 cell) ----------------------------
 
 impl CastTo<Complex<f64>> for Complex<f32> {
     #[inline]
@@ -153,7 +153,7 @@ impl CastTo<Complex<f64>> for Complex<f32> {
     }
 }
 
-// ── Tier-2: Lossy-by-default conversions (14 cells) ──
+// --- Tier-2: Lossy-by-default conversions (14 cells) ------------------------
 
 impl CastTo<f32> for f64 {
     #[inline]
@@ -337,7 +337,7 @@ impl CastTo<Complex<f32>> for Complex<f64> {
     }
 }
 
-// ── Tier-3: Dynamic conversions (8 cells) ──
+// --- Tier-3: Dynamic conversions (8 cells) ----------------------------------
 
 // Group A: same-precision real extraction (cells #1, #2)
 impl CastTo<f32> for Complex<f32> {
@@ -487,7 +487,8 @@ mod tests {
     #[test]
     fn test_cast_f32_to_f64() {
         assert_eq!(
-            <f32 as CastTo<f64>>::cast_to(1.5).expect("f32→f64 is tier-1 lossless"),
+            <f32 as CastTo<f64>>::cast_to(1.5)
+                .expect("f32→f64 is tier-1 lossless"),
             1.5_f64
         );
     }
@@ -562,8 +563,8 @@ mod tests {
         ));
     }
 
-    /// Tier-3 `Complex<f64>` → `i32` requires both a zero imaginary part and a
-    /// successful inner real conversion; zero-imag alone is not sufficient.
+    /// Tier-3 `Complex<f64>` → `i32` requires both a zero imaginary part and
+    /// a successful inner real conversion; zero-imag alone is not sufficient.
     #[test]
     fn test_cast_complex_to_int_requires_zero_imag_and_inner_success() {
         // im != 0 => NonZeroImaginaryPart (precondition fails)
