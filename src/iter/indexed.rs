@@ -123,6 +123,8 @@ mod tests {
     use crate::tensor::TensorBase;
     use super::primitives::Iter;
 
+    /// Test helper: construct an owned tensor from raw data without layout
+    /// validation, assuming the caller provides consistent shape and strides.
     unsafe fn make_tensor<A: Element, D: Dimension>(
         data: Vec<A>,
         shape: D,
@@ -130,7 +132,8 @@ mod tests {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
-    /// Verifies F-order iteration over a 2x2 tensor produces indices in column-major order with their associated values.
+    /// Verifies F-order iteration over a 2x2 tensor produces indices in
+    /// column-major order with their associated values.
     #[test]
     fn test_indexed_iter_order() {
         let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
