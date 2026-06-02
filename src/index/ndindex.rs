@@ -137,11 +137,18 @@ impl NdIndex<Ix0> for () {
 
 impl NdIndex<Ix1> for (usize,) {
     fn index_checked(&self, dim: &Ix1, strides: &Strides<Ix1>) -> Result<usize> {
-        checked_offset(&[self.0], dim.slice(), strides.as_slice())
+        checked_offset(
+            &[self.0],
+            dim.slice(),
+            strides.as_slice(),
+        )
     }
    
     unsafe fn index_unchecked(&self, strides: &Strides<Ix1>) -> usize {
-        unchecked_offset(&[self.0], strides.as_slice())
+        unchecked_offset(
+            &[self.0],
+            strides.as_slice(),
+        )
     }
     
     fn to_index_vec(&self) -> Vec<usize> {
@@ -151,11 +158,18 @@ impl NdIndex<Ix1> for (usize,) {
 
 impl NdIndex<Ix2> for (usize, usize) {
     fn index_checked(&self, dim: &Ix2, strides: &Strides<Ix2>) -> Result<usize> {
-        checked_offset(&[self.0, self.1], dim.slice(), strides.as_slice())
+        checked_offset(
+            &[self.0, self.1],
+            dim.slice(),
+            strides.as_slice(),
+        )
     }
 
     unsafe fn index_unchecked(&self, strides: &Strides<Ix2>) -> usize {
-        unchecked_offset(&[self.0, self.1], strides.as_slice())
+        unchecked_offset(
+            &[self.0, self.1],
+            strides.as_slice(),
+        )
     }
 
     fn to_index_vec(&self) -> Vec<usize> {
