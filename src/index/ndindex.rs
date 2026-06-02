@@ -165,7 +165,11 @@ impl NdIndex<Ix2> for (usize, usize) {
 
 impl NdIndex<Ix3> for (usize, usize, usize) {
     fn index_checked(&self, dim: &Ix3, strides: &Strides<Ix3>) -> Result<usize> {
-        checked_offset(&[self.0, self.1, self.2], dim.slice(), strides.as_slice())
+        checked_offset(
+            &[self.0, self.1, self.2],
+            dim.slice(),
+            strides.as_slice(),
+        )
     }
 
     unsafe fn index_unchecked(&self, strides: &Strides<Ix3>) -> usize {
