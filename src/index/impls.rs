@@ -447,8 +447,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::{SliceInfo, SliceInfoElem, SliceInfoIndices};
     use crate::dimension::{Ix0, Ix1, Ix2, IxDyn};
-    use crate::index::slice::{SliceInfo, SliceInfoElem, SliceInfoIndices};
+    use crate::element::Element;
     use crate::tensor::Tensor;
 
     /// Build a 2D owned tensor from a `Vec` and a fixed shape.
@@ -457,7 +458,7 @@ mod tests {
     ///
     /// Panics if `data.len() != shape.size()` — the caller is responsible
     /// for passing consistent arguments (this is a test helper).
-    fn tensor_ix2<A: crate::element::Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
+    fn tensor_ix2<A: Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
         unsafe { Tensor::from_raw_vec_unchecked(data, shape) }
     }
 
@@ -507,7 +508,7 @@ mod tests {
     ///
     /// Panics if `data.len() != shape.size()` — the caller is responsible
     /// for passing consistent arguments (this is a test helper).
-    fn tensor_ix2_mut<A: crate::element::Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
+    fn tensor_ix2_mut<A: Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
         unsafe { Tensor::from_raw_vec_unchecked(data, shape) }
     }
 
