@@ -294,6 +294,35 @@ mod tests {
         assert_eq!(tensor.len(), 0);
     }
 
+    /// Shape product overflow returns `ProductOverflow` error.
+    #[test]
+    fn test_zeros_overflow() {
+        let err = Tensor::<f64, _>::zeros([usize::MAX, 2])
+            .expect_err("usize::MAX * 2 overflows");
+        assert!(matches!(
+            err,
+            XenonError::InvalidShape {
+                kind: InvalidShapeKind::ProductOverflow,
+                ..
+            }
+        ));
+    }
+
+    /// Zero-dimensional `zeros([])` produces a scalar tensor.
+    #[test]
+    fn test_zeros_zero_dim() {
+        let tensor = Tensor::<i32, _>::zeros([])
+            .expect("test input must be valid");
+        assert_eq!(tensor.ndim(), 0);
+        assert_eq!(tensor.len(), 1);
+        assert_eq!(
+            *tensor
+                .get(&[] as &[usize])
+                .expect("test input must be valid"),
+            0
+        );
+    }
+
     /// All elements of a `ones` tensor evaluate to the multiplicative identity.
     #[test]
     fn test_ones_values() {
@@ -327,6 +356,20 @@ mod tests {
             .expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 5]);
         assert_eq!(tensor.len(), 0);
+    }
+
+    /// Shape product overflow returns `ProductOverflow` error.
+    #[test]
+    fn test_ones_overflow() {
+        let err = Tensor::<f64, _>::ones([usize::MAX, 2])
+            .expect_err("usize::MAX * 2 overflows");
+        assert!(matches!(
+            err,
+            XenonError::InvalidShape {
+                kind: InvalidShapeKind::ProductOverflow,
+                ..
+            }
+        ));
     }
 
     /// A 3×3 identity matrix has ones on the diagonal and zeros elsewhere.
@@ -401,6 +444,29 @@ mod tests {
         } else {
             panic!("expected XenonError::InvalidShape");
         }
+    }
+
+    /// Shape product overflow returns `ProductOverflow` error.
+    #[test]
+    fn test_from_shape_vec_overflow() {
+        let err = Tensor::<i32, _>::from_shape_vec([usize::MAX, 2], vec![0i32; 0])
+            .expect_err("usize::MAX * 2 overflows");
+        assert!(matches!(
+            err,
+            XenonError::InvalidShape {
+                kind: InvalidShapeKind::ProductOverflow,
+                ..
+            }
+        ));
+    }
+
+    /// Zero-length axis produces a valid empty tensor from an empty vec.
+    #[test]
+    fn test_from_shape_vec_empty() {
+        let tensor = Tensor::<i32, _>::from_shape_vec([2, 0], vec![])
+            .expect("test input must be valid");
+        assert_eq!(tensor.shape(), &[2, 0]);
+        assert_eq!(tensor.len(), 0);
     }
 
     /// `from_vec` infers a 1-D shape `[data.len()]` from the input vec.
