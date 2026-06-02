@@ -31,14 +31,16 @@ pub enum SliceInfoElem {
 /// falling back to heap allocation for higher-rank `IxDyn` slices.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SliceInfoIndices {
-    /// Fixed-capacity inline representation; covers Ix0..Ix6 slice descriptors
-    /// without heap allocation.
+    /// Fixed-capacity inline representation; covers Ix0..Ix6 slice
+    /// descriptors without heap allocation.
     Inline {
         /// Number of valid elements in `elems`.
         len: u8,
+
         /// Slice descriptors; prefix `[..len]` are always `Some(..)`.
         elems: [Option<SliceInfoElem>; 6],
     },
+
     /// Heap-backed fallback for IxDyn with rank > 6.
     Dynamic(Vec<SliceInfoElem>),
 }
@@ -106,6 +108,8 @@ pub struct SliceInfoIter<'a> {
 impl Iterator for SliceInfoIter<'_> {
     type Item = SliceInfoElem;
 
+    /// Yields the next [`SliceInfoElem`], switching between the inline
+    /// and dynamic representations as needed.
     fn next(&mut self) -> Option<Self::Item> {
         match self.source {
             SliceInfoIndices::Inline { len, elems } => {
@@ -132,8 +136,11 @@ impl Iterator for SliceInfoIter<'_> {
 /// A validated slice description coupling indices, input dim, and output dim.
 #[derive(Debug)]
 pub struct SliceInfo<I: Dimension, D: Dimension> {
+    /// The per-axis slice descriptors (`Index(usize)` or `Range { start, end }`).
     indices: SliceInfoIndices,
+    /// The input dimension (rank and axis sizes of the source tensor).
     in_dim: D,
+    /// The output dimension (rank and axis sizes of the resulting view).
     out_dim: I,
 }
 
