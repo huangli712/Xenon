@@ -24,9 +24,11 @@
 //! element-level initialization with canonical F-order strides.
 
 pub(crate) use types::EyeElement;
+
 /// Tensor constructors (`zeros`, `ones`, `eye`, `from_shape_vec`, `from_vec`,
 /// `from_shape_slice`, `from_array`, `from_scalar`).
 pub mod impls;
+
 /// Construction trait definitions (`EyeElement`).
 pub mod types;
 
