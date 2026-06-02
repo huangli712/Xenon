@@ -169,7 +169,10 @@ impl NdIndex<Ix3> for (usize, usize, usize) {
     }
 
     unsafe fn index_unchecked(&self, strides: &Strides<Ix3>) -> usize {
-        unchecked_offset(&[self.0, self.1, self.2], strides.as_slice())
+        unchecked_offset(
+            &[self.0, self.1, self.2],
+            strides.as_slice(),
+        )
     }
 
     fn to_index_vec(&self) -> Vec<usize> {
