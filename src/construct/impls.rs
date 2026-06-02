@@ -194,16 +194,16 @@ where
 
     /// Construct a tensor from a fixed-size array.
     ///
-    /// The const generic `N` provides compile-time length for the input array;
-    /// runtime shape validation (`shape.checked_size() == N`) is still performed
-    /// inside `from_shape_vec`.
+    /// The const generic `N` provides compile-time length for the input
+    /// array; runtime shape validation (`shape.checked_size() == N`) is still
+    /// performed inside `from_shape_vec`.
     ///
     /// # Errors
     ///
     /// Propagates from [`Self::from_shape_vec`]:
-    /// - `XenonError::InvalidShape { kind: ProductOverflow }` if
-    ///   `shape.checked_size()` overflows `usize`.
-    /// - `XenonError::InvalidShape { kind: ElementCountMismatch { expected, actual } }`
+    /// - `XenonError::InvalidShape { kind: ProductOverflow }`
+    ///   if `shape.checked_size()` overflows `usize`.
+    /// - `XenonError::InvalidShape { kind: ElementCountMismatch }`
     ///   if `shape.checked_size() != N`.
     /// - `XenonError::AllocationFailed` if the underlying aligned allocator
     ///   cannot satisfy the buffer request.
