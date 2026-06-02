@@ -4,7 +4,6 @@ use crate::iter::types::StrideState;
 
 /// Element iterator paired with the multi-dimensional logical index.
 /// Yields `(D, &'a A)` tuples; indices increment in F-order.
-/// (10-iterator §5.4)
 #[expect(
     missing_debug_implementations,
     reason = "iterator is not meant to be introspected"
@@ -38,8 +37,7 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
         let value = self.iter.next()?;
         self.state.advance();
         // `Dimension::try_from_slice` lifts the runtime `&[usize]` index back
-        // into the concrete dimension type `D` (works for both static Ix* and
-        // IxDyn; see 02-dimension §5.1).
+        // into the concrete dimension type `D`.
         let dim = D::try_from_slice(&index_slice)
             .expect("rank invariant: index slice rank == D rank from StrideState::new shape");
         Some((dim, value))
@@ -53,14 +51,11 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
 
 /// Mutable variant of `IndexedIter`. Yields `(D, &'a mut A)` tuples.
-/// (10-iterator §5.4)
 ///
 /// # Safety
 ///
-/// Inherits the §6.5 aliasing argument from `IterMut`: the underlying
-/// `TensorViewMut` admits only no-broadcast, positive-stride layouts validated
-/// at construction time, so each logical index maps to a distinct physical
-/// address.
+/// Each logical index maps to a distinct physical address because
+/// `TensorViewMut` only admits non-broadcast, positive-stride layouts.
 #[expect(
     missing_debug_implementations,
     reason = "iterator is not meant to be introspected"
@@ -112,6 +107,7 @@ mod tests {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
+    /// Verifies F-order iteration over a 2x2 tensor produces indices in column-major order with their associated values.
     #[test]
     fn test_indexed_iter_order() {
         let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
@@ -128,6 +124,7 @@ mod tests {
         );
     }
 
+    /// Verifies that iterating a 0-rank scalar tensor yields exactly one (Ix0, value) pair.
     #[test]
     fn test_indexed_iter_ix0() {
         let scalar = unsafe { make_tensor(vec![7i32], Ix0) };
@@ -138,6 +135,7 @@ mod tests {
         assert_eq!(items[0].1, 7);
     }
 
+    /// Verifies that iterating a high-rank (7-D) IxDyn tensor yields the correct element count and correct indices at the first, second, and last positions.
     #[test]
     fn test_indexed_iter_high_rank_ixdyn() {
         let shape = IxDyn::from_slice(&[2, 2, 2, 2, 2, 2, 2]);

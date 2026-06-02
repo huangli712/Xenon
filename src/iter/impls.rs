@@ -1,6 +1,4 @@
 //! Entry methods on `TensorBase` — iterator constructors.
-//!
-//! See `10-iterator.md §5.5`, W12T7.
 
 use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::error::XenonError;
@@ -109,7 +107,7 @@ where
     }
 }
 
-// ── Tests (W12T7) ──
+// ── Tests ──
 
 #[cfg(test)]
 mod tests {
@@ -124,6 +122,9 @@ mod tests {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
+    /// Verifies that `iter`, `indexed_iter`, `axis_iter`, and `iter_mut` work
+    /// together on a 2x2 tensor: lengths match, F-order starts at index (0, 0),
+    /// and mutation through `iter_mut` is observable via `iter`.
     #[test]
     fn test_tensor_iter_integration() {
         let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], crate::dimension::Ix2(2, 2)) };
@@ -142,6 +143,9 @@ mod tests {
         assert_eq!(after, vec![2, 3, 4, 5]);
     }
 
+    /// Verifies that `axis_iter_mut` yields mutable subviews whose elements can
+    /// be modified through nested `iter_mut`, and the changes are visible when
+    /// the tensor is iterated afterwards.
     #[test]
     fn test_axis_iter_mut_integration() {
         let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], crate::dimension::Ix2(2, 2)) };
@@ -155,6 +159,8 @@ mod tests {
         assert_eq!(after, vec![11, 12, 13, 14]);
     }
 
+    /// Verifies that calling `axis_iter` on a rank-0 dynamic-dimension tensor
+    /// returns `XenonError::InvalidAxis` with `axis = 0` and `ndim = 0`.
     #[test]
     fn test_axis_iter_dyn_rank0_error() {
         let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
@@ -168,6 +174,9 @@ mod tests {
         ));
     }
 
+    /// Verifies that passing `Axis(usize::MAX)` to both `axis_iter` and
+    /// `axis_iter_mut` returns `XenonError::InvalidAxis` instead of panicking
+    /// or overflowing.
     #[test]
     fn test_axis_iter_large_axis_index_error() {
         let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
@@ -182,6 +191,9 @@ mod tests {
         ));
     }
 
+    /// Verifies that requesting an axis index equal to or greater than the
+    /// tensor's rank returns `XenonError::InvalidAxis` for both `axis_iter` and
+    /// `axis_iter_mut`, with the reported `axis` and `ndim` matching the input.
     #[test]
     fn test_axis_iter_out_of_bounds_invalid_axis() {
         let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
@@ -213,6 +225,8 @@ mod tests {
         ));
     }
 
+    /// Verifies that on a 100x1000 tensor, both `Iter::len` and `Iter::count`
+    /// report the full element count (100_000) without truncation or overflow.
     #[test]
     fn test_elements_large_tensor_count() {
         let n0: usize = 100;
@@ -222,6 +236,9 @@ mod tests {
         assert_eq!(tensor.iter().count(), n0 * n1);
     }
 
+    /// Verifies that `iter_mut` works on an owned, non-broadcast tensor and
+    /// that in-place mutation of every element is reflected in a subsequent
+    /// immutable iteration.
     #[test]
     fn test_iter_mut_accepts_non_broadcast_owned_tensor() {
         let mut tensor = unsafe { make_tensor((0..9).collect(), crate::dimension::Ix2(3, 3)) };

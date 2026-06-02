@@ -8,7 +8,6 @@ use crate::layout::Strides;
 use crate::tensor::{TensorView, TensorViewMut};
 
 /// Axis iterator: yields `D::Smaller` sub-views along the selected axis.
-/// (10-iterator §5.2)
 ///
 /// The struct retains the minimal `D: Dimension` bound; the public iterator
 /// trait impls add `D: RemoveAxis` so the yielded item type can be
@@ -98,7 +97,7 @@ where
                 sub_strides,
                 step_offset,
             )
-            .expect("§6.5 invariants pre-validated at AxisIter::new")
+            .expect("invariants pre-validated at construction")
         };
         Some(view)
     }
@@ -116,7 +115,6 @@ where
 {
 }
 /// Mutable axis iterator: yields `D::Smaller` mutable sub-views.
-/// (10-iterator §5.2)
 ///
 /// # Safety
 ///
@@ -153,7 +151,7 @@ impl<'a, A, D: Dimension> AxisIterMut<'a, A, D> {
         }
         debug_assert!(
             !view.has_zero_stride(),
-            "AxisIterMut on zero-stride/broadcast view violates §6.3"
+            "AxisIterMut on zero-stride/broadcast view is unsupported"
         );
 
         let shape = view.shape();
@@ -215,7 +213,7 @@ where
                 sub_strides,
                 step_offset,
             )
-            .expect("§6.5 invariants pre-validated at AxisIterMut::new")
+            .expect("invariants pre-validated at construction")
         };
         Some(view)
     }
@@ -246,6 +244,8 @@ mod tests {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
+    /// Verifies that `AxisIter::len()` and `count()` both report the size of the
+    /// selected axis (axis 0 of a 2x3 tensor yields 2 sub-views).
     #[test]
     fn test_axis_iter_count() {
         let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
@@ -254,6 +254,8 @@ mod tests {
         assert_eq!(iter.count(), 2);
     }
 
+    /// Verifies that each sub-view yielded by `AxisIter` over axis 0 of a 2x3
+    /// tensor has the reduced shape `[3]` (the remaining axis).
     #[test]
     fn test_axis_iter_shape() {
         let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
@@ -265,6 +267,9 @@ mod tests {
         assert_eq!(sub.shape(), &[3]);
     }
 
+    /// Verifies behavior on a tensor with an empty axis: iterating the empty
+    /// axis yields zero sub-views, while iterating a non-empty axis yields
+    /// sub-views whose remaining axis is empty.
     #[test]
     fn test_axis_iter_empty_axis() {
         let tensor = unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(0, 3)) };
@@ -279,6 +284,8 @@ mod tests {
         }
     }
 
+    /// Verifies that constructing an `AxisIter` on a rank-0 dynamic tensor
+    /// returns `InvalidAxis` because no axis exists to iterate over.
     #[test]
     fn test_axis_iter_dyn_rank0_error() {
         let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
@@ -292,6 +299,8 @@ mod tests {
         ));
     }
 
+    /// Verifies that passing an out-of-range axis index (`usize::MAX`) to
+    /// `AxisIter::new` returns an `InvalidAxis` error.
     #[test]
     fn test_axis_iter_large_axis_index_error() {
         let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
@@ -301,6 +310,8 @@ mod tests {
         ));
     }
 
+    /// Verifies that `AxisIterMut::new` rejects an out-of-bounds axis index
+    /// (axis 2 on a 2-D tensor) with an `InvalidAxis` error.
     #[test]
     fn test_axis_iter_mut_axis_out_of_bounds() {
         let mut tensor = unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(2, 3)) };

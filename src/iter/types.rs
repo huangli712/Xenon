@@ -1,10 +1,10 @@
 //! F-order stride state machine.
 //!
-//! `StrideState` is an internal implementation detail (see `10-iterator.md §6.1`,
-//! §6.2). It is `pub(crate)` so `IndexedIter` / `Iter` in sibling modules can
-//! reuse it without leaking the type into the public API surface.
+//! `StrideState` is an internal implementation detail. It is `pub(crate)` so
+//! `IndexedIter` / `Iter` in sibling modules can reuse it without leaking the
+//! type into the public API surface.
 
-// ── StrideState (W12T2) ──
+// ── StrideState ──
 
 #[derive(Debug, Clone)]
 pub(crate) struct StrideState {
@@ -18,8 +18,7 @@ impl StrideState {
     ///
     /// Empty shape (`Ix0` / rank-0 `IxDyn`) starts at the empty index and yields
     /// exactly one position before finishing. Shapes containing a zero dimension
-    /// start as finished (zero yields total). See `10-iterator.md §6.2` and
-    /// §8.3 boundary scenarios.
+    /// start as finished (zero yields total).
     pub(crate) fn new(shape: &[usize]) -> Self {
         let finished = shape.contains(&0);
         Self {
@@ -36,7 +35,7 @@ impl StrideState {
 
     /// Advance one step in F-order; mark finished after the last position.
     ///
-    /// Implements the pseudocode in `10-iterator.md §6.2`:
+    /// Pseudocode:
     ///
     /// ```text
     /// for i in 0..ndim:
@@ -73,14 +72,13 @@ impl StrideState {
     }
 }
 
-// ── StrideState tests (W12T2) ──
+// ── Tests ──
 
 #[cfg(test)]
 mod tests {
     use super::StrideState;
 
     /// F-order increment: index[0] varies fastest; carry propagates to higher axes.
-    /// Reference: 10-iterator §6.2.
     #[test]
     fn test_stride_state_increment() {
         let mut state = StrideState::new(&[2, 3]);
@@ -113,7 +111,6 @@ mod tests {
     }
 
     /// Ix0 / rank-0 IxDyn yields exactly one (empty) index before finishing.
-    /// Reference: 10-iterator §8.3 "零维张量 `Ix0` / rank-0 `IxDyn`".
     #[test]
     fn test_stride_state_ix0() {
         let mut state = StrideState::new(&[]);
@@ -125,7 +122,6 @@ mod tests {
     }
 
     /// Empty array (`shape=[0, 3]`) finishes before producing any index.
-    /// Reference: 10-iterator §8.3 "空数组 `shape=[0, 3]`".
     #[test]
     fn test_stride_state_empty() {
         let state = StrideState::new(&[0, 3]);

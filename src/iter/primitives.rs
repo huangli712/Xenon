@@ -1,8 +1,8 @@
 //! Flat element iterators and the F-order stride state machine that drives them.
 //!
-//! `StrideState` is an internal implementation detail (see `10-iterator.md §6.1`,
-//! §6.2). It is `pub(crate)` so `IndexedIter` / `Iter` in sibling modules can
-//! reuse it without leaking the type into the public API surface.
+//! `StrideState` is an internal implementation detail. It is `pub(crate)` so
+//! `IndexedIter` / `Iter` in sibling modules can reuse it without leaking the
+//! type into the public API surface.
 
 use core::marker::PhantomData;
 
@@ -16,9 +16,8 @@ use super::types::StrideState;
 ///
 /// `offset = base_offset + Σ(strides[i] * index[i])`. The function only sums
 /// pre-validated stride/index pairs from a `TensorView`/`TensorViewMut`
-/// constructed via the safe paths in `07-tensor.md §5`; no overflow check is
-/// needed because tensor construction has already verified representability.
-/// See `10-iterator.md §6.2` boundary clause.
+/// constructed via the safe tensor paths; no overflow check is needed because
+/// tensor construction has already verified representability.
 #[inline]
 pub(crate) fn offset_of_index(strides: &[usize], base_offset: usize, index: &[usize]) -> usize {
     debug_assert_eq!(strides.len(), index.len());
@@ -29,14 +28,13 @@ pub(crate) fn offset_of_index(strides: &[usize], base_offset: usize, index: &[us
     offset
 }
 
-// ── Iter (W12T3) ──
+// ── Iter ──
 
-/// Flat element iterator. Yields elements in logical F-order
-/// (10-iterator §5.1, §6.1).
+/// Flat element iterator. Yields elements in logical F-order.
 ///
 /// `'a` and `A` are anchored by the embedded `tensor: TensorView<'a, A, D>`,
-/// so no extra `PhantomData<&'a A>` is required (10-iterator §5.1: PhantomData
-/// is only needed when the iterator does *not* keep the view around).
+/// so no extra `PhantomData<&'a A>` is required: `PhantomData` is only needed
+/// when the iterator does *not* keep the view around.
 #[expect(
     missing_debug_implementations,
     reason = "iterator is not meant to be introspected"
@@ -76,21 +74,20 @@ impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
             return None;
         }
         // `as_storage_ptr()` returns the storage base pointer WITHOUT
-        // adding `self.tensor.offset()` (07-tensor §5.4). We add the
-        // logical offset explicitly on every yield — fast path seeds
-        // `next_fast_offset` with `tensor.offset()` at construction,
-        // slow path passes `tensor.offset()` into `offset_of_index` —
-        // so the final `base_ptr.add(offset)` applies `offset` exactly
-        // once. Using `as_ptr()` here would double-apply the offset.
+        // adding `self.tensor.offset()`. We add the logical offset
+        // explicitly on every yield — fast path seeds `next_fast_offset`
+        // with `tensor.offset()` at construction, slow path passes
+        // `tensor.offset()` into `offset_of_index` — so the final
+        // `base_ptr.add(offset)` applies `offset` exactly once. Using
+        // `as_ptr()` here would double-apply the offset.
         let base_ptr = self.tensor.as_storage_ptr();
         let offset = if self.is_f_contiguous {
-            // Fast path: monotonic pointer increment (10-iterator §6.1).
+            // Fast path: monotonic pointer increment.
             let off = self.next_fast_offset;
             self.next_fast_offset += 1;
             off
         } else {
-            // Slow path: stride-based offset from validated metadata
-            // (10-iterator §6.1, §6.5 invariants).
+            // Slow path: stride-based offset from validated metadata.
             let off = offset_of_index(
                 self.tensor.strides(),
                 self.tensor.offset(),
@@ -100,10 +97,10 @@ impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
             off
         };
         self.remaining -= 1;
-        // SAFETY: `tensor` was constructed via the safe paths in
-        // `07-tensor.md §5`; `offset` is within the validated storage range
-        // and points to an initialised element slot.
-        // `'a` lifetime is tied to `self.tensor: TensorView<'a, A, D>`.
+        // SAFETY: `tensor` was constructed via the safe tensor paths;
+        // `offset` is within the validated storage range and points to an
+        // initialised element slot. `'a` lifetime is tied to
+        // `self.tensor: TensorView<'a, A, D>`.
         unsafe { Some(&*base_ptr.add(offset)) }
     }
 
@@ -114,16 +111,15 @@ impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
 
 impl<'a, A, D: Dimension> ExactSizeIterator for Iter<'a, A, D> {}
 
-/// Mutable flat element iterator. Yields elements in logical F-order
-/// (10-iterator §5.1, §6.1).
+/// Mutable flat element iterator. Yields elements in logical F-order.
 ///
 /// # Safety
 ///
 /// Each call to `next()` produces a `&'a mut A` pointing at a distinct logical
 /// element slot. Non-overlapping mutable references rely on the layout
-/// invariants validated by `TensorViewMut` construction (07-tensor §5,
-/// 10-iterator §6.5): no negative strides, no zero-stride / broadcast layout,
-/// no padding exposure, and shape/stride/offset/storage_len consistency.
+/// invariants validated by `TensorViewMut` construction: no negative strides,
+/// no zero-stride / broadcast layout, no padding exposure, and
+/// shape/stride/offset/storage_len consistency.
 #[expect(
     missing_debug_implementations,
     reason = "iterator is not meant to be introspected"
@@ -149,16 +145,16 @@ impl<'a, A, D: Dimension> IterMut<'a, A, D> {
     /// Construct from a mutable view; selects fast vs slow path automatically.
     ///
     /// The runtime `debug_assert!` on `has_zero_stride()` is a **redundant
-    /// defence in depth** on top of the primary compile-time guarantee in
-    /// 10-iterator §6.3 (broadcast views only return `TensorView`, which has
-    /// no `iter_mut()`). It catches misuse of `from_raw_parts_mut` that
-    /// bypassed the safe constructors.
+    /// defence in depth** on top of the primary compile-time guarantee that
+    /// broadcast views only return `TensorView`, which has no `iter_mut()`.
+    /// It catches misuse of `from_raw_parts_mut` that bypassed the safe
+    /// constructors.
     pub(crate) fn new(view: TensorViewMut<'a, A, D>) -> Self {
         debug_assert!(
             !view.has_zero_stride(),
-            "IterMut on a zero-stride/broadcast view violates the §6.3 \
-             compile-time guarantee; only reachable via misuse of \
-             `from_raw_parts_mut`."
+            "IterMut on a zero-stride/broadcast view violates the \
+             compile-time guarantee that broadcast views are read-only; \
+             only reachable via misuse of `from_raw_parts_mut`."
         );
         let remaining = view.len();
         let is_f_contiguous = view.is_f_contiguous();
@@ -192,22 +188,21 @@ impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
             return None;
         }
         let offset = if self.is_f_contiguous {
-            // Fast path: monotonic pointer increment (10-iterator §6.1).
+            // Fast path: monotonic pointer increment.
             let off = self.next_fast_offset;
             self.next_fast_offset += 1;
             off
         } else {
-            // Slow path: stride-based offset, computed from validated metadata
-            // (10-iterator §6.5).
+            // Slow path: stride-based offset, computed from validated metadata.
             let off = offset_of_index(&self.strides, self.base_offset, self.state.index());
             self.state.advance();
             off
         };
         self.remaining -= 1;
-        // SAFETY: §6.5 establishes that each logical index maps to a distinct,
-        // non-overlapping physical address for layouts admissible to
-        // `TensorViewMut`. The state machine visits each logical index at most
-        // once and monotonically advances `remaining`.
+        // SAFETY: each logical index maps to a distinct, non-overlapping
+        // physical address for layouts admissible to `TensorViewMut`. The
+        // state machine visits each logical index at most once and
+        // monotonically advances `remaining`.
         unsafe { Some(&mut *self.base_ptr.add(offset)) }
     }
 
@@ -218,7 +213,7 @@ impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
 
 impl<'a, A, D: Dimension> ExactSizeIterator for IterMut<'a, A, D> {}
 
-// ── Tests (W12T3, W12T4) ──
+// ── Tests ──
 
 #[cfg(test)]
 mod tests {
@@ -233,10 +228,9 @@ mod tests {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
-    // ── Iter (W12T3) ──
+    // ── Iter ──
 
     /// F-order contiguous tensor: iter order == physical layout.
-    /// Reference: 10-iterator §8.2 `test_elements_f_contig`.
     #[test]
     fn test_elements_f_contig() {
         let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
@@ -245,7 +239,6 @@ mod tests {
     }
 
     /// Non-contiguous view (transpose) exercises the stride-based slow path.
-    /// Reference: 10-iterator §8.2 `test_elements_non_contiguous`.
     #[test]
     fn test_elements_non_contiguous() {
         let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2)) };
@@ -256,7 +249,6 @@ mod tests {
     }
 
     /// Empty array: `iter()` finishes immediately, count == 0.
-    /// Reference: 10-iterator §8.2 `test_elements_empty`, §8.3.
     #[test]
     fn test_elements_empty() {
         let tensor = unsafe { make_tensor(Vec::<f64>::new(), Ix2(0, 3)) };
@@ -265,7 +257,6 @@ mod tests {
     }
 
     /// Ix0 / rank-0 tensor: `iter()` yields exactly 1 element.
-    /// Reference: 10-iterator §8.2 `test_elements_ix0`, §8.3.
     #[test]
     fn test_elements_ix0() {
         let scalar = unsafe { make_tensor(vec![7i32], Ix0) };
@@ -274,10 +265,9 @@ mod tests {
         assert_eq!(Iter::new(scalar.view()).len(), 1);
     }
 
-    // ── IterMut (W12T4) ──
+    // ── IterMut ──
 
     /// `iter_mut()` writes propagate back through the source tensor.
-    /// Reference: 10-iterator §8.2 `test_elements_mut_write`.
     #[test]
     fn test_elements_mut_write() {
         let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3], Ix2(3, 1)) };
