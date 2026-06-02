@@ -21,9 +21,10 @@
 use std::borrow::Cow;
 
 use crate::complex::Complex;
-use super::CastElement;
 use crate::element::Element;
 use crate::error::{ConversionFailureReason, Result, XenonError};
+
+use super::CastElement;
 
 /// Crate-private sealed conversion dispatch trait.
 ///
