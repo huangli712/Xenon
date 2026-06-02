@@ -136,7 +136,7 @@ impl Iterator for SliceInfoIter<'_> {
 /// A validated slice description coupling indices, input dim, and output dim.
 #[derive(Debug)]
 pub struct SliceInfo<I: Dimension, D: Dimension> {
-    /// The per-axis slice descriptors (`Index(usize)` or `Range { start, end }`).
+    /// The per-axis slice descriptors (`Index(usize)` or `Range {start, end}`).
     indices: SliceInfoIndices,
 
     /// The input dimension (rank and axis sizes of the source tensor).
@@ -199,6 +199,7 @@ impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
                 });
             }
         }
+
         Ok(Self {
             indices,
             in_dim,
