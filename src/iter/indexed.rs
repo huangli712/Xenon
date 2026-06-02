@@ -136,7 +136,9 @@ mod tests {
     /// column-major order with their associated values.
     #[test]
     fn test_indexed_iter_order() {
-        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
+        let tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2))
+        };
         let iter = IndexedIter::new(Iter::new(tensor.view()), tensor.shape());
         let items: Vec<(Ix2, i32)> = iter.map(|(idx, v)| (idx, *v)).collect();
         assert_eq!(items.len(), 4);
@@ -150,10 +152,13 @@ mod tests {
         );
     }
 
-    /// Verifies that iterating a 0-rank scalar tensor yields exactly one (Ix0, value) pair.
+    /// Verifies that iterating a 0-rank scalar tensor yields exactly one
+    /// (Ix0, value) pair.
     #[test]
     fn test_indexed_iter_ix0() {
-        let scalar = unsafe { make_tensor(vec![7i32], Ix0) };
+        let scalar = unsafe {
+            make_tensor(vec![7i32], Ix0)
+        };
         let iter = IndexedIter::new(Iter::new(scalar.view()), scalar.shape());
         let items: Vec<(Ix0, i32)> = iter.map(|(idx, v)| (idx, *v)).collect();
         assert_eq!(items.len(), 1);
@@ -161,12 +166,15 @@ mod tests {
         assert_eq!(items[0].1, 7);
     }
 
-    /// Verifies that iterating a high-rank (7-D) IxDyn tensor yields the correct element count and correct indices at the first, second, and last positions.
+    /// Verifies that iterating a high-rank (7-D) IxDyn tensor yields the
+    /// correct element count and correct indices at the first, second, and last positions.
     #[test]
     fn test_indexed_iter_high_rank_ixdyn() {
         let shape = IxDyn::from_slice(&[2, 2, 2, 2, 2, 2, 2]);
         let total: usize = shape.slice().iter().product();
-        let tensor = unsafe { make_tensor((0..total as i32).collect(), shape.clone()) };
+        let tensor = unsafe {
+            make_tensor((0..total as i32).collect(), shape.clone())
+        };
         let iter = IndexedIter::new(Iter::new(tensor.view()), tensor.shape());
         let items: Vec<(IxDyn, i32)> = iter.map(|(idx, v)| (idx, *v)).collect();
         assert_eq!(items.len(), total);
