@@ -265,8 +265,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::dimension::{Ix0, Ix1, Ix2};
     use crate::error::{InvalidShapeKind, XenonError};
+    use crate::dimension::{Ix0, Ix1, Ix2};
     use crate::tensor::Tensor;
 
     /// `zeros` produces a tensor with the expected shape.
@@ -279,7 +279,8 @@ mod tests {
     /// All elements of a `zeros` tensor evaluate to zero.
     #[test]
     fn test_zeros_values() {
-        let tensor = Tensor::<i32, _>::zeros([2, 3]).expect("test input must be valid");
+        let tensor = Tensor::<i32, _>::zeros([2, 3])
+            .expect("test input must be valid");
         assert_eq!(tensor.shape(), &[2, 3]);
         assert!(tensor.iter().all(|value| *value == 0));
     }
@@ -287,7 +288,8 @@ mod tests {
     /// Zero-length axis produces a valid empty tensor.
     #[test]
     fn test_zeros_empty() {
-        let tensor = Tensor::<f64, _>::zeros([0, 5]).expect("test input must be valid");
+        let tensor = Tensor::<f64, _>::zeros([0, 5])
+            .expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 5]);
         assert_eq!(tensor.len(), 0);
     }
@@ -295,7 +297,8 @@ mod tests {
     /// All elements of a `ones` tensor evaluate to the multiplicative identity.
     #[test]
     fn test_ones_values() {
-        let tensor = Tensor::<bool, _>::ones([2, 2]).expect("test input must be valid");
+        let tensor = Tensor::<bool, _>::ones([2, 2])
+            .expect("test input must be valid");
         assert_eq!(tensor.len(), 4);
         assert!(tensor.iter().all(|value| *value));
     }
@@ -304,7 +307,8 @@ mod tests {
     /// distinct from `ones([0])` which yields an empty tensor.
     #[test]
     fn test_ones_zero_dim() {
-        let tensor = Tensor::<i32, _>::ones([]).expect("test input must be valid");
+        let tensor = Tensor::<i32, _>::ones([])
+            .expect("test input must be valid");
         assert_eq!(tensor.shape(), &[]);
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
@@ -319,7 +323,8 @@ mod tests {
     /// Zero-length axis produces a valid empty tensor with len() == 0.
     #[test]
     fn test_ones_empty() {
-        let tensor = Tensor::<i32, _>::ones([0, 5]).expect("test input must be valid");
+        let tensor = Tensor::<i32, _>::ones([0, 5])
+            .expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 5]);
         assert_eq!(tensor.len(), 0);
     }
@@ -327,7 +332,8 @@ mod tests {
     /// A 3×3 identity matrix has ones on the diagonal and zeros elsewhere.
     #[test]
     fn test_eye_3x3() {
-        let tensor = Tensor::<i32, Ix2>::eye(3).expect("test input must be valid");
+        let tensor = Tensor::<i32, Ix2>::eye(3)
+            .expect("test input must be valid");
         assert_eq!(*tensor.get(&[0, 0]).expect("test input must be valid"), 1);
         assert_eq!(*tensor.get(&[1, 0]).expect("test input must be valid"), 0);
         assert_eq!(*tensor.get(&[2, 2]).expect("test input must be valid"), 1);
@@ -336,15 +342,18 @@ mod tests {
     /// Empty identity matrix: eye(0) produces a 0×0 tensor with len() == 0.
     #[test]
     fn test_eye_zero() {
-        let tensor = Tensor::<f64, Ix2>::eye(0).expect("test input must be valid");
+        let tensor = Tensor::<f64, Ix2>::eye(0)
+            .expect("test input must be valid");
         assert_eq!(tensor.shape(), &[0, 0]);
         assert_eq!(tensor.len(), 0);
     }
 
-    /// n×n identity matrix overflows `checked_size` when `n` approaches `usize::MAX`.
+    /// n×n identity matrix overflows `checked_size` when `n` approaches
+    /// `usize::MAX`.
     #[test]
     fn test_eye_overflow() {
-        let err = Tensor::<i32, Ix2>::eye(usize::MAX).expect_err("usize::MAX overflows");
+        let err = Tensor::<i32, Ix2>::eye(usize::MAX)
+            .expect_err("usize::MAX overflows");
         assert!(matches!(
             err,
             XenonError::InvalidShape {
@@ -354,11 +363,12 @@ mod tests {
         ));
     }
 
-    /// `from_shape_vec` constructs a tensor with the correct shape and element count.
+    /// `from_shape_vec` constructs a tensor with the correct shape and
+    /// element count.
     #[test]
     fn test_from_shape_vec_success() {
-        let tensor =
-            Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("test input valid");
+        let tensor = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+            .expect("test input valid");
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(tensor.len(), 4);
     }
