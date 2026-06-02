@@ -28,6 +28,7 @@ impl CastElement for Complex<f64> {}
 mod tests {
     use super::*;
 
+    /// The 6 numeric element types satisfy the `CastElement` bound.
     #[test]
     fn test_cast_element_trait_signature_accepts_cast_elements() {
         fn require_cast_element<A: CastElement>() {}

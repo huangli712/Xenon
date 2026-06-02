@@ -471,6 +471,7 @@ impl CastTo<i64> for Complex<f64> {
 mod tests {
     use super::*;
 
+    /// Tier-1 lossless `f32` → `f64` widening succeeds and preserves the value.
     #[test]
     fn test_cast_f32_to_f64() {
         assert_eq!(
@@ -479,6 +480,7 @@ mod tests {
         );
     }
 
+    /// Tier-1 `i32` → `Complex<f64>` widening yields a zero-imaginary complex.
     #[test]
     fn test_cast_real_to_complex() {
         let value = <i32 as CastTo<Complex<f64>>>::cast_to(7)
@@ -486,6 +488,8 @@ mod tests {
         assert_eq!(value, Complex::new(7.0, 0.0));
     }
 
+    /// Tier-2 `f64` → `f32` narrowing is lossy-by-default and reports
+    /// `LossyFloatNarrowing`.
     #[test]
     fn test_cast_f64_to_f32_returns_error() {
         assert!(matches!(
@@ -497,6 +501,7 @@ mod tests {
         ));
     }
 
+    /// Tier-2 `i64` → `i32` narrowing reports `LossyIntegerNarrowing`.
     #[test]
     fn test_cast_int_narrowing_returns_error() {
         assert!(matches!(
@@ -508,6 +513,7 @@ mod tests {
         ));
     }
 
+    /// Tier-2 float → integer conversions report `FloatToInteger`.
     #[test]
     fn test_cast_float_to_int_returns_error() {
         assert!(matches!(
@@ -526,6 +532,8 @@ mod tests {
         ));
     }
 
+    /// Tier-3 `Complex<f64>` → `f64` succeeds only when the imaginary part
+    /// is zero, otherwise it reports a conversion error.
     #[test]
     fn test_cast_complex_to_real_requires_zero_imag() {
         let ok = Complex::new(3.0_f64, 0.0);
@@ -542,6 +550,8 @@ mod tests {
         ));
     }
 
+    /// Tier-3 `Complex<f64>` → `i32` requires both a zero imaginary part and a
+    /// successful inner real conversion; zero-imag alone is not sufficient.
     #[test]
     fn test_cast_complex_to_int_requires_zero_imag_and_inner_success() {
         // im != 0 => NonZeroImaginaryPart (precondition fails)
@@ -552,7 +562,7 @@ mod tests {
         ));
 
         // im == 0 but inner f64 -> i32 is lossy-by-default (Tier-2) => still Err.
-        // Verifies §5.4: zero-imag is necessary but NOT sufficient.
+        // Zero-imag is necessary but NOT sufficient.
         let err_inner = Complex::new(1.0_f64, 0.0);
         assert!(matches!(
             <Complex<f64> as CastTo<i32>>::cast_to(err_inner),

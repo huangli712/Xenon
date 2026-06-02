@@ -11,6 +11,7 @@ pub use types::CastElement;
 
 #[cfg(test)]
 mod tests {
+    /// Compiling this test confirms the `convert/` module tree is wired up.
     #[test]
     fn test_convert_module_skeleton_compiles() {
         // Mere compilation of this test proves the convert/ module skeleton
@@ -18,8 +19,6 @@ mod tests {
         //   - src/lib.rs declares `pub mod convert;`
         //   - src/convert/mod.rs declares `mod cast;`
         //   - src/convert/cast.rs exists as a resolvable file
-        // CastTo trait behavior is verified in W25T2-W25T7 tests, after
-        // the trait and its impls are introduced.
         let _module_path = module_path!();
         assert!(_module_path.contains("convert"));
     }

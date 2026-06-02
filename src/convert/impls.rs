@@ -111,7 +111,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::TypeConversion` when any element cannot be
-    /// converted under the rules defined in `require.md §23`.
+    /// converted to `B`, tagged with the failing element's index.
     #[expect(
         private_bounds,
         reason = "CastTo is pub(crate) sealed; public cast() is gated by it"
@@ -151,7 +151,7 @@ where
         for elem in self.iter().cloned() {
             data.push(elem);
         }
-        // SAFETY: data.len() == self.len() == product(self.raw_dim()); see §5.6.
+        // SAFETY: data.len() == self.len() == product(self.raw_dim()).
         unsafe { from_shape_vec_aligned_unchecked(self.raw_dim(), data) }
     }
 }
@@ -179,6 +179,8 @@ mod tests {
     use crate::error::ConversionFailureReason;
     use crate::tensor::Tensor1;
 
+    /// Tensor-level `cast()` performs Tier-1 `i32` → `f64` conversion
+    /// element-wise and returns an owned tensor.
     #[test]
     fn test_cast_i32_to_f64() {
         let tensor: Tensor1<i32> =
@@ -188,6 +190,7 @@ mod tests {
         assert_eq!(result, vec![1.0, 2.0, 3.0]);
     }
 
+    /// A failed `cast()` reports the index of the first non-convertible element.
     #[test]
     fn test_cast_reports_element_index() {
         let tensor: Tensor1<f64> = unsafe {
@@ -203,6 +206,7 @@ mod tests {
         ));
     }
 
+    /// Casting `NaN` to an integer type fails with `FloatToInteger`.
     #[test]
     fn test_cast_nan_to_int_returns_error() {
         let tensor: Tensor1<f64> =
@@ -218,6 +222,7 @@ mod tests {
         ));
     }
 
+    /// Casting infinities to an integer type fails with `FloatToInteger`.
     #[test]
     fn test_cast_inf_to_int_returns_error() {
         let tensor: Tensor1<f64> = unsafe {
@@ -237,6 +242,7 @@ mod tests {
         ));
     }
 
+    /// `to_owned()` on a view clones logical elements into a fresh owned tensor.
     #[test]
     fn test_to_owned_from_view() {
         let tensor: Tensor1<i32> =
@@ -247,6 +253,7 @@ mod tests {
         assert_eq!(result, vec![1, 2, 3]);
     }
 
+    /// `into_owned()` on an owned tensor returns its elements unchanged.
     #[test]
     fn test_into_owned_tensor() {
         let tensor: Tensor1<f64> =
