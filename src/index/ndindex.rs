@@ -1,12 +1,15 @@
-//! `NdIndex` trait and tuple / slice index implementations.
-//!
-//! Implemented in W21T2. See `design/17-indexing.md §5.1`.
+//! The [`NdIndex`] trait and tuple/slice index implementations.
 
 use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
 use crate::error::{InvalidLayoutReason, Result, StorageKindTag, XenonError};
 use crate::layout::Strides;
 use crate::private::Sealed;
 
+/// Compute the linear offset for a multi-dimensional index,
+/// with full per-axis bounds and overflow checking.
+///
+/// Returns the offset as `usize` on success, or the appropriate
+/// [`XenonError`] on failure.
 fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result<usize> {
     if index.len() != shape.len() {
         return Err(XenonError::DimensionMismatch {
@@ -51,11 +54,19 @@ fn checked_offset(index: &[usize], shape: &[usize], strides: &[usize]) -> Result
     Ok(offset)
 }
 
+/// Compute the linear offset for a multi-dimensional index
+/// without any bounds or overflow checking.
+///
+/// # Safety
+///
+/// The caller must ensure that `index.len() == strides.len()`, each
+/// per-axis component is within bounds, and no `usize` overflow occurs
+/// during arithmetic.
 fn unchecked_offset(index: &[usize], strides: &[usize]) -> usize {
     index.iter().zip(strides).map(|(i, s)| i * s).sum()
 }
 
-// ── Sealed implementations ──
+// Sealed implementations
 
 impl Sealed for () {}
 impl Sealed for (usize,) {}
@@ -72,13 +83,9 @@ pub trait NdIndex<D: Dimension>: Sealed {
     ///
     /// # Errors
     ///
-    /// Per `17-indexing §5.1`:
-    /// - rank mismatch (`self.to_index_vec().len() != dim.ndim()`)
-    ///   → `XenonError::DimensionMismatch`
-    /// - per-axis out of bounds (`index[i] >= dim[i]`)
-    ///   → `XenonError::IndexOutOfBounds`
-    /// - `strides[i] * index[i]` or the offset accumulator overflows `usize`
-    ///   → `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }`
+    /// - rank mismatch → [`XenonError::DimensionMismatch`]
+    /// - per-axis out of bounds → [`XenonError::IndexOutOfBounds`]
+    /// - offset arithmetic overflow → [`XenonError::InvalidLayout`]
     fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Result<usize>;
 
     /// Computes the linear offset without any validation.
@@ -87,7 +94,7 @@ pub trait NdIndex<D: Dimension>: Sealed {
     /// The caller must ensure rank match, per-axis bounds, and no offset overflow.
     unsafe fn index_unchecked(&self, strides: &Strides<D>) -> usize;
 
-    /// Converts the index to a flat `Vec<usize>` for error diagnostics.
+    /// Converts the index to a flat [`Vec`]`<usize>` for error diagnostics.
     fn to_index_vec(&self) -> Vec<usize>;
 }
 
@@ -210,12 +217,20 @@ mod tests {
     use super::*;
     use crate::dimension::Ix2;
 
+    /// `checked_offset` returns [`IndexOutOfBounds`] when an index component
+    /// exceeds the corresponding shape dimension.
+    ///
+    /// [`IndexOutOfBounds`]: XenonError::IndexOutOfBounds
     #[test]
     fn test_checked_offset_out_of_bounds() {
         let err = checked_offset(&[2, 0], &[2, 3], &[1, 2]).expect_err("out of bounds");
         assert!(matches!(err, XenonError::IndexOutOfBounds { .. }));
     }
 
+    /// `checked_offset` returns [`DimensionMismatch`] when the index slice
+    /// has a different length than the shape.
+    ///
+    /// [`DimensionMismatch`]: XenonError::DimensionMismatch
     #[test]
     fn test_checked_offset_rank_mismatch() {
         let err = checked_offset(&[0, 0, 0], &[2, 3], &[1, 2]).expect_err("rank mismatch");
@@ -229,6 +244,7 @@ mod tests {
         ));
     }
 
+    /// A valid 2D tuple index computes the correct linear offset via `index_checked`.
     #[test]
     fn test_ndindex_tuple_2d_checked() {
         let dim = Ix2(2, 3);
@@ -237,6 +253,8 @@ mod tests {
         assert_eq!(idx.index_checked(&dim, &strides).expect("valid index"), 5);
     }
 
+    /// An out-of-bounds 2D tuple index reports [`IndexOutOfBounds`]
+    /// via `index_checked`.
     #[test]
     fn test_ndindex_tuple_2d_out_of_bounds() {
         let dim = Ix2(2, 3);

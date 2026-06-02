@@ -1,7 +1,7 @@
-//! Slice descriptor types and the `TensorBase::slice` method.
+//! Slice descriptor types: [`SliceInfoElem`], [`SliceInfoIndices`], and [`SliceInfo`].
 //!
-//! `SliceInfo*` defined in W21T4; `TensorBase::slice` implemented in W21T6.
-//! See `design/17-indexing.md §5.1` and `§6.3`.
+//! The `TensorBase::slice` method that consumes these types lives in
+//! [`super::impls`] alongside the other index access methods.
 
 use std::borrow::Cow;
 
@@ -29,7 +29,7 @@ pub enum SliceInfoElem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SliceInfoIndices {
     /// Fixed-capacity inline representation; covers Ix0..Ix6 slice descriptors
-    /// without heap allocation (17-indexing §5.1 line 232).
+    /// without heap allocation.
     Inline {
         /// Number of valid elements in `elems`.
         len: u8,
@@ -214,6 +214,7 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix1, Ix2};
 
+    /// Valid construction of a [`SliceInfo`] with a mix of `Index` and `Range`.
     #[test]
     fn test_slice_basic() {
         let info = SliceInfo::new(
@@ -227,6 +228,7 @@ mod tests {
         assert!(info.is_ok());
     }
 
+    /// [`SliceInfo::new`] rejects an index count that does not match the input rank.
     #[test]
     fn test_slice_info_rank_mismatch() {
         let err = SliceInfo::new(
@@ -244,6 +246,8 @@ mod tests {
         ));
     }
 
+    /// [`SliceInfo::new`] rejects an output rank that does not match the
+    /// number of `Range` entries.
     #[test]
     fn test_slice_info_output_rank_mismatch() {
         let err = SliceInfo::new(
@@ -264,6 +268,7 @@ mod tests {
         ));
     }
 
+    /// [`SliceInfo::new`] rejects a `Range` where `start > end`.
     #[test]
     fn test_slice_info_range_start_after_end() {
         let err = SliceInfo::new(
@@ -288,6 +293,8 @@ mod tests {
         ));
     }
 
+    /// [`SliceInfoIndices::from_vec`] selects the inline representation
+    /// when the element count is ≤ 6.
     #[test]
     fn test_slice_info_indices_prefers_inline() {
         let indices = SliceInfoIndices::from_vec(vec![
@@ -297,6 +304,8 @@ mod tests {
         assert!(matches!(indices, SliceInfoIndices::Inline { len: 2, .. }));
     }
 
+    /// [`SliceInfoIndices::from_vec`] falls back to the dynamic representation
+    /// when the element count exceeds 6.
     #[test]
     fn test_slice_info_indices_falls_back_to_dynamic() {
         let elems: Vec<SliceInfoElem> = (0..7).map(SliceInfoElem::Index).collect();
