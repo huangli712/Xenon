@@ -1,16 +1,27 @@
-//! Type conversion trait and tier-based impls.
+//! Per-pair type conversion dispatch for the 6×6 element matrix.
 //!
-//! Defines the crate-private `CastTo` dispatch trait and all
-//! Tier-0/1/2/3 conversion impls for the 6×6 element matrix.
+//! The 36 conversion pairs among the 6 numeric types (`i32`, `i64`,
+//! `f32`, `f64`, `Complex<f32>`, `Complex<f64>`) are covered by a
+//! single trait — `CastTo` — organized in four tiers:
 //!
-//! Tensor-level `cast()`, `to_owned()`, and `into_owned()` methods
-//! on `TensorBase` are in `super::impls`.
-//! `CastElement` is defined in `super::types`.
+//! * **Tier-0** (6 cells): same-type identity, always `Ok(self)`.
+//! * **Tier-1** (8 cells): lossless widening via `std::From` or
+//!   zero-imaginary complex construction, always `Ok`.
+//! * **Tier-2** (14 cells): lossy-by-default, always returns a typed
+//!   `Err(XenonError::TypeConversion {..})` such as
+//!   `LossyFloatNarrowing` or `FloatToInteger`.
+//! * **Tier-3** (8 cells): dynamic — extraction from `Complex` that
+//!   succeeds only when `im == 0`, then delegates to the inner
+//!   real conversion.
+//!
+//! `CastTo` is `pub(crate)`.  Public compile-time gating is provided
+//! by `CastElement` (`super::types`), a sealed marker that excludes
+//! `bool` and other non-numeric types.
 
 use std::borrow::Cow;
 
 use crate::complex::Complex;
-use crate::convert::CastElement;
+use super::CastElement;
 use crate::element::Element;
 use crate::error::{ConversionFailureReason, Result, XenonError};
 
@@ -327,7 +338,7 @@ impl CastTo<Complex<f32>> for Complex<f64> {
 
 // ── Tier-3: Dynamic conversions (8 cells) ──
 
-// Group A: 同精度，直接返回实部 (cells #1, #2)
+// Group A: same-precision real extraction (cells #1, #2)
 impl CastTo<f32> for Complex<f32> {
     #[inline]
     fn cast_to(self) -> Result<f32> {
@@ -362,7 +373,7 @@ impl CastTo<f64> for Complex<f64> {
     }
 }
 
-// Group B: 内层 Tier-1 std From widening (cell #3 only)
+// Group B: inner Tier-1 std::From widening (cell #3 only)
 // Complex<f32> → f64: im == 0 → Ok(f64::from(self.re))
 impl CastTo<f64> for Complex<f32> {
     #[inline]
@@ -381,7 +392,7 @@ impl CastTo<f64> for Complex<f32> {
     }
 }
 
-// Group C: 内层 Tier-2 静态有损 (cells #4, #5, #6, #7, #8)
+// Group C: inner Tier-2 static lossy (cells #4, #5, #6, #7, #8)
 impl CastTo<f32> for Complex<f64> {
     #[inline]
     fn cast_to(self) -> Result<f32> {

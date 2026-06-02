@@ -8,7 +8,7 @@
 
 use std::borrow::Cow;
 
-use crate::convert::CastElement;
+use super::CastElement;
 use crate::dimension::Dimension;
 use crate::element::Element;
 use crate::error::{Result, XenonError};
