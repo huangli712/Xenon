@@ -1,3 +1,10 @@
+//! Tensor constructor implementations.
+//!
+//! Provides `TensorBase<Owned<A>, D>` construction methods: `zeros`, `ones`,
+//! `eye`, `from_shape_vec`, `from_vec`, `from_shape_slice`, `from_array`,
+//! and `from_scalar`. All constructors enforce shape validation and return
+//! `Result<Self, XenonError>`.
+
 use std::borrow::Cow;
 
 use crate::dimension::{Dimension, IntoDimension, Ix0, Ix1, Ix2};
