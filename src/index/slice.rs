@@ -138,8 +138,10 @@ impl Iterator for SliceInfoIter<'_> {
 pub struct SliceInfo<I: Dimension, D: Dimension> {
     /// The per-axis slice descriptors (`Index(usize)` or `Range { start, end }`).
     indices: SliceInfoIndices,
+
     /// The input dimension (rank and axis sizes of the source tensor).
     in_dim: D,
+
     /// The output dimension (rank and axis sizes of the resulting view).
     out_dim: I,
 }
