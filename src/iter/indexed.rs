@@ -1,22 +1,23 @@
-//! Index-paired element iterators.
-//!
-//! `IndexedIter` and `IndexedIterMut` wrap the flat element iterators
-//! and pair each element with its multi-dimensional logical index `D`.
-//! Indices increment in F-order (column-major), matching the underlying
-//! element traversal order.
+//! Index-paired element iterators — `IndexedIter` and `IndexedIterMut`.
 
 use crate::dimension::Dimension;
 use crate::iter::primitives::{Iter, IterMut};
 use crate::iter::types::StrideState;
 
-/// Element iterator paired with the multi-dimensional logical index.
-/// Yields `(D, &'a A)` tuples; indices increment in F-order.
-#[expect(
-    missing_debug_implementations,
-    reason = "iterator is not meant to be introspected"
-)]
+/// Read-only indexed iterator.
+///
+/// Wraps [`Iter`] and pairs each element with its multi-dimensional
+/// logical index `D`. Indices increment in F-order — the inner `Iter`
+/// and the separate `StrideState` advance independently but visit
+/// positions in the same order, so `(index, value)` pairs stay
+/// aligned without explicit synchronisation.
+#[expect(missing_debug_implementations)]
 pub struct IndexedIter<'a, A, D: Dimension> {
+    /// Inner flat element iterator. Drives element traversal independently
+    /// from the index state machine.
     iter: Iter<'a, A, D>,
+
+    /// Index state machine that tracks the current logical position.
     state: StrideState,
 }
 
@@ -38,6 +39,8 @@ impl<'a, A, D: Dimension> IndexedIter<'a, A, D> {
 impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
     type Item = (D, &'a A);
 
+    /// Yields the next `(index, value)` pair. Snapshots the logical
+    /// index before advancing the state machine.
     fn next(&mut self) -> Option<Self::Item> {
         // Snapshot the index for this position *before* advancing.
         let index_slice = self.state.index().to_vec();
@@ -50,6 +53,7 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
         Some((dim, value))
     }
 
+    /// Delegates to the inner element iterator.
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
@@ -57,22 +61,30 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
 
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
 
-/// Mutable variant of `IndexedIter`. Yields `(D, &'a mut A)` tuples.
+/// Mutable indexed iterator.
+///
+/// Wraps [`IterMut`] and pairs each mutable element reference with its
+/// multi-dimensional logical index `D`. The same F-order alignment
+/// guarantee as [`IndexedIter`] applies.
 ///
 /// # Safety
 ///
 /// Each logical index maps to a distinct physical address because
 /// `TensorViewMut` only admits non-broadcast, positive-stride layouts.
-#[expect(
-    missing_debug_implementations,
-    reason = "iterator is not meant to be introspected"
-)]
+#[expect(missing_debug_implementations)]
 pub struct IndexedIterMut<'a, A, D: Dimension> {
+    /// Inner mutable flat element iterator.
     iter: IterMut<'a, A, D>,
+
+    /// Index state machine that tracks the current logical position.
     state: StrideState,
 }
 
 impl<'a, A, D: Dimension> IndexedIterMut<'a, A, D> {
+    /// Construct from an `IterMut` and the source shape.
+    ///
+    /// The `StrideState` is initialised from `shape` and advances in
+    /// lockstep with the inner iterator, maintaining F-order alignment.
     pub(crate) fn new(iter: IterMut<'a, A, D>, shape: &[usize]) -> Self {
         Self {
             iter,
@@ -84,6 +96,7 @@ impl<'a, A, D: Dimension> IndexedIterMut<'a, A, D> {
 impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
     type Item = (D, &'a mut A);
 
+    /// Yields the next `(index, &mut value)` pair.
     fn next(&mut self) -> Option<Self::Item> {
         let index_slice = self.state.index().to_vec();
         let value = self.iter.next()?;
@@ -93,6 +106,7 @@ impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
         Some((dim, value))
     }
 
+    /// Delegates to the inner mutable element iterator.
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
