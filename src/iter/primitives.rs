@@ -1,8 +1,4 @@
 //! Flat element iterators and the F-order stride state machine that drives them.
-//!
-//! `StrideState` is an internal implementation detail. It is `pub(crate)` so
-//! `IndexedIter` / `Iter` in sibling modules can reuse it without leaking the
-//! type into the public API surface.
 
 use core::marker::PhantomData;
 
