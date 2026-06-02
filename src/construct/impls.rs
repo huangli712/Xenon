@@ -124,7 +124,9 @@ where
         // SAFETY: shape validated by checked_size; strides from compute_f_strides;
         // flags from compute_layout_flags; storage length = len; offset 0;
         // derived_from_view_mut: false — zeros is not a downgrade path.
-        Ok(unsafe { Self::new_unchecked(storage, dim, strides, 0, flags, false) })
+        Ok(unsafe {
+            Self::new_unchecked(storage, dim, strides, 0, flags, false)
+        })
     }
 
     /// Create a one-initialized tensor (F-order).
@@ -146,7 +148,9 @@ where
         // SAFETY: shape validated by checked_size; strides from compute_f_strides;
         // flags from compute_layout_flags; storage length = len; offset 0;
         // derived_from_view_mut: false — ones is not a downgrade path.
-        Ok(unsafe { Self::new_unchecked(storage, dim, strides, 0, flags, false) })
+        Ok(unsafe {
+            Self::new_unchecked(storage, dim, strides, 0, flags, false)
+        })
     }
 
     /// Construct a tensor from `shape` and `data`, consuming the Vec.
