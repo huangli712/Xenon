@@ -183,11 +183,19 @@ where
     /// - per-axis out of bounds (`index[i] >= shape[i]`) → [`XenonError::IndexOutOfBounds`]
     /// - offset arithmetic overflow → [`XenonError::InvalidLayout`]
     pub fn get_mut(&mut self, index: &[usize]) -> Result<&mut A> {
+        // Unlike `get`, we eagerly snapshot shape, strides, and offset into
+        // owned copies. This avoids a borrow conflict: the mutable reference
+        // to `self` would otherwise prevent us from reading `self.shape()`
+        // and `self.strides()` inside the error closures while `self.storage`
+        // also needs a mutable borrow.
+
         let (shape, strides_vec, off) = {
             let shape = self.shape().to_vec();
             let strides = self.strides().to_vec();
             (shape, strides, self.offset())
         };
+
+        // --- Rank check ---
         if index.len() != shape.len() {
             return Err(XenonError::DimensionMismatch {
                 operation: "TensorBase::get_mut".into(),
@@ -195,10 +203,17 @@ where
                 actual: index.len(),
             });
         }
+
+        // Standard multi-dimensional linear offset:
+        //
+        //   offset = Σ (index[axis] * strides[axis])
+        //
+        // Walk each axis, validate bounds, and accumulate with checked arithmetic.
         let mut offset = 0usize;
-        for (axis, ((&idx, &extent), &stride)) in
-            index.iter().zip(&shape).zip(&strides_vec).enumerate()
+        for (axis, ((&idx, &extent), &stride)) 
+            in index.iter().zip(&shape).zip(&strides_vec).enumerate()
         {
+            // --- Per-axis bounds ---
             if idx >= extent {
                 return Err(XenonError::IndexOutOfBounds {
                     operation: "TensorBase::get_mut".into(),
@@ -207,6 +222,9 @@ where
                     shape: shape.clone(),
                 });
             }
+
+            // --- term = idx * stride ---
+            // `idx * stride` must not overflow usize.
             let term = idx
                 .checked_mul(stride)
                 .ok_or_else(|| XenonError::InvalidLayout {
@@ -218,6 +236,9 @@ where
                     storage_len: 0,
                     reason: InvalidLayoutReason::AccessRangeExceedsStorage,
                 })?;
+
+            // --- offset += term ---
+            // Accumulator must not overflow.
             offset = offset
                 .checked_add(term)
                 .ok_or_else(|| XenonError::InvalidLayout {
@@ -230,7 +251,9 @@ where
                     reason: InvalidLayoutReason::AccessRangeExceedsStorage,
                 })?;
         }
-        // SAFETY: rank + per-axis bounds verified above; offset via checked arithmetic.
+
+        // SAFETY: rank + per-axis bounds verified above; offset via
+        // checked arithmetic.
         Ok(unsafe { self.storage.get_unchecked_mut(off + offset) })
     }
 
