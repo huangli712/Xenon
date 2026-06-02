@@ -118,13 +118,15 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix0, Ix2, IxDyn};
+    use crate::element::Element;
+    use crate::storage::Owned;
     use crate::tensor::TensorBase;
-    use crate::iter::primitives::Iter;
+    use super::primitives::Iter;
 
-    unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(
+    unsafe fn make_tensor<A: Element, D: Dimension>(
         data: Vec<A>,
         shape: D,
-    ) -> TensorBase<crate::storage::Owned<A>, D> {
+    ) -> TensorBase<Owned<A>, D> {
         unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
     }
 
