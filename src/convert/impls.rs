@@ -60,6 +60,38 @@ fn rewrap_cast_error(error: XenonError, index: usize) -> XenonError {
     }
 }
 
+/// Reconstruct a canonical F-order `Tensor<A, D>` from an `Owned<A>` storage
+/// produced by `StorageIntoOwned::into_owned_storage()`.
+///
+/// Self-contained helper local to the convert module.
+///
+/// # Panics
+///
+/// Panics if `Strides::f_contiguous` fails on `dim`. This cannot happen because
+/// `dim` originates from a valid `TensorBase` whose shape was already validated.
+#[inline]
+pub(crate) fn into_owned_from_owned_storage<A, D>(owned_storage: Owned<A>, dim: D) -> Tensor<A, D>
+where
+    A: Element,
+    D: Dimension,
+{
+    let strides = Strides::f_contiguous(&dim).expect("validated dim from TensorBase");
+    let flags = compute_layout_flags(&dim, &strides, owned_storage.as_ptr());
+    // SAFETY: `into_owned_storage()` guarantees `owned_storage.len() == product(dim)`;
+    // `dim` originated from a valid `TensorBase`; canonical F-order strides
+    // and flags are computed above.
+    unsafe {
+        TensorBase::new_unchecked(
+            owned_storage,
+            dim,
+            strides,
+            /* offset = */ 0,
+            flags,
+            /* derived_from_view_mut = */ false,
+        )
+    }
+}
+
 // ── cast() method ──
 
 impl<S, D, A> TensorBase<S, D>
@@ -100,38 +132,6 @@ where
         // the loop pushes exactly one element per F-order iteration over self.
         // self.raw_dim() was validated when self was constructed.
         Ok(unsafe { from_shape_vec_aligned_unchecked(self.raw_dim(), data) })
-    }
-}
-
-/// Reconstruct a canonical F-order `Tensor<A, D>` from an `Owned<A>` storage
-/// produced by `StorageIntoOwned::into_owned_storage()`.
-///
-/// Self-contained helper local to the convert module.
-///
-/// # Panics
-///
-/// Panics if `Strides::f_contiguous` fails on `dim`. This cannot happen because
-/// `dim` originates from a valid `TensorBase` whose shape was already validated.
-#[inline]
-pub(crate) fn into_owned_from_owned_storage<A, D>(owned_storage: Owned<A>, dim: D) -> Tensor<A, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    let strides = Strides::f_contiguous(&dim).expect("validated dim from TensorBase");
-    let flags = compute_layout_flags(&dim, &strides, owned_storage.as_ptr());
-    // SAFETY: `into_owned_storage()` guarantees `owned_storage.len() == product(dim)`;
-    // `dim` originated from a valid `TensorBase`; canonical F-order strides
-    // and flags are computed above.
-    unsafe {
-        TensorBase::new_unchecked(
-            owned_storage,
-            dim,
-            strides,
-            /* offset = */ 0,
-            flags,
-            /* derived_from_view_mut = */ false,
-        )
     }
 }
 
