@@ -270,4 +270,26 @@ mod tests {
         let result: Vec<f64> = owned.iter().copied().collect();
         assert_eq!(result, vec![4.0, 5.0]);
     }
+
+    /// `rewrap_cast_error` stamps the correct index on a later element failure,
+    /// not just the first element.
+    #[test]
+    fn test_cast_reports_correct_index_for_later_element() {
+        use crate::complex::Complex;
+        let tensor: Tensor1<Complex<f64>> = unsafe {
+            Tensor1::from_raw_vec_unchecked(
+                vec![Complex::new(1.0, 0.0), Complex::new(2.0, 1.0)],
+                Ix1(2),
+            )
+        };
+        let error = tensor.cast::<f64>()
+            .expect_err("non-zero imag at index 1 should fail");
+        assert!(matches!(
+            error,
+            XenonError::TypeConversion {
+                element_index: Some(1),
+                ..
+            }
+        ));
+    }
 }
