@@ -83,6 +83,11 @@ fn unchecked_offset(index: &[usize], strides: &[usize]) -> usize {
     index.iter().zip(strides).map(|(i, s)| i * s).sum()
 }
 
+// Each concrete index type must individually implement `Sealed` so that
+// `NdIndex<D>: Sealed` forms a closed set — no downstream crate can add
+// new index types. Tuple arities Ix0..Ix6 are open-coded because
+// `(usize,)`, `(usize, usize)`, … are distinct, unrelated types in Rust.
+//
 // Sealed implementations
 
 impl Sealed for () {}
@@ -96,7 +101,8 @@ impl Sealed for &[usize] {}
 
 /// Sealed trait for types that can be used as multi-dimensional indices.
 pub trait NdIndex<D: Dimension>: Sealed {
-    /// Validates the index against `dim` and computes the linear offset via `strides`.
+    /// Validates the index against `dim` and computes the linear offset
+    /// via `strides`.
     ///
     /// # Errors
     ///
@@ -119,9 +125,11 @@ impl NdIndex<Ix0> for () {
     fn index_checked(&self, _dim: &Ix0, _strides: &Strides<Ix0>) -> Result<usize> {
         Ok(0)
     }
+
     unsafe fn index_unchecked(&self, _strides: &Strides<Ix0>) -> usize {
         0
     }
+
     fn to_index_vec(&self) -> Vec<usize> {
         vec![]
     }
@@ -131,9 +139,11 @@ impl NdIndex<Ix1> for (usize,) {
     fn index_checked(&self, dim: &Ix1, strides: &Strides<Ix1>) -> Result<usize> {
         checked_offset(&[self.0], dim.slice(), strides.as_slice())
     }
+   
     unsafe fn index_unchecked(&self, strides: &Strides<Ix1>) -> usize {
         unchecked_offset(&[self.0], strides.as_slice())
     }
+    
     fn to_index_vec(&self) -> Vec<usize> {
         vec![self.0]
     }
@@ -143,9 +153,11 @@ impl NdIndex<Ix2> for (usize, usize) {
     fn index_checked(&self, dim: &Ix2, strides: &Strides<Ix2>) -> Result<usize> {
         checked_offset(&[self.0, self.1], dim.slice(), strides.as_slice())
     }
+
     unsafe fn index_unchecked(&self, strides: &Strides<Ix2>) -> usize {
         unchecked_offset(&[self.0, self.1], strides.as_slice())
     }
+
     fn to_index_vec(&self) -> Vec<usize> {
         vec![self.0, self.1]
     }
@@ -155,9 +167,11 @@ impl NdIndex<Ix3> for (usize, usize, usize) {
     fn index_checked(&self, dim: &Ix3, strides: &Strides<Ix3>) -> Result<usize> {
         checked_offset(&[self.0, self.1, self.2], dim.slice(), strides.as_slice())
     }
+
     unsafe fn index_unchecked(&self, strides: &Strides<Ix3>) -> usize {
         unchecked_offset(&[self.0, self.1, self.2], strides.as_slice())
     }
+
     fn to_index_vec(&self) -> Vec<usize> {
         vec![self.0, self.1, self.2]
     }
@@ -171,9 +185,14 @@ impl NdIndex<Ix4> for (usize, usize, usize, usize) {
             strides.as_slice(),
         )
     }
+
     unsafe fn index_unchecked(&self, strides: &Strides<Ix4>) -> usize {
-        unchecked_offset(&[self.0, self.1, self.2, self.3], strides.as_slice())
+        unchecked_offset(
+            &[self.0, self.1, self.2, self.3],
+            strides.as_slice(),
+        )
     }
+
     fn to_index_vec(&self) -> Vec<usize> {
         vec![self.0, self.1, self.2, self.3]
     }
@@ -187,12 +206,14 @@ impl NdIndex<Ix5> for (usize, usize, usize, usize, usize) {
             strides.as_slice(),
         )
     }
+
     unsafe fn index_unchecked(&self, strides: &Strides<Ix5>) -> usize {
         unchecked_offset(
             &[self.0, self.1, self.2, self.3, self.4],
             strides.as_slice(),
         )
     }
+    
     fn to_index_vec(&self) -> Vec<usize> {
         vec![self.0, self.1, self.2, self.3, self.4]
     }
@@ -206,12 +227,14 @@ impl NdIndex<Ix6> for (usize, usize, usize, usize, usize, usize) {
             strides.as_slice(),
         )
     }
+    
     unsafe fn index_unchecked(&self, strides: &Strides<Ix6>) -> usize {
         unchecked_offset(
             &[self.0, self.1, self.2, self.3, self.4, self.5],
             strides.as_slice(),
         )
     }
+    
     fn to_index_vec(&self) -> Vec<usize> {
         vec![self.0, self.1, self.2, self.3, self.4, self.5]
     }
@@ -221,9 +244,11 @@ impl NdIndex<IxDyn> for &[usize] {
     fn index_checked(&self, dim: &IxDyn, strides: &Strides<IxDyn>) -> Result<usize> {
         checked_offset(self, dim.slice(), strides.as_slice())
     }
+    
     unsafe fn index_unchecked(&self, strides: &Strides<IxDyn>) -> usize {
         unchecked_offset(self, strides.as_slice())
     }
+    
     fn to_index_vec(&self) -> Vec<usize> {
         self.to_vec()
     }
