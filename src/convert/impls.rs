@@ -3,7 +3,7 @@
 //! Contains the three `impl TensorBase<S, D>` blocks with helpers that
 //! provide tensor-level type conversion and ownership transfer.
 //!
-//! `ConvertTo` trait and tier impls are in `super::cast`.
+//! `CastTo` trait and tier impls are in `super::cast`.
 //! `CastElement` is defined in `super::types`.
 
 use std::borrow::Cow;
@@ -16,7 +16,7 @@ use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, Storage, StorageIntoOwned};
 use crate::tensor::{Tensor, TensorBase};
 
-use super::cast::ConvertTo;
+use super::cast::CastTo;
 
 // ── helpers ──
 
@@ -114,17 +114,17 @@ where
     /// converted under the rules defined in `require.md §23`.
     #[expect(
         private_bounds,
-        reason = "ConvertTo is pub(crate) sealed; public cast() is gated by it"
+        reason = "CastTo is pub(crate) sealed; public cast() is gated by it"
     )]
     pub fn cast<B>(&self) -> Result<Tensor<B, D>>
     where
         B: CastElement,
-        A: ConvertTo<B>,
+        A: CastTo<B>,
     {
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, value) in self.iter().copied().enumerate() {
             let converted = value
-                .convert()
+                .cast_to()
                 .map_err(|error| rewrap_cast_error(error, index))?;
             data.push(converted);
         }
