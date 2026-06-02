@@ -557,8 +557,7 @@ mod tests {
             ]),
             Ix2(4, 5),
             Ix1(3),
-        )
-        .expect("valid slice");
+        ).expect("valid slice");
         let view = tensor.slice(info).expect("valid slice");
         assert_eq!(view.shape(), &[3]);
         assert_eq!(view.as_slice(), Some(&[9, 10, 11][..]));
@@ -575,8 +574,7 @@ mod tests {
             ]),
             Ix2(3, 4),
             Ix2(2, 2),
-        )
-        .expect("valid slice 1");
+        ).expect("valid slice 1");
         let view1 = tensor.slice(info1).expect("valid slice 1");
         let info2 = SliceInfo::new(
             SliceInfoIndices::from_vec(vec![
@@ -585,8 +583,7 @@ mod tests {
             ]),
             Ix2(2, 2),
             Ix1(2),
-        )
-        .expect("valid slice 2");
+        ).expect("valid slice 2");
         let view2 = view1.slice(info2).expect("valid slice 2");
         assert_eq!(view2.shape(), &[2]);
     }
@@ -599,15 +596,19 @@ mod tests {
         let total: usize = dyn_shape.slice().iter().product();
         // SAFETY: shape size == data.len().
         let tensor = unsafe {
-            Tensor::from_raw_vec_unchecked((0i32..total as i32).collect(), dyn_shape.clone())
+            Tensor::from_raw_vec_unchecked(
+                (0i32..total as i32).collect(),
+                dyn_shape.clone()
+            )
         };
-        let elems: Vec<SliceInfoElem> = (0..7).map(|_| SliceInfoElem::Index(0)).collect();
+        let elems: Vec<SliceInfoElem> = (0..7)
+            .map(|_| SliceInfoElem::Index(0))
+            .collect();
         let info = SliceInfo::new(
             SliceInfoIndices::from_vec(elems),
             dyn_shape,
             IxDyn::from_slice(&[]),
-        )
-        .expect("valid high-rank slice");
+        ).expect("valid high-rank slice");
         let view = tensor.slice(info).expect("valid slice");
         assert_eq!(view.ndim(), 0);
     }
@@ -623,8 +624,7 @@ mod tests {
             ]),
             Ix2(2, 2),
             Ix1(2),
-        )
-        .expect("valid slice");
+        ).expect("valid slice");
         assert!(tensor.slice(info_ok).is_ok());
     }
 
@@ -635,7 +635,9 @@ mod tests {
         const N: usize = 3162;
         let data: Vec<i32> = (0..(N * N) as i32).collect();
         // SAFETY: shape size == data.len().
-        let tensor = unsafe { Tensor::from_raw_vec_unchecked(data, Ix2(N, N)) };
+        let tensor = unsafe {
+            Tensor::from_raw_vec_unchecked(data, Ix2(N, N))
+        };
 
         let info_end = SliceInfo::<Ix0, Ix2>::new(
             SliceInfoIndices::from_vec(vec![
@@ -644,8 +646,7 @@ mod tests {
             ]),
             Ix2(N, N),
             Ix0,
-        )
-        .expect("valid end slice");
+        ).expect("valid end slice");
         let view = tensor.slice(info_end).expect("valid slice");
         assert_eq!(view.ndim(), 0);
     }
