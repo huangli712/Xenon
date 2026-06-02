@@ -299,7 +299,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::{Axis, Dimension, IxDyn};
+    use crate::dimension::{Axis, Dimension, Ix2, IxDyn};
     use crate::element::Element;
     use crate::storage::Owned;
     use crate::tensor::TensorBase;
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_axis_iter_count() {
         let tensor = unsafe {
-            make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3))
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
         };
         let iter = AxisIter::new(tensor.view(), Axis(0))
             .expect("Axis(0) is valid for 2-D tensor");
@@ -331,10 +331,10 @@ mod tests {
     #[test]
     fn test_axis_iter_shape() {
         let tensor = unsafe {
-            make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3))
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
         };
-        let mut iter =
-            AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
+        let mut iter = AxisIter::new(tensor.view(), Axis(0))
+            .expect("Axis(0) is valid for 2-D tensor");
         let sub = iter
             .next()
             .expect("Iterator should yield at least one element");
@@ -346,12 +346,16 @@ mod tests {
     /// sub-views whose remaining axis is empty.
     #[test]
     fn test_axis_iter_empty_axis() {
-        let tensor = unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(0, 3)) };
-        let iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid even if empty");
+        let tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(0, 3))
+        };
+        let iter = AxisIter::new(tensor.view(), Axis(0))
+            .expect("Axis(0) is valid even if empty");
         assert_eq!(iter.len(), 0);
         assert_eq!(iter.count(), 0);
 
-        let iter = AxisIter::new(tensor.view(), Axis(1)).expect("Axis(1) is valid");
+        let iter = AxisIter::new(tensor.view(), Axis(1))
+            .expect("Axis(1) is valid");
         assert_eq!(iter.len(), 3);
         for sub in iter {
             assert_eq!(sub.shape(), &[0]);
@@ -362,7 +366,9 @@ mod tests {
     /// returns `InvalidAxis` because no axis exists to iterate over.
     #[test]
     fn test_axis_iter_dyn_rank0_error() {
-        let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
+        let scalar = unsafe {
+            make_tensor(vec![1.0_f64], IxDyn::from_slice(&[]))
+        };
         assert!(matches!(
             AxisIter::new(scalar.view(), Axis(0)),
             Err(XenonError::InvalidAxis {
@@ -377,7 +383,9 @@ mod tests {
     /// `AxisIter::new` returns an `InvalidAxis` error.
     #[test]
     fn test_axis_iter_large_axis_index_error() {
-        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let tensor = unsafe {
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
+        };
         assert!(matches!(
             AxisIter::new(tensor.view(), Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
@@ -388,7 +396,9 @@ mod tests {
     /// (axis 2 on a 2-D tensor) with an `InvalidAxis` error.
     #[test]
     fn test_axis_iter_mut_axis_out_of_bounds() {
-        let mut tensor = unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(2, 3)) };
+        let mut tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(2, 3))
+        };
         assert!(matches!(
             AxisIterMut::new(tensor.view_mut(), Axis(2)),
             Err(XenonError::InvalidAxis {
