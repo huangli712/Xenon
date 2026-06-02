@@ -282,11 +282,10 @@ mod tests {
 
     /// `checked_offset` returns [`IndexOutOfBounds`] when an index component
     /// exceeds the corresponding shape dimension.
-    ///
-    /// [`IndexOutOfBounds`]: XenonError::IndexOutOfBounds
     #[test]
     fn test_checked_offset_out_of_bounds() {
-        let err = checked_offset(&[2, 0], &[2, 3], &[1, 2]).expect_err("out of bounds");
+        let err = checked_offset(&[2, 0], &[2, 3], &[1, 2])
+            .expect_err("out of bounds");
         assert!(matches!(err, XenonError::IndexOutOfBounds { .. }));
     }
 
@@ -296,7 +295,8 @@ mod tests {
     /// [`DimensionMismatch`]: XenonError::DimensionMismatch
     #[test]
     fn test_checked_offset_rank_mismatch() {
-        let err = checked_offset(&[0, 0, 0], &[2, 3], &[1, 2]).expect_err("rank mismatch");
+        let err = checked_offset(&[0, 0, 0], &[2, 3], &[1, 2])
+            .expect_err("rank mismatch");
         assert!(matches!(
             err,
             XenonError::DimensionMismatch {
@@ -307,11 +307,13 @@ mod tests {
         ));
     }
 
-    /// A valid 2D tuple index computes the correct linear offset via `index_checked`.
+    /// A valid 2D tuple index computes the correct linear offset
+    /// via `index_checked`.
     #[test]
     fn test_ndindex_tuple_2d_checked() {
         let dim = Ix2(2, 3);
-        let strides = Strides::from_slice(&[1, 2]).expect("known-valid stride");
+        let strides = Strides::from_slice(&[1, 2])
+            .expect("known-valid stride");
         let idx = (1usize, 2usize);
         assert_eq!(idx.index_checked(&dim, &strides).expect("valid index"), 5);
     }
@@ -321,7 +323,8 @@ mod tests {
     #[test]
     fn test_ndindex_tuple_2d_out_of_bounds() {
         let dim = Ix2(2, 3);
-        let strides = Strides::from_slice(&[1, 2]).expect("known-valid stride");
+        let strides = Strides::from_slice(&[1, 2])
+            .expect("known-valid stride");
         let err = (2usize, 0usize)
             .index_checked(&dim, &strides)
             .expect_err("out of bounds");
