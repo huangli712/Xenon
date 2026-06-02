@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.18] — 2026-06-01
+
+### Added
+
+- Test: overflow and zero-dim cases for zeros, ones, from_shape_vec.
+- Module-level doc comments to construct impls.rs and types.rs.
+
+### Removed
+
+- Empty compile anchor test from construct/mod.rs.
+- Stale design-doc cross-references and task-tracking markers from construct module.
+
+### Changed
+
+- Consolidated construct submodules (eye, init, scalar) into a single impls.rs.
+- Extracted EyeElement trait definitions into construct/types.rs.
+- Restructured construct/mod.rs doc comment to table format.
+- Restricted then restored EyeElement to pub (pub(crate) reverted).
+- Replaced fully-qualified paths with direct imports; reformatted unsafe/expect calls.
+- Reordered impl blocks for top-down logical reading.
 ## [v0.0.17] — 2026-06-01
 
 ### Added
