@@ -13,10 +13,9 @@
 //! | `slice` | `SliceInfoElem`, `SliceInfoIndices`, `SliceInfo` types |
 //! | `impls` | `TensorBase` inherent methods: `try_at`, `get`, `slice` etc. |
 
-pub mod impls;
 pub mod ndindex;
 pub mod slice;
+pub mod impls;
 
 pub use ndindex::NdIndex;
-// pub use impls::{/* inherent methods live on TensorBase */};
 pub use slice::{SliceInfo, SliceInfoElem, SliceInfoIndices};
