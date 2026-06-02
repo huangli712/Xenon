@@ -6,6 +6,7 @@ use crate::element::Element;
 use crate::error::XenonError;
 use crate::layout::Strides;
 use crate::tensor::{TensorView, TensorViewMut};
+
 /// Axis iterator: yields `D::Smaller` sub-views along the selected axis.
 /// (10-iterator §5.2)
 ///
