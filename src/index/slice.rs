@@ -316,6 +316,41 @@ mod tests {
         assert!(matches!(indices, SliceInfoIndices::Inline { len: 2, .. }));
     }
 
+    /// [`SliceInfoIndices::from_array`] selects the inline representation
+    /// when the element count is ≤ 6.
+    #[test]
+    fn test_slice_info_indices_from_array_inline() {
+        let indices = SliceInfoIndices::from_array([
+            SliceInfoElem::Index(0),
+            SliceInfoElem::Range { start: 0, end: 2 },
+        ]);
+        assert!(matches!(indices, SliceInfoIndices::Inline { len: 2, .. }));
+    }
+
+    /// [`SliceInfoIndices::from_array`] falls back to the dynamic
+    /// representation when the element count exceeds 6.
+    #[test]
+    fn test_slice_info_indices_from_array_dynamic() {
+        let arr = [SliceInfoElem::Index(0); 7];
+        let indices = SliceInfoIndices::from_array(arr);
+        assert!(matches!(indices, SliceInfoIndices::Dynamic(_)));
+    }
+
+    /// [`SliceInfo::new`] accepts a `Range` with `start == end`
+    /// (an empty interval).
+    #[test]
+    fn test_slice_info_range_start_equals_end() {
+        let info = SliceInfo::new(
+            SliceInfoIndices::from_vec(vec![
+                SliceInfoElem::Range { start: 3, end: 3 },
+                SliceInfoElem::Index(0),
+            ]),
+            Ix2(5, 3),
+            Ix1(0),
+        );
+        assert!(info.is_ok());
+    }
+
     /// [`SliceInfoIndices::from_vec`] falls back to the dynamic representation
     /// when the element count exceeds 6.
     #[test]
