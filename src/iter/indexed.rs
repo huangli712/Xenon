@@ -1,5 +1,5 @@
 use crate::dimension::Dimension;
-use crate::iter::elements::{Iter, IterMut, StrideState};
+use crate::iter::primitives::{Iter, IterMut, StrideState};
 
 /// Element iterator paired with the multi-dimensional logical index.
 /// Yields `(D, &'a A)` tuples; indices increment in F-order.
@@ -101,7 +101,7 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix0, Ix2, IxDyn};
-    use crate::iter::elements::Iter;
+    use crate::iter::primitives::Iter;
     use crate::tensor::TensorBase;
 
     unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(

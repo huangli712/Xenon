@@ -8,12 +8,12 @@
 //! Entry methods on `TensorBase` (§5.5) are added in W12T7.
 
 mod axis;
-mod elements;
+mod primitives;
 mod indexed;
 
 pub use axis::{AxisIter, AxisIterMut};
-pub use elements::Iter;
-pub use elements::IterMut;
+pub use primitives::Iter;
+pub use primitives::IterMut;
 pub use indexed::{IndexedIter, IndexedIterMut};
 
 // ── TensorBase entry methods (W12T7) ──
