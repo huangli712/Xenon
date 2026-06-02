@@ -486,6 +486,13 @@ mod tests {
         assert!(matches!(err, XenonError::IndexOutOfBounds { .. }));
     }
 
+    /// `get` with a valid `&[usize]` index returns the correct element.
+    #[test]
+    fn test_get_success() {
+        let tensor = tensor_ix2(vec![10, 20, 30, 40], Ix2(2, 2));
+        assert_eq!(*tensor.get(&[1, 0]).expect("valid index"), 20);
+    }
+
     /// `get` returns [`DimensionMismatch`] when the index slice length
     /// differs from the tensor's rank.
     #[test]
@@ -521,6 +528,15 @@ mod tests {
             .try_at_mut((1usize, 1usize))
             .expect("valid mut index") = 9;
         assert_eq!(*tensor.try_at((1usize, 1usize)).expect("valid index"), 9);
+    }
+
+    /// `get_mut` with a valid index returns a mutable reference that can
+    /// be written through and read back.
+    #[test]
+    fn test_get_mut_success() {
+        let mut tensor = tensor_ix2_mut(vec![5, 6, 7, 8], Ix2(2, 2));
+        *tensor.get_mut(&[1, 0]).expect("valid index") = 99;
+        assert_eq!(*tensor.get(&[1, 0]).expect("valid read"), 99);
     }
 
     /// `get_mut` returns [`IndexOutOfBounds`] for an out-of-range index.
@@ -626,6 +642,46 @@ mod tests {
             Ix1(2),
         ).expect("valid slice");
         assert!(tensor.slice(info_ok).is_ok());
+    }
+
+    /// `slice` returns [`IndexOutOfBounds`] when a [`SliceInfoElem::Index`]
+    /// value equals or exceeds the corresponding shape axis.
+    #[test]
+    fn test_slice_index_out_of_bounds() {
+        let tensor = tensor_ix2(vec![0i32, 1, 2, 3], Ix2(2, 2));
+        let info = SliceInfo::new(
+            SliceInfoIndices::from_vec(vec![
+                SliceInfoElem::Index(2), // == shape[0], out of bounds
+                SliceInfoElem::Range { start: 0, end: 1 },
+            ]),
+            Ix2(2, 2),
+            Ix1(1),
+        ).expect("structurally valid");
+        let err = tensor.slice(info).expect_err("index out of bounds");
+        assert!(matches!(err, XenonError::IndexOutOfBounds { axis: 0, .. }));
+    }
+
+    /// `slice` returns [`InvalidArgument`]`(RangeOutOfBounds)` when a
+    /// [`SliceInfoElem::Range`] has `end > self.shape()[axis]`.
+    #[test]
+    fn test_slice_range_out_of_bounds() {
+        let tensor = tensor_ix2(vec![0i32, 1, 2, 3], Ix2(2, 2));
+        let info = SliceInfo::new(
+            SliceInfoIndices::from_vec(vec![
+                SliceInfoElem::Index(0),
+                SliceInfoElem::Range { start: 0, end: 3 },  // shape[1] == 2
+            ]),
+            Ix2(2, 2),
+            Ix1(2),
+        ).expect("structurally valid");
+        let err = tensor.slice(info).expect_err("range end out of bounds");
+        assert!(matches!(
+            err,
+            XenonError::InvalidArgument {
+                kind: InvalidArgumentKind::RangeOutOfBounds { axis: 1, .. },
+                ..
+            }
+        ));
     }
 
     /// `slice` with a large tensor (3162×3162) indexing the last element
