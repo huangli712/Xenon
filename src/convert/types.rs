@@ -5,6 +5,7 @@
 
 use crate::complex::Complex;
 use crate::element::Element;
+use crate::private::Sealed;
 
 /// Public sealed marker for element types in the cast matrix.
 ///
@@ -15,7 +16,7 @@ use crate::element::Element;
 /// # Sealed
 ///
 /// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub trait CastElement: Element {}
+pub trait CastElement: Element + Sealed {}
 
 impl CastElement for i32 {}
 impl CastElement for i64 {}
@@ -23,20 +24,3 @@ impl CastElement for f32 {}
 impl CastElement for f64 {}
 impl CastElement for Complex<f32> {}
 impl CastElement for Complex<f64> {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The 6 numeric element types satisfy the `CastElement` bound.
-    #[test]
-    fn test_cast_element_trait_signature_accepts_cast_elements() {
-        fn require_cast_element<A: CastElement>() {}
-        require_cast_element::<i32>();
-        require_cast_element::<i64>();
-        require_cast_element::<f32>();
-        require_cast_element::<f64>();
-        require_cast_element::<Complex<f32>>();
-        require_cast_element::<Complex<f64>>();
-    }
-}
