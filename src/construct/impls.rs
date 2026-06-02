@@ -447,8 +447,8 @@ mod tests {
     #[test]
     fn test_from_shape_slice_operation_field() {
         let source = [1, 2, 3];
-        let err =
-            Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
+        let err = Tensor::<i32, _>::from_shape_slice([2, 2], &source)
+            .expect_err("mismatched shape");
         if let XenonError::InvalidShape { operation, .. } = err {
             assert_eq!(operation.as_ref(), "from_shape_slice");
         } else {
@@ -459,8 +459,8 @@ mod tests {
     /// `from_array` constructs a tensor from a fixed-size array.
     #[test]
     fn test_from_array_success() {
-        let tensor =
-            Tensor::<i32, _>::from_array([2, 2], [1i32, 2, 3, 4]).expect("test input valid");
+        let tensor = Tensor::<i32, _>::from_array([2, 2], [1i32, 2, 3, 4])
+            .expect("test input valid");
         assert_eq!(tensor.len(), 4);
         assert_eq!(*tensor.get(&[0, 0]).expect("test input valid"), 1);
     }
@@ -468,7 +468,8 @@ mod tests {
     /// Array length mismatch returns `ElementCountMismatch` error.
     #[test]
     fn test_from_array_mismatch() {
-        let err = Tensor::<i32, _>::from_array([3, 3], [1i32; 4]).expect_err("mismatched shape");
+        let err = Tensor::<i32, _>::from_array([3, 3], [1i32; 4])
+            .expect_err("mismatched shape");
         assert!(matches!(
             err,
             XenonError::InvalidShape {
