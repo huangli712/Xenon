@@ -25,7 +25,9 @@ where
     /// use xenon::dimension::Ix2;
     /// use xenon::tensor::Tensor;
     ///
-    /// let tensor = unsafe { Tensor::from_raw_vec_unchecked(vec![1,2,3,4,5,6], Ix2(2,3)) };
+    /// let tensor = unsafe {
+    ///     Tensor::from_raw_vec_unchecked(vec![1,2,3,4,5,6], Ix2(2,3))
+    /// };
     /// let val = tensor.try_at((1usize, 2usize)).unwrap();
     /// assert_eq!(*val, 6);
     /// ```
@@ -53,9 +55,14 @@ where
     /// - per-axis out of bounds (`index[i] >= shape[i]`) → [`XenonError::IndexOutOfBounds`]
     /// - offset arithmetic overflow → [`XenonError::InvalidLayout`]
     pub fn get(&self, index: &[usize]) -> Result<&A> {
+        // `get` accepts `&[usize]` directly, bypassing the `NdIndex` trait
+        // dispatch that `try_at` uses. This gives callers an allocation-free
+        // path when they already have a slice.
+
         let shape = self.shape();
         let strides = self.strides();
 
+        // --- Rank check ---
         if index.len() != shape.len() {
             return Err(XenonError::DimensionMismatch {
                 operation: "TensorBase::get".into(),
@@ -63,8 +70,19 @@ where
                 actual: index.len(),
             });
         }
+
+        // Standard multi-dimensional linear offset:
+        //
+        //   offset = Σ (index[axis] * strides[axis])
+        //
+        // Walk each axis, validate bounds, and accumulate with checked
+        // arithmetic. The same formula is shared with `NdIndex::index_checked`
+        // (see `ndindex::checked_offset`).
         let mut offset = 0usize;
-        for (axis, ((&idx, &extent), &stride)) in index.iter().zip(shape).zip(strides).enumerate() {
+        for (axis, ((&idx, &extent), &stride)) in
+            index.iter().zip(shape).zip(strides).enumerate()
+        {
+            // --- Per-axis bounds ---
             if idx >= extent {
                 return Err(XenonError::IndexOutOfBounds {
                     operation: "TensorBase::get".into(),
@@ -73,6 +91,9 @@ where
                     shape: shape.to_vec(),
                 });
             }
+
+            // --- term = idx * stride ---
+            // `idx * stride` must not overflow usize.
             let term = idx
                 .checked_mul(stride)
                 .ok_or_else(|| XenonError::InvalidLayout {
@@ -84,6 +105,9 @@ where
                     storage_len: 0,
                     reason: InvalidLayoutReason::AccessRangeExceedsStorage,
                 })?;
+
+            // --- offset += term ---
+            // Accumulator must not overflow.
             offset = offset
                 .checked_add(term)
                 .ok_or_else(|| XenonError::InvalidLayout {
@@ -96,6 +120,7 @@ where
                     reason: InvalidLayoutReason::AccessRangeExceedsStorage,
                 })?;
         }
+
         // SAFETY: rank and per-axis bounds verified above; offset computed
         // with checked arithmetic.
         Ok(unsafe { self.storage.get_unchecked(self.offset() + offset) })
