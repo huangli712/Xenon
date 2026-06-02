@@ -38,7 +38,16 @@ where
         // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
         // logical access trivially within storage.
         // `derived_from_view_mut: false` — `from_scalar` is not a downgrade path.
-        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags, false) })
+        Ok(unsafe {
+            TensorBase::new_unchecked(
+                storage,
+                shape,
+                strides,
+                0,
+                flags,
+                false
+            )
+        })
     }
 }
 
