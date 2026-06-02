@@ -121,7 +121,6 @@ mod tests {
     use crate::element::Element;
     use crate::storage::Owned;
     use crate::tensor::TensorBase;
-    use super::primitives::Iter;
 
     /// Test helper: construct an owned tensor from raw data without layout
     /// validation, assuming the caller provides consistent shape and strides.
@@ -167,7 +166,8 @@ mod tests {
     }
 
     /// Verifies that iterating a high-rank (7-D) IxDyn tensor yields the
-    /// correct element count and correct indices at the first, second, and last positions.
+    /// correct element count and correct indices at the first, second,
+    /// and last positions.
     #[test]
     fn test_indexed_iter_high_rank_ixdyn() {
         let shape = IxDyn::from_slice(&[2, 2, 2, 2, 2, 2, 2]);
@@ -184,5 +184,63 @@ mod tests {
         assert_eq!(items[1].0, one_at_axis0);
         let last = IxDyn::from_slice(&[1, 1, 1, 1, 1, 1, 1]);
         assert_eq!(items[total - 1].0, last);
+    }
+
+    /// `IndexedIterMut` writes through yielded references propagate back via
+    /// each element's paired index.
+    #[test]
+    fn test_indexed_iter_mut_write() {
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2))
+        };
+        let shape = [2usize, 2];
+        let iter = IndexedIterMut::new(IterMut::new(tensor.view_mut()), &shape);
+        for (idx, value) in iter {
+            // Double elements where axis-0 index is 0.
+            if idx == Ix2(0, 0) || idx == Ix2(0, 1) {
+                *value *= 2;
+            }
+        }
+        let collected: Vec<_> = tensor.iter().copied().collect();
+        assert_eq!(collected, vec![2, 2, 6, 4]);
+    }
+
+    /// `IndexedIter` on an empty tensor finishes immediately.
+    #[test]
+    fn test_indexed_iter_empty() {
+        let tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(0, 3))
+        };
+        let mut iter = IndexedIter::new(Iter::new(tensor.view()), tensor.shape());
+        assert_eq!(iter.len(), 0);
+        assert!(iter.next().is_none());
+    }
+
+    /// `IndexedIterMut` on an empty tensor finishes immediately.
+    #[test]
+    fn test_indexed_iter_mut_empty() {
+        let mut tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(0, 3))
+        };
+        let shape = [0usize, 3];
+        let mut iter =
+            IndexedIterMut::new(IterMut::new(tensor.view_mut()), &shape);
+        assert_eq!(iter.len(), 0);
+        assert!(iter.next().is_none());
+    }
+
+    /// `size_hint` returns the exact remaining count and decrements after
+    /// each `next()`.
+    #[test]
+    fn test_indexed_iter_size_hint() {
+        let tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2))
+        };
+        let mut iter = IndexedIter::new(Iter::new(tensor.view()), tensor.shape());
+        assert_eq!(iter.len(), 4);
+        assert_eq!(iter.size_hint(), (4, Some(4)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+        assert_eq!(iter.count(), 3);
     }
 }
