@@ -114,61 +114,6 @@ impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
 
 impl<'a, A, D: Dimension> ExactSizeIterator for Iter<'a, A, D> {}
 
-// ── Iter tests (W12T3) ──
-
-#[cfg(test)]
-mod tests_iter {
-    use super::Iter;
-    use crate::dimension::{Ix0, Ix2};
-    use crate::tensor::TensorBase;
-
-    unsafe fn make_tensor<A: crate::element::Element, D: crate::dimension::Dimension>(
-        data: Vec<A>,
-        shape: D,
-    ) -> TensorBase<crate::storage::Owned<A>, D> {
-        unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
-    }
-
-    /// F-order contiguous tensor: iter order == physical layout.
-    /// Reference: 10-iterator §8.2 `test_elements_f_contig`.
-    #[test]
-    fn test_elements_f_contig() {
-        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
-        let values: Vec<_> = Iter::new(tensor.view()).copied().collect();
-        assert_eq!(values, vec![1, 2, 3, 4]);
-    }
-
-    /// Non-contiguous view (transpose) exercises the stride-based slow path.
-    /// Reference: 10-iterator §8.2 `test_elements_non_contiguous`.
-    #[test]
-    fn test_elements_non_contiguous() {
-        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2)) };
-        let transposed = tensor.transpose();
-        assert!(!transposed.is_f_contiguous());
-        let values: Vec<_> = Iter::new(transposed).copied().collect();
-        assert_eq!(values, vec![1, 4, 2, 5, 3, 6]);
-    }
-
-    /// Empty array: `iter()` finishes immediately, count == 0.
-    /// Reference: 10-iterator §8.2 `test_elements_empty`, §8.3.
-    #[test]
-    fn test_elements_empty() {
-        let tensor = unsafe { make_tensor(Vec::<f64>::new(), Ix2(0, 3)) };
-        assert_eq!(Iter::new(tensor.view()).count(), 0);
-        assert_eq!(Iter::new(tensor.view()).len(), 0);
-    }
-
-    /// Ix0 / rank-0 tensor: `iter()` yields exactly 1 element.
-    /// Reference: 10-iterator §8.2 `test_elements_ix0`, §8.3.
-    #[test]
-    fn test_elements_ix0() {
-        let scalar = unsafe { make_tensor(vec![7i32], Ix0) };
-        let values: Vec<_> = Iter::new(scalar.view()).copied().collect();
-        assert_eq!(values, vec![7]);
-        assert_eq!(Iter::new(scalar.view()).len(), 1);
-    }
-} // ── IterMut (W12T4) ──
-
 /// Mutable flat element iterator. Yields elements in logical F-order
 /// (10-iterator §5.1, §6.1).
 ///
@@ -300,3 +245,58 @@ mod tests_mut {
         assert_eq!(collected, vec![2, 4, 6]);
     }
 }
+
+// ── Iter tests (W12T3) ──
+
+#[cfg(test)]
+mod tests_iter {
+    use super::Iter;
+    use crate::dimension::{Ix0, Ix2};
+    use crate::tensor::TensorBase;
+
+    unsafe fn make_tensor<A: crate::element::Element, D: crate::dimension::Dimension>(
+        data: Vec<A>,
+        shape: D,
+    ) -> TensorBase<crate::storage::Owned<A>, D> {
+        unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
+    }
+
+    /// F-order contiguous tensor: iter order == physical layout.
+    /// Reference: 10-iterator §8.2 `test_elements_f_contig`.
+    #[test]
+    fn test_elements_f_contig() {
+        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
+        let values: Vec<_> = Iter::new(tensor.view()).copied().collect();
+        assert_eq!(values, vec![1, 2, 3, 4]);
+    }
+
+    /// Non-contiguous view (transpose) exercises the stride-based slow path.
+    /// Reference: 10-iterator §8.2 `test_elements_non_contiguous`.
+    #[test]
+    fn test_elements_non_contiguous() {
+        let tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2)) };
+        let transposed = tensor.transpose();
+        assert!(!transposed.is_f_contiguous());
+        let values: Vec<_> = Iter::new(transposed).copied().collect();
+        assert_eq!(values, vec![1, 4, 2, 5, 3, 6]);
+    }
+
+    /// Empty array: `iter()` finishes immediately, count == 0.
+    /// Reference: 10-iterator §8.2 `test_elements_empty`, §8.3.
+    #[test]
+    fn test_elements_empty() {
+        let tensor = unsafe { make_tensor(Vec::<f64>::new(), Ix2(0, 3)) };
+        assert_eq!(Iter::new(tensor.view()).count(), 0);
+        assert_eq!(Iter::new(tensor.view()).len(), 0);
+    }
+
+    /// Ix0 / rank-0 tensor: `iter()` yields exactly 1 element.
+    /// Reference: 10-iterator §8.2 `test_elements_ix0`, §8.3.
+    #[test]
+    fn test_elements_ix0() {
+        let scalar = unsafe { make_tensor(vec![7i32], Ix0) };
+        let values: Vec<_> = Iter::new(scalar.view()).copied().collect();
+        assert_eq!(values, vec![7]);
+        assert_eq!(Iter::new(scalar.view()).len(), 1);
+    }
+} // ── IterMut (W12T4) ──
