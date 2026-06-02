@@ -128,33 +128,38 @@ impl<'a, A, D: Dimension> ExactSizeIterator for Iter<'a, A, D> {}
 /// invariants validated by `TensorViewMut` construction: no negative strides,
 /// no zero-stride / broadcast layout, no padding exposure, and
 /// shape/stride/offset/storage_len consistency.
-#[expect(
-    missing_debug_implementations,
-    reason = "iterator is not meant to be introspected"
-)]
+#[expect(missing_debug_implementations)]
 pub struct IterMut<'a, A, D: Dimension> {
     /// Base pointer captured at construction time. We do **not** keep the
     /// `TensorViewMut` around because doing so would conflict with the
     /// `&'a mut A` references handed out by `next()`. Lifetime soundness is
     /// expressed via the `PhantomData<&'a mut A>` marker.
     base_ptr: *mut A,
+    
     /// Strides in element units. Copied from the source view at construction;
     /// used by the slow path to compute physical offsets.
     strides: Vec<usize>,
+    
     /// Offset from storage base to logical first element.
     base_offset: usize,
+    
     /// Logical position tracker. Advances in F-order on the slow path.
     state: StrideState,
+    
     /// Number of elements left to yield.
     remaining: usize,
+    
     /// Fast-path running offset (only valid when `is_f_contiguous == true`).
     next_fast_offset: usize,
+    
     /// Whether the tensor is F-contiguous, enabling the fast-path monotonic
     /// pointer increment.
     is_f_contiguous: bool,
+    
     /// Lifetime anchor — proves `&'a mut A` references from `next()` are
     /// tied to the source view's borrow.
     _marker: PhantomData<&'a mut A>,
+    
     /// Consumes the dimension type parameter so the struct is well-formed.
     _dim: PhantomData<D>,
 }
