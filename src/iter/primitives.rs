@@ -206,6 +206,8 @@ impl<'a, A, D: Dimension> IterMut<'a, A, D> {
 impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
     type Item = &'a mut A;
 
+    /// Yields the next mutable element. Same fast/slow path selection as
+    /// [`Iter::next`].
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             return None;
@@ -229,6 +231,7 @@ impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
         unsafe { Some(&mut *self.base_ptr.add(offset)) }
     }
 
+    /// Returns the exact remaining count as both lower and upper bound.
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
     }
