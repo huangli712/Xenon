@@ -14,6 +14,5 @@ mod indexed;
 mod impls;
 
 pub use axis::{AxisIter, AxisIterMut};
-pub use primitives::Iter;
-pub use primitives::IterMut;
+pub use primitives::{Iter, IterMut};
 pub use indexed::{IndexedIter, IndexedIterMut};

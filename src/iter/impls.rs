@@ -116,9 +116,6 @@ mod tests {
     use super::TensorBase;
     use crate::dimension::{Axis, Dimension, IxDyn};
     use crate::error::XenonError;
-    use crate::iter::axis::{AxisIter, AxisIterMut};
-    use crate::iter::indexed::{IndexedIter, IndexedIterMut};
-    use crate::iter::primitives::{Iter, IterMut};
 
     unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(
         data: Vec<A>,
