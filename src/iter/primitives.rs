@@ -31,17 +31,25 @@ pub(crate) fn offset_of_index(
 /// `'a` and `A` are anchored by the embedded `tensor: TensorView<'a, A, D>`,
 /// so no extra `PhantomData<&'a A>` is required: `PhantomData` is only needed
 /// when the iterator does *not* keep the view around.
-#[expect(
-    missing_debug_implementations,
-    reason = "iterator is not meant to be introspected"
-)]
+#[expect(missing_debug_implementations)]
 pub struct Iter<'a, A, D: Dimension> {
+    /// Source tensor view. Anchors the `'a` lifetime so no extra
+    /// `PhantomData<&'a A>` is needed.
     tensor: TensorView<'a, A, D>,
+    
+    /// Logical position tracker. Advances in F-order on the slow path;
+    /// unused on the fast path.
     state: StrideState,
+    
+    /// Number of elements left to yield.
     remaining: usize,
+    
     /// In the fast path this is the next physical element offset; in the slow
     /// path it is unused (slow path computes the offset on each `next()`).
     next_fast_offset: usize,
+    
+    /// Whether the tensor is F-contiguous, enabling the fast-path monotonic
+    /// pointer increment.
     is_f_contiguous: bool,
 }
 
@@ -65,6 +73,9 @@ impl<'a, A, D: Dimension> Iter<'a, A, D> {
 impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
     type Item = &'a A;
 
+    /// Yields the next element. Uses fast-path monotonic pointer increment
+    /// for F-contiguous tensors, or stride-based offset computation for
+    /// non-contiguous layouts.
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             return None;
@@ -100,6 +111,7 @@ impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
         unsafe { Some(&*base_ptr.add(offset)) }
     }
 
+    /// Returns the exact remaining count as both lower and upper bound.
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
     }
@@ -126,14 +138,24 @@ pub struct IterMut<'a, A, D: Dimension> {
     /// `&'a mut A` references handed out by `next()`. Lifetime soundness is
     /// expressed via the `PhantomData<&'a mut A>` marker.
     base_ptr: *mut A,
+    /// Strides in element units. Copied from the source view at construction;
+    /// used by the slow path to compute physical offsets.
     strides: Vec<usize>,
+    /// Offset from storage base to logical first element.
     base_offset: usize,
+    /// Logical position tracker. Advances in F-order on the slow path.
     state: StrideState,
+    /// Number of elements left to yield.
     remaining: usize,
     /// Fast-path running offset (only valid when `is_f_contiguous == true`).
     next_fast_offset: usize,
+    /// Whether the tensor is F-contiguous, enabling the fast-path monotonic
+    /// pointer increment.
     is_f_contiguous: bool,
+    /// Lifetime anchor — proves `&'a mut A` references from `next()` are
+    /// tied to the source view's borrow.
     _marker: PhantomData<&'a mut A>,
+    /// Consumes the dimension type parameter so the struct is well-formed.
     _dim: PhantomData<D>,
 }
 
