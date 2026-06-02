@@ -299,7 +299,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::{Axis, Dimension, Ix2, IxDyn};
+    use crate::dimension::{Axis, Dimension, Ix2, Ix3, IxDyn};
     use crate::element::Element;
     use crate::storage::Owned;
     use crate::tensor::TensorBase;
@@ -407,5 +407,99 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// `AxisIterMut` writes through yielded sub-views propagate back to the
+    /// source tensor.
+    #[test]
+    fn test_axis_iter_mut_write() {
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2))
+        };
+        for mut row in AxisIterMut::new(tensor.view_mut(), Axis(0))
+            .expect("Axis(0) is valid")
+        {
+            for value in row.iter_mut() {
+                *value *= 10;
+            }
+        }
+        let collected: Vec<_> = tensor.iter().copied().collect();
+        assert_eq!(collected, vec![10, 20, 30, 40, 50, 60]);
+
+        for mut col in AxisIterMut::new(tensor.view_mut(), Axis(1))
+            .expect("Axis(1) is valid")
+        {
+            for value in col.iter_mut() {
+                *value += 1;
+            }
+        }
+        let collected: Vec<_> = tensor.iter().copied().collect();
+        assert_eq!(collected, vec![11, 21, 31, 41, 51, 61]);
+    }
+
+    /// `AxisIterMut` on an empty axis yields zero sub-views and does not
+    /// panic.
+    #[test]
+    fn test_axis_iter_mut_empty() {
+        let mut tensor = unsafe {
+            make_tensor(Vec::<f64>::new(), Ix2(0, 3))
+        };
+        let iter = AxisIterMut::new(tensor.view_mut(), Axis(0))
+            .expect("Axis(0) is valid");
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.count(), 0);
+    }
+
+    /// `AxisIterMut::new` on a rank-0 tensor returns `InvalidAxis`.
+    #[test]
+    fn test_axis_iter_mut_dyn_rank0_error() {
+        let mut scalar = unsafe {
+            make_tensor(vec![1.0_f64], IxDyn::from_slice(&[]))
+        };
+        assert!(matches!(
+            AxisIterMut::new(scalar.view_mut(), Axis(0)),
+            Err(XenonError::InvalidAxis {
+                axis: 0,
+                ndim: 0,
+                ..
+            })
+        ));
+    }
+
+    /// `AxisIter` on a 3-D tensor yields sub-views with correct shapes
+    /// and values.
+    #[test]
+    fn test_axis_iter_3d() {
+        let tensor = unsafe {
+            make_tensor((0..12).collect::<Vec<i32>>(), Ix3(3, 2, 2))
+        };
+        // Iterate along axis 0: yields 3 sub-views of shape [2, 2].
+        let mut iter = AxisIter::new(tensor.view(), Axis(0))
+            .expect("Axis(0) is valid");
+        assert_eq!(iter.len(), 3);
+        let sub0 = iter.next().expect("at least one sub-view");
+        assert_eq!(sub0.shape(), &[2, 2]);
+        let vals: Vec<_> = sub0.iter().copied().collect();
+        assert_eq!(vals, vec![0, 3, 6, 9]);
+
+        let sub2 = iter.last().expect("last sub-view");
+        let vals: Vec<_> = sub2.iter().copied().collect();
+        assert_eq!(vals, vec![2, 5, 8, 11]);
+    }
+
+    /// `AxisIterMut::size_hint` returns the exact remaining count and
+    /// decrements after each `next()`.
+    #[test]
+    fn test_axis_iter_mut_size_hint() {
+        let mut tensor = unsafe {
+            make_tensor(vec![0i32; 8], Ix2(4, 2))
+        };
+        let mut iter = AxisIterMut::new(tensor.view_mut(), Axis(0))
+            .expect("Axis(0) is valid");
+        assert_eq!(iter.len(), 4);
+        assert_eq!(iter.size_hint(), (4, Some(4)));
+        iter.next();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+        assert_eq!(iter.count(), 3);
     }
 }
