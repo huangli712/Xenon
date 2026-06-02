@@ -277,8 +277,7 @@ where
                 sub_dim,
                 sub_strides,
                 step_offset,
-            )
-            .expect("invariants pre-validated at construction")
+            ).expect("invariants pre-validated at construction")
         };
         Some(view)
     }
