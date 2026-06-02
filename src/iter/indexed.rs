@@ -49,7 +49,7 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
         // `Dimension::try_from_slice` lifts the runtime `&[usize]` index back
         // into the concrete dimension type `D`.
         let dim = D::try_from_slice(&index_slice)
-            .expect("rank invariant: index slice rank == D rank from StrideState::new shape");
+            .expect("rank invariant: index slice len equals D rank");
         Some((dim, value))
     }
 
@@ -102,7 +102,7 @@ impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
         let value = self.iter.next()?;
         self.state.advance();
         let dim = D::try_from_slice(&index_slice)
-            .expect("rank invariant: index slice rank == D rank from StrideState::new shape");
+            .expect("rank invariant: index slice len equals D rank");
         Some((dim, value))
     }
 
@@ -118,8 +118,8 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix0, Ix2, IxDyn};
-    use crate::iter::primitives::Iter;
     use crate::tensor::TensorBase;
+    use crate::iter::primitives::Iter;
 
     unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(
         data: Vec<A>,
