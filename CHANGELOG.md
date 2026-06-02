@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.20] — 2026-06-02
+
+### Added
+
+- Test: overflow, element-index, and error-path tests for index and convert modules.
+- Inline step comments to `get()`, `get_mut()`, and `slice()` in index/impls.rs.
+
+### Removed
+
+- `CastTo` trait and 44 forwarding `ConvertTo` impls (inlined into direct `CastTo`).
+- Empty compile anchor tests from construct, convert, and index modules.
+- Stale task-tracking comments and design-doc cross-references.
+- Isolated `eye.rs`, `init.rs`, `scalar.rs` submodules (consolidated into `impls.rs`).
+
+### Changed
+
+- Refactored convert module: `types.rs` (`CastElement`), `cast.rs` (trait+impls), `impls.rs` (methods).
+- Renamed `from.rs` to `impls.rs` and `access.rs` to `impls.rs` for consistency.
+- Moved `TensorBase::slice` from `slice.rs` to `impls.rs`.
+- Reordered impl blocks for top-down reading across construct, convert, index.
+- Standardized section separator comments to `---` style.
+- Replaced fully-qualified paths with local imports throughout.
+- Reformatted unsafe/expect calls for consistent style.
 ## [v0.0.19] — 2026-06-02
 
 ### Added
