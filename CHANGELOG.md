@@ -6,25 +6,29 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Test: overflow, element-index, and error-path tests for index and convert modules.
-- Inline step comments to `get()`, `get_mut()`, and `slice()` in index/impls.rs.
+- Test: overflow test for `checked_offset` in `ndindex.rs`.
+- Test: `from_array` tests and `Range start==end` test for `SliceInfo`.
+- Test: `get`/`get_mut` success and slice error-path tests in `impls.rs`.
+- Inline step comments to `get()`, `get_mut()`, and `slice()` in `impls.rs`.
+- Field doc comments to `SliceInfoIndices` and `SliceInfo` in `slice.rs`.
 
 ### Removed
 
-- `CastTo` trait and 44 forwarding `ConvertTo` impls (inlined into direct `CastTo`).
-- Empty compile anchor tests from construct, convert, and index modules.
-- Stale task-tracking comments and design-doc cross-references.
-- Isolated `eye.rs`, `init.rs`, `scalar.rs` submodules (consolidated into `impls.rs`).
+- Empty compile anchor test from `index/mod.rs`.
+- Isolated `mut_tests` module (merged into parent `tests`).
+- Stale task-tracking comments and design-doc cross-references from index module.
 
 ### Changed
 
-- Refactored convert module: `types.rs` (`CastElement`), `cast.rs` (trait+impls), `impls.rs` (methods).
-- Renamed `from.rs` to `impls.rs` and `access.rs` to `impls.rs` for consistency.
+- Renamed `index/access.rs` to `index/impls.rs` for consistency.
 - Moved `TensorBase::slice` from `slice.rs` to `impls.rs`.
-- Reordered impl blocks for top-down reading across construct, convert, index.
-- Standardized section separator comments to `---` style.
-- Replaced fully-qualified paths with local imports throughout.
-- Reformatted unsafe/expect calls for consistent style.
+- Consolidated `NdIndex` trait and `Sealed` impl ordering in `ndindex.rs`.
+- Rewrote `index/mod.rs` docs with submodule table.
+- Standardized section separator comments to `---` style across index module.
+- Added blank lines between methods and enum variants.
+- Replaced fully-qualified paths with local imports.
+- Reformatted `expect`/`expect_err` calls and long function signatures.
+
 ## [v0.0.19] — 2026-06-02
 
 ### Added
