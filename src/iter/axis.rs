@@ -56,7 +56,10 @@ impl<'a, A, D: Dimension> AxisIter<'a, A, D> {
     ///
     /// Returns `InvalidAxis` if `axis` is out of range for the tensor's
     /// dimensionality.
-    pub(crate) fn new(view: TensorView<'a, A, D>, axis: Axis) -> Result<Self, XenonError> {
+    pub(crate) fn new(
+        view: TensorView<'a, A, D>,
+        axis: Axis
+    ) -> Result<Self, XenonError> {
         let ndim = view.ndim();
         if axis.0 >= ndim {
             return Err(XenonError::InvalidAxis {
@@ -124,8 +127,7 @@ where
                 sub_dim,
                 sub_strides,
                 step_offset,
-            )
-            .expect("invariants pre-validated at construction")
+            ).expect("invariants pre-validated at construction")
         };
         Some(view)
     }
@@ -143,6 +145,7 @@ where
     D: RemoveAxis,
 {
 }
+
 /// Mutable axis iterator.
 ///
 /// Yields [`TensorViewMut`] sub-views of rank `D::Smaller` by slicing
