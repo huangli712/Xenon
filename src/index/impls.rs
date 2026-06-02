@@ -210,8 +210,8 @@ where
         //
         // Walk each axis, validate bounds, and accumulate with checked arithmetic.
         let mut offset = 0usize;
-        for (axis, ((&idx, &extent), &stride)) 
-            in index.iter().zip(&shape).zip(&strides_vec).enumerate()
+        for (axis, ((&idx, &extent), &stride)) in
+            index.iter().zip(&shape).zip(&strides_vec).enumerate()
         {
             // --- Per-axis bounds ---
             if idx >= extent {
