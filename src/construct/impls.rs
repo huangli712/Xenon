@@ -187,7 +187,9 @@ where
         // from `compute_f_strides(&dim)?`; `flags` from `compute_layout_flags`;
         // storage length = expected; offset 0.
         // `derived_from_view_mut: false` — `from_shape_vec` is not a downgrade path.
-        Ok(unsafe { Self::new_unchecked(storage, dim, strides, 0, flags, false) })
+        Ok(unsafe {
+            Self::new_unchecked(storage, dim, strides, 0, flags, false)
+        })
     }
 
     /// Construct a tensor from a fixed-size array.
