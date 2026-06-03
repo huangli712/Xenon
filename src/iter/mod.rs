@@ -7,12 +7,12 @@
 //!
 //! Entry methods on `TensorBase` provide access to these iterators.
 
-mod axis;
 mod primitives;
-mod types;
 mod indexed;
+mod axis;
+mod types;
 mod impls;
 
-pub use axis::{AxisIter, AxisIterMut};
 pub use primitives::{Iter, IterMut};
 pub use indexed::{IndexedIter, IndexedIterMut};
+pub use axis::{AxisIter, AxisIterMut};
