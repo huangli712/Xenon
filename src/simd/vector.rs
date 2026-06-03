@@ -122,37 +122,8 @@ mod tests {
         }
     }
 }
-// ---------------------------------------------------------------------------
-// f32/f64 sum kernels (W14T3)
-// ---------------------------------------------------------------------------
-
 /// Sum threshold per 08-simd §5.8 L457.
 const SUM_F32_F64_THRESHOLD: usize = 1024;
-
-pub(crate) struct SumF64Kernel<'a> {
-    pub(crate) data: &'a [f64],
-}
-
-impl WithSimd for SumF64Kernel<'_> {
-    type Output = f64;
-
-    fn with_simd<S: Simd>(self, simd: S) -> f64 {
-        let (body, tail) = S::as_simd_f64s(self.data);
-
-        let mut acc = simd.splat_f64s(0.0);
-        for &v in body {
-            acc = simd.add_f64s(acc, v);
-        }
-
-        let mut scalar = simd.reduce_sum_f64s(acc);
-
-        for &v in tail {
-            scalar += v;
-        }
-
-        scalar
-    }
-}
 
 /// Dispatches f32 sum to the SIMD kernel if the threshold is met.
 pub(crate) fn try_sum_f32_impl(data: &[f32]) -> Option<f32> {
@@ -169,39 +140,7 @@ pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
         return None;
     }
     let arch = get_arch();
-    Some(arch.dispatch(SumF64Kernel { data }))
-}
-
-// ---------------------------------------------------------------------------
-// W14T3 sum f64 test
-// ---------------------------------------------------------------------------
-
-#[cfg(all(test, feature = "simd"))]
-mod sum_tests {
-    use crate::simd;
-
-    fn tolerance_f64(data: &[f64]) -> f64 {
-        let n = data.len() as f64;
-        let max_abs = data.iter().map(|v| v.abs()).fold(0.0f64, f64::max);
-        (4.0 * f64::EPSILON * n * max_abs).max(4.0 * f64::MIN_POSITIVE)
-    }
-
-    #[test]
-    fn test_sum_dispatch_simd_float_f64() {
-        let data: Vec<f64> = (0..2048).map(|v| v as f64 * 0.125 - 128.0).collect();
-        let simd_result = simd::try_sum_f64(&data);
-        assert!(
-            simd_result.is_some(),
-            "len >= 1024 should enter SIMD sum path when supported"
-        );
-        let simd = simd_result.expect("len >= 1024 should enter SIMD sum path");
-        let scalar: f64 = data.iter().sum();
-        let tol = tolerance_f64(&data);
-        assert!(
-            (simd - scalar).abs() <= tol,
-            "SIMD sum {simd} deviates from scalar {scalar} beyond {tol}"
-        );
-    }
+    Some(arch.dispatch(super::sum::SumF64Kernel { data }))
 } // ---------------------------------------------------------------------------
 // Complex sum kernels (W14T5)
 // ---------------------------------------------------------------------------
