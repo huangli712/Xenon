@@ -171,77 +171,13 @@ pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<
     Some(arch.dispatch(super::sum::ComplexSumF64Kernel { data }))
 }
 
-// ---------------------------------------------------------------------------
-// f32/f64 dot kernels (W14T6)
-// ---------------------------------------------------------------------------
-
-pub(crate) struct DotF32Kernel<'a> {
-    pub(crate) lhs: &'a [f32],
-    pub(crate) rhs: &'a [f32],
-}
-
-impl WithSimd for DotF32Kernel<'_> {
-    type Output = f32;
-
-    fn with_simd<S: Simd>(self, simd: S) -> f32 {
-        let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
-        let (rhs_body, _rhs_tail) = S::as_simd_f32s(self.rhs);
-
-        // FMA forbidden in per-element multiply+accumulate (08-simd §6.6).
-        let mut acc = simd.splat_f32s(0.0);
-        for i in 0..lhs_body.len() {
-            let prod = simd.mul_f32s(lhs_body[i], rhs_body[i]);
-            acc = simd.add_f32s(acc, prod);
-        }
-
-        // Horizontal reduction merge (FMA allowed, tolerance documented).
-        let mut scalar = simd.reduce_sum_f32s(acc);
-
-        // Tail
-        for i in 0..lhs_tail.len() {
-            scalar += lhs_tail[i] * self.rhs[self.rhs.len() - lhs_tail.len() + i];
-        }
-
-        scalar
-    }
-}
-
-pub(crate) struct DotF64Kernel<'a> {
-    pub(crate) lhs: &'a [f64],
-    pub(crate) rhs: &'a [f64],
-}
-
-impl WithSimd for DotF64Kernel<'_> {
-    type Output = f64;
-
-    fn with_simd<S: Simd>(self, simd: S) -> f64 {
-        let (lhs_body, lhs_tail) = S::as_simd_f64s(self.lhs);
-        let (rhs_body, _rhs_tail) = S::as_simd_f64s(self.rhs);
-
-        let mut acc = simd.splat_f64s(0.0);
-        for i in 0..lhs_body.len() {
-            let prod = simd.mul_f64s(lhs_body[i], rhs_body[i]);
-            acc = simd.add_f64s(acc, prod);
-        }
-
-        let mut scalar = simd.reduce_sum_f64s(acc);
-
-        let tail_offset = self.rhs.len() - lhs_tail.len();
-        for (i, &l) in lhs_tail.iter().enumerate() {
-            scalar += l * self.rhs[tail_offset + i];
-        }
-
-        scalar
-    }
-}
-
 pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
     assert_eq!(lhs.len(), rhs.len());
     if lhs.len() < DOT_F32_F64_THRESHOLD {
         return None;
     }
     let arch = get_arch();
-    Some(arch.dispatch(DotF32Kernel { lhs, rhs }))
+    Some(arch.dispatch(super::dot::DotF32Kernel { lhs, rhs }))
 }
 
 pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
@@ -250,7 +186,7 @@ pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
         return None;
     }
     let arch = get_arch();
-    Some(arch.dispatch(DotF64Kernel { lhs, rhs }))
+    Some(arch.dispatch(super::dot::DotF64Kernel { lhs, rhs }))
 }
 
 // ---------------------------------------------------------------------------
