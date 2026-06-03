@@ -8,6 +8,8 @@ use core::marker::PhantomData;
 
 #[cfg(feature = "parallel")]
 use super::exec::{dispatch_invalid_argument, IN_PARALLEL};
+#[cfg(feature = "parallel")]
+use crate::error::Result;
 
 // ----------------------------------------------------------------------------
 // Execution path types
@@ -66,7 +68,7 @@ impl ParallelExecStrategy {
     /// - `max_workers == Some(0)` — worker count must be non-zero
     /// - `max_workers == Some(n)` with `n > rayon::current_num_threads()` —
     ///   worker count must not exceed the rayon pool size
-    pub fn new(chunk_size: Option<usize>, max_workers: Option<usize>) -> crate::error::Result<Self> {
+    pub fn new(chunk_size: Option<usize>, max_workers: Option<usize>) -> Result<Self> {
         if matches!(chunk_size, Some(0)) {
             return Err(
                 dispatch_invalid_argument("chunk_size", "must be non-zero", "0")
