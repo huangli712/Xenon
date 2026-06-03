@@ -11,10 +11,10 @@
 //! thresholds, and exercise parallel kernels directly. Those
 //! re-exports are NOT a stable public API.
 
-mod support;
 mod threshold;
 mod types;
 mod exec;
+mod support;
 
 // --- threshold re-exports ---
 
@@ -22,10 +22,7 @@ mod exec;
 pub use threshold::{set_parallel_threshold, reset_parallel_threshold};
 #[cfg(any(test, feature = "simd"))]
 pub use threshold::{set_simd_threshold, reset_simd_threshold};
-pub(crate) use threshold::{
-    DEFAULT_PARALLEL_THRESHOLD, DEFAULT_SIMD_THRESHOLD,
-    get_parallel_threshold, get_simd_threshold,
-};
+pub(crate) use threshold::{get_parallel_threshold, get_simd_threshold};
 
 // --- types re-exports ---
 

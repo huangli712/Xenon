@@ -151,6 +151,7 @@ pub(crate) fn dispatch_invalid_argument(
 mod tests {
     use super::*;
     use super::super::*;
+    use super::super::threshold::{DEFAULT_PARALLEL_THRESHOLD, DEFAULT_SIMD_THRESHOLD};
 
     // === select_exec_path ===
 
