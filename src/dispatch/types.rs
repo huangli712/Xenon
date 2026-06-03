@@ -166,7 +166,7 @@ mod tests {
     #[cfg(feature = "parallel")]
     use crate::error::{InvalidArgumentKind, XenonError};
 
-    // === ExecPath enum smoke ===
+    // ------------------------- ExecPath enum smoke --------------------------
 
     /// Verify `ExecPath` is constructable and equality-comparable.
     #[test]
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(ExecPath::Serial, ExecPath::Serial);
     }
 
-    // === ParallelGuard Send/Sync ===
+    // ---------------------- ParallelGuard Send/Sync -------------------------
 
     /// Verify `ParallelGuard` is `!Send + !Sync` so the TLS flag stays
     /// bound to the acquiring thread.
@@ -192,7 +192,7 @@ mod tests {
         static_assertions::assert_impl_all!(ParallelGuard: Send, Sync);
     }
 
-    // === ParallelExecStrategy construction ===
+    // ----------------- ParallelExecStrategy construction --------------------
 
     /// Verify `new()` rejects `chunk_size=0` and `max_workers=0`.
     #[cfg(feature = "parallel")]
@@ -235,8 +235,8 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_strategy_new_accepts_none() {
-        let lhs =
-            ParallelExecStrategy::new(None, None).expect("new(None, None) should succeed");
+        let lhs = ParallelExecStrategy::new(None, None)
+            .expect("new(None, None) should succeed");
         let rhs = ParallelExecStrategy::auto();
         assert_eq!(lhs.chunk_size(), rhs.chunk_size());
         assert_eq!(lhs.max_workers(), rhs.max_workers());
