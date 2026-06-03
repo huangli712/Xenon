@@ -141,6 +141,61 @@ impl ComplexSumF32Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
+// Complex<f64> sum kernel
+// ---------------------------------------------------------------------------
+
+pub(crate) struct ComplexSumF64Kernel<'a> {
+    pub(crate) data: &'a [Complex<f64>],
+}
+
+impl WithSimd for ComplexSumF64Kernel<'_> {
+    type Output = Complex<f64>;
+
+    fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
+        let f64_data: &[f64] = unsafe {
+            std::slice::from_raw_parts(self.data.as_ptr() as *const f64, self.data.len() * 2)
+        };
+        let (body, tail) = S::as_simd_f64s(f64_data);
+
+        let mut acc = simd.splat_f64s(0.0);
+        for &v in body {
+            acc = simd.add_f64s(acc, v);
+        }
+
+        let mut re_sum = 0.0f64;
+        let mut im_sum = 0.0f64;
+        for chunk in tail.chunks(2) {
+            re_sum += chunk[0];
+            if chunk.len() > 1 {
+                im_sum += chunk[1];
+            }
+        }
+
+        // Deinterleave accumulated f64s.
+        // For simplicity, reduce interleaved acc directly.
+        // FMA is allowed in horizontal reduction merge (08-simd §6.6).
+        let scalar = simd.reduce_sum_f64s(acc);
+        // Since we summed [re0, im0, re1, im1, ...] all together,
+        // scalar = sum of all re + sum of all im. We need to split them.
+        // Use bytemuck to manually extract lanes.
+        let lane_count = core::mem::size_of::<S::f64s>() / core::mem::size_of::<f64>();
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(&acc as *const S::f64s as *const u8, lane_count * 8)
+        };
+        for i in 0..lane_count / 2 {
+            let mut re_bytes = [0u8; 8];
+            let mut im_bytes = [0u8; 8];
+            re_bytes.copy_from_slice(&bytes[i * 16..i * 16 + 8]);
+            im_bytes.copy_from_slice(&bytes[i * 16 + 8..i * 16 + 16]);
+            re_sum += f64::from_ne_bytes(re_bytes);
+            im_sum += f64::from_ne_bytes(im_bytes);
+        }
+        let _ = (simd, scalar);
+        Complex::new(re_sum, im_sum)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
