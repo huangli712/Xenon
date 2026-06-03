@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.22] — 2026-06-03
+
+### Added
+
+- `serial_test` dev-dependency for thread-safe threshold-mutating tests.
+- Shared `ThresholdTestGuard` in `dispatch.rs` for parallel/SIMD threshold isolation.
+- Integration test: SIMD-vs-serial consistency for Complex<f64> (add, sum, dot) at N=2048.
+- #[serial] to all simd and parallel integration tests to eliminate threshold races.
+
+### Changed
+
+- Extracted `AddF32Kernel` from `simd/vector.rs` into `simd/binary.rs`.
+- Replaced redundant `set_simd_threshold(1024)` calls with `#[serial]` ordering.
+- All parallel test functions now acquire `ThresholdTestGuard` for sandboxed thresholds.
+- Updated complex path test to use Tensor1 API and proper reduction tolerances.
+
 ## [v0.0.21] — 2026-06-03
 
 ### Added
