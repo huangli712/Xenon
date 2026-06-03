@@ -184,7 +184,9 @@ mod tests {
     /// returns `XenonError::InvalidAxis` with `axis = 0` and `ndim = 0`.
     #[test]
     fn test_axis_iter_dyn_rank0_error() {
-        let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
+        let scalar = unsafe {
+            make_tensor(vec![1.0_f64], IxDyn::from_slice(&[]))
+        };
         assert!(matches!(
             scalar.axis_iter(Axis(0)),
             Err(XenonError::InvalidAxis {
@@ -200,7 +202,9 @@ mod tests {
     /// or overflowing.
     #[test]
     fn test_axis_iter_large_axis_index_error() {
-        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], Ix2(2, 3)) };
+        let tensor = unsafe {
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
+        };
         assert!(matches!(
             tensor.axis_iter(Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
