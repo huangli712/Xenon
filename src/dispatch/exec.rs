@@ -1,3 +1,4 @@
+#[cfg(feature = "parallel")]
 use core::marker::PhantomData;
 
 #[cfg(feature = "parallel")]
@@ -6,6 +7,7 @@ use core::cell::Cell;
 #[cfg(feature = "parallel")]
 use std::borrow::Cow;
 
+#[cfg(any(feature = "parallel", feature = "simd"))]
 use super::threshold::{get_parallel_threshold, get_simd_threshold};
 use super::types::{ExecPath, ParallelGuard};
 

@@ -1,5 +1,7 @@
+#[cfg(any(test, feature = "parallel", feature = "simd"))]
 use std::sync::{Mutex, MutexGuard};
 
+#[cfg(any(test, feature = "parallel", feature = "simd"))]
 use super::{get_parallel_threshold, get_simd_threshold};
 #[cfg(any(test, feature = "parallel"))]
 use super::set_parallel_threshold;

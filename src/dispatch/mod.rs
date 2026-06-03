@@ -22,11 +22,16 @@ mod support;
 pub use threshold::{set_parallel_threshold, reset_parallel_threshold};
 #[cfg(any(test, feature = "simd"))]
 pub use threshold::{set_simd_threshold, reset_simd_threshold};
+#[allow(unused_imports)]
 pub(crate) use threshold::{get_parallel_threshold, get_simd_threshold};
 
 // --- types re-exports ---
 
-pub use types::{ExecPath, ParallelGuard};
+pub use types::ExecPath;
+// ParallelGuard is used in select_exec_path's return type; compiler may
+// flag the re-export as unused when the type is only referenced indirectly.
+#[allow(unused_imports)]
+pub use types::ParallelGuard;
 #[cfg(feature = "parallel")]
 pub use types::ParallelExecStrategy;
 
