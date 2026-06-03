@@ -7,9 +7,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Threshold storage — constants
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Compile-time default for parallel threshold.
 pub(crate) const DEFAULT_PARALLEL_THRESHOLD: usize = 65_536;
@@ -17,9 +17,9 @@ pub(crate) const DEFAULT_PARALLEL_THRESHOLD: usize = 65_536;
 /// Compile-time default for SIMD threshold.
 pub(crate) const DEFAULT_SIMD_THRESHOLD: usize = 64;
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Threshold storage — atomics
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Runtime-overridable parallel threshold.
 ///
@@ -30,9 +30,9 @@ static PARALLEL_THRESHOLD: AtomicUsize = AtomicUsize::new(DEFAULT_PARALLEL_THRES
 /// Runtime-overridable SIMD threshold.
 static SIMD_THRESHOLD: AtomicUsize = AtomicUsize::new(DEFAULT_SIMD_THRESHOLD);
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Threshold storage — getters
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg_attr(not(feature = "parallel"), allow(dead_code))]
 pub(crate) fn get_parallel_threshold() -> usize {
@@ -44,9 +44,9 @@ pub(crate) fn get_simd_threshold() -> usize {
     SIMD_THRESHOLD.load(Ordering::Relaxed)
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Threshold runtime override API (testing/benchmarking only)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Override the parallel threshold at runtime.
 ///
