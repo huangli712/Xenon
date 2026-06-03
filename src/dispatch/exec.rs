@@ -55,7 +55,8 @@ pub fn select_exec_path(
             };
             len >= effective
         };
-        if parallel_eligible_by_threshold && let Some(guard) = try_acquire_guard() {
+        if parallel_eligible_by_threshold 
+            && let Some(guard) = try_acquire_guard() {
             return (ExecPath::Parallel, Some(guard));
         }
     }
