@@ -1,10 +1,10 @@
 use core::marker::PhantomData;
 
 #[cfg(feature = "parallel")]
-use super::dispatch_invalid_argument;
+use super::exec::dispatch_invalid_argument;
 
 #[cfg(feature = "parallel")]
-use super::IN_PARALLEL;
+use super::exec::IN_PARALLEL;
 
 // ---------------------------------------------------------------------------
 // Execution path types
