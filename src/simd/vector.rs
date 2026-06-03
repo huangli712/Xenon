@@ -4,16 +4,13 @@
 //! The facade functions in [`super`] perform threshold admission and
 //! type-based dispatch before routing to these kernels.
 
-use crate::simd::{BinaryOp, UnaryOp};
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use super::*;
-
+    use crate::simd::{BinaryOp, UnaryOp};
 
     #[test]
     fn test_vector_sub_mul_div_below_threshold_rejects() {
