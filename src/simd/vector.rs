@@ -586,65 +586,8 @@ pub(crate) fn try_dot_complex_f64_impl(
 }
 
 // ---------------------------------------------------------------------------
-// Complex element-wise kernels (W14T11)
+// Complex element-wise kernels (W14T11 — Mul, Neg)
 // ---------------------------------------------------------------------------
-
-pub(crate) struct ComplexAddF32Kernel<'a> {
-    pub(crate) lhs: &'a [Complex<f32>],
-    pub(crate) rhs: &'a [Complex<f32>],
-    pub(crate) dst: &'a mut [Complex<f32>],
-}
-
-impl WithSimd for ComplexAddF32Kernel<'_> {
-    type Output = ();
-
-    fn with_simd<S: Simd>(self, simd: S) {
-        let n = self.lhs.len();
-        // Reinterpret Complex<f32> as interleaved f32 pairs.
-        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
-        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
-        let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
-        let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
-        let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
-        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
-
-        for i in 0..lhs_body.len() {
-            dst_body[i] = simd.add_f32s(lhs_body[i], rhs_body[i]);
-        }
-        for i in 0..lhs_tail.len() {
-            dst_tail[i] = lhs_tail[i] + rhs_tail[i];
-        }
-    }
-}
-
-pub(crate) struct ComplexSubF32Kernel<'a> {
-    pub(crate) lhs: &'a [Complex<f32>],
-    pub(crate) rhs: &'a [Complex<f32>],
-    pub(crate) dst: &'a mut [Complex<f32>],
-}
-
-impl WithSimd for ComplexSubF32Kernel<'_> {
-    type Output = ();
-
-    fn with_simd<S: Simd>(self, simd: S) {
-        let n = self.lhs.len();
-        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
-        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
-        let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
-        let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
-        let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
-        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
-
-        for i in 0..lhs_body.len() {
-            dst_body[i] = simd.sub_f32s(lhs_body[i], rhs_body[i]);
-        }
-        for i in 0..lhs_tail.len() {
-            dst_tail[i] = lhs_tail[i] - rhs_tail[i];
-        }
-    }
-}
 
 pub(crate) struct ComplexMulF32Kernel<'a> {
     pub(crate) lhs: &'a [Complex<f32>],
@@ -721,8 +664,8 @@ pub(crate) fn dispatch_binary_complex_f32(
     }
     let arch = get_arch();
     match op {
-        BinaryOp::Add => arch.dispatch(ComplexAddF32Kernel { lhs, rhs, dst }),
-        BinaryOp::Sub => arch.dispatch(ComplexSubF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Add => arch.dispatch(super::binary::ComplexAddF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Sub => arch.dispatch(super::binary::ComplexSubF32Kernel { lhs, rhs, dst }),
         BinaryOp::Mul => arch.dispatch(ComplexMulF32Kernel { lhs, rhs, dst }),
         BinaryOp::Div => return false, // Complex div not implemented
     }

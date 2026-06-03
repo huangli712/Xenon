@@ -222,6 +222,66 @@ impl WithSimd for DivF64Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
+// Complex<f32> binary kernels (Add, Sub)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct ComplexAddF32Kernel<'a> {
+    pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
+}
+
+impl WithSimd for ComplexAddF32Kernel<'_> {
+    type Output = ();
+
+    fn with_simd<S: Simd>(self, simd: S) {
+        let n = self.lhs.len();
+        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
+        let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
+        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
+
+        for i in 0..lhs_body.len() {
+            dst_body[i] = simd.add_f32s(lhs_body[i], rhs_body[i]);
+        }
+        for i in 0..lhs_tail.len() {
+            dst_tail[i] = lhs_tail[i] + rhs_tail[i];
+        }
+    }
+}
+
+pub(crate) struct ComplexSubF32Kernel<'a> {
+    pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
+}
+
+impl WithSimd for ComplexSubF32Kernel<'_> {
+    type Output = ();
+
+    fn with_simd<S: Simd>(self, simd: S) {
+        let n = self.lhs.len();
+        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
+        let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
+        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
+
+        for i in 0..lhs_body.len() {
+            dst_body[i] = simd.sub_f32s(lhs_body[i], rhs_body[i]);
+        }
+        for i in 0..lhs_tail.len() {
+            dst_tail[i] = lhs_tail[i] - rhs_tail[i];
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
