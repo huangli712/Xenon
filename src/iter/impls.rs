@@ -255,6 +255,18 @@ mod tests {
                 ..
             })
         ));
+
+        let mut tensor_mut2 = unsafe {
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
+        };
+        assert!(matches!(
+            tensor_mut2.axis_iter_mut(Axis(5)),
+            Err(XenonError::InvalidAxis {
+                axis: 5,
+                ndim: 2,
+                ..
+            })
+        ));
     }
 
     /// Verifies that on a 100x1000 tensor, both `Iter::len` and `Iter::count`
@@ -283,5 +295,46 @@ mod tests {
             tensor.iter().copied().collect::<Vec<_>>(),
             vec![0, 2, 4, 6, 8, 10, 12, 14, 16]
         );
+    }
+
+    /// `axis_iter_mut` on a rank-0 dynamic tensor returns `InvalidAxis` error.
+    #[test]
+    fn test_axis_iter_mut_dyn_rank0_error() {
+        let mut scalar = unsafe {
+            make_tensor(vec![1.0_f64], IxDyn::from_slice(&[]))
+        };
+        assert!(matches!(
+            scalar.axis_iter_mut(Axis(0)),
+            Err(XenonError::InvalidAxis {
+                axis: 0,
+                ndim: 0,
+                ..
+            })
+        ));
+    }
+
+    /// `indexed_iter_mut` yields `(Ix2, &mut i32)` pairs with correct
+    /// F-order indices, and mutations propagate.
+    #[test]
+    fn test_indexed_iter_mut_integration() {
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2))
+        };
+        let mut count = 0;
+        for (idx, value) in tensor.indexed_iter_mut() {
+            *value *= 10;
+            match count {
+                0 => assert_eq!(idx, Ix2(0, 0)),
+                1 => assert_eq!(idx, Ix2(1, 0)),
+                2 => assert_eq!(idx, Ix2(2, 0)),
+                3 => assert_eq!(idx, Ix2(0, 1)),
+                4 => assert_eq!(idx, Ix2(1, 1)),
+                5 => assert_eq!(idx, Ix2(2, 1)),
+                _ => unreachable!(),
+            }
+            count += 1;
+        }
+        let collected: Vec<_> = tensor.iter().copied().collect();
+        assert_eq!(collected, vec![10, 20, 30, 40, 50, 60]);
     }
 }
