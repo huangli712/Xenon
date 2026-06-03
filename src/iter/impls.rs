@@ -219,11 +219,14 @@ mod tests {
     }
 
     /// Verifies that requesting an axis index equal to or greater than the
-    /// tensor's rank returns `XenonError::InvalidAxis` for both `axis_iter` and
-    /// `axis_iter_mut`, with the reported `axis` and `ndim` matching the input.
+    /// tensor's rank returns `XenonError::InvalidAxis` for both `axis_iter`
+    /// and `axis_iter_mut`, with the reported `axis` and `ndim` matching
+    /// the input.
     #[test]
     fn test_axis_iter_out_of_bounds_invalid_axis() {
-        let tensor = unsafe { make_tensor(vec![0.0_f64; 6], Ix2(2, 3)) };
+        let tensor = unsafe {
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
+        };
         assert!(matches!(
             tensor.axis_iter(Axis(2)),
             Err(XenonError::InvalidAxis {
