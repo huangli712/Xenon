@@ -20,10 +20,13 @@ mod support;
 
 #[cfg(any(test, feature = "parallel"))]
 pub use threshold::{set_parallel_threshold, reset_parallel_threshold};
+
 #[cfg(any(test, feature = "simd"))]
 pub use threshold::{set_simd_threshold, reset_simd_threshold};
+
 #[cfg(any(test, feature = "parallel"))]
 pub(crate) use threshold::get_parallel_threshold;
+
 #[cfg(any(test, feature = "simd"))]
 pub(crate) use threshold::get_simd_threshold;
 
