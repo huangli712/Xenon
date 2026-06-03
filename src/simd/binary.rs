@@ -324,6 +324,38 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
+// Complex<f64> binary kernel (Add)
+// ---------------------------------------------------------------------------
+
+pub(crate) struct ComplexAddF64Kernel<'a> {
+    pub(crate) lhs: &'a [crate::complex::Complex<f64>],
+    pub(crate) rhs: &'a [crate::complex::Complex<f64>],
+    pub(crate) dst: &'a mut [crate::complex::Complex<f64>],
+}
+
+impl WithSimd for ComplexAddF64Kernel<'_> {
+    type Output = ();
+
+    fn with_simd<S: Simd>(self, simd: S) {
+        let n = self.lhs.len();
+        let lhs_f64 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f64, n * 2) };
+        let rhs_f64 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f64, n * 2) };
+        let dst_f64 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+        let (lhs_body, lhs_tail) = S::as_simd_f64s(lhs_f64);
+        let (rhs_body, rhs_tail) = S::as_simd_f64s(rhs_f64);
+        let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
+
+        for i in 0..lhs_body.len() {
+            dst_body[i] = simd.add_f64s(lhs_body[i], rhs_body[i]);
+        }
+        for i in 0..lhs_tail.len() {
+            dst_tail[i] = lhs_tail[i] + rhs_tail[i];
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
