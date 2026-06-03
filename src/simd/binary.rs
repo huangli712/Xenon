@@ -2,6 +2,90 @@
 
 use pulp::{Simd, WithSimd};
 
+use crate::simd::{BinaryOp, get_arch};
+use crate::complex::Complex;
+
+// ---------------------------------------------------------------------------
+// Thresholds (per 08-simd §5.8)
+// ---------------------------------------------------------------------------
+
+pub(crate) const ELEMENTWISE_F32_F64_THRESHOLD: usize = 64;
+/// Complex element-wise threshold (08-simd §5.8 L451).
+pub(crate) const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
+
+// ---------------------------------------------------------------------------
+// Dispatch helpers (called from mod.rs facade)
+// ---------------------------------------------------------------------------
+
+/// Dispatches f32 binary op to the corresponding kernel.
+pub(crate) fn dispatch_binary_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32], dst: &mut [f32]) -> bool {
+    if lhs.len() < ELEMENTWISE_F32_F64_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        BinaryOp::Add => arch.dispatch(AddF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Sub => arch.dispatch(SubF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Mul => arch.dispatch(MulF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Div => arch.dispatch(DivF32Kernel { lhs, rhs, dst }),
+    }
+    true
+}
+
+/// Dispatches f64 binary op to the corresponding kernel.
+pub(crate) fn dispatch_binary_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64], dst: &mut [f64]) -> bool {
+    if lhs.len() < ELEMENTWISE_F32_F64_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        BinaryOp::Add => arch.dispatch(AddF64Kernel { lhs, rhs, dst }),
+        BinaryOp::Sub => arch.dispatch(SubF64Kernel { lhs, rhs, dst }),
+        BinaryOp::Mul => arch.dispatch(MulF64Kernel { lhs, rhs, dst }),
+        BinaryOp::Div => arch.dispatch(DivF64Kernel { lhs, rhs, dst }),
+    }
+    true
+}
+
+/// Dispatches Complex<f32> binary element-wise op to the kernel.
+pub(crate) fn dispatch_binary_complex_f32(
+    op: BinaryOp,
+    lhs: &[Complex<f32>],
+    rhs: &[Complex<f32>],
+    dst: &mut [Complex<f32>],
+) -> bool {
+    if lhs.len() < COMPLEX_ELEMENTWISE_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        BinaryOp::Add => arch.dispatch(ComplexAddF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Sub => arch.dispatch(ComplexSubF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Mul => arch.dispatch(ComplexMulF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Div => return false, // Complex div not implemented
+    }
+    true
+}
+
+pub(crate) fn dispatch_binary_complex_f64(
+    op: BinaryOp,
+    lhs: &[Complex<f64>],
+    rhs: &[Complex<f64>],
+    dst: &mut [Complex<f64>],
+) -> bool {
+    if lhs.len() < COMPLEX_ELEMENTWISE_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        BinaryOp::Add => arch.dispatch(ComplexAddF64Kernel { lhs, rhs, dst }),
+        BinaryOp::Sub => return false, // Sub not implemented for f64 complex
+        BinaryOp::Mul => return false, // Mul not implemented for f64 complex
+        BinaryOp::Div => return false,
+    }
+    true
+}
+
 // ---------------------------------------------------------------------------
 // f32 binary kernel (Add)
 // ---------------------------------------------------------------------------
