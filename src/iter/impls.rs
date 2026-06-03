@@ -5,16 +5,14 @@
 //! primary public API for obtaining iterators over tensor elements, views,
 //! and sub-views.
 
-use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::error::XenonError;
+use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::storage::{Storage, StorageMut, ViewMutRepr, ViewRepr};
 use crate::tensor::TensorBase;
 
-use super::axis::{AxisIter, AxisIterMut};
-use super::indexed::{IndexedIter, IndexedIterMut};
 use super::primitives::{Iter, IterMut};
-
-// ── Immutable entry methods ──
+use super::indexed::{IndexedIter, IndexedIterMut};
+use super::axis::{AxisIter, AxisIterMut};
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -24,8 +22,9 @@ where
     /// Construct a read-only view from any Storage-backed tensor.
     fn as_view(&self) -> crate::tensor::TensorView<'_, A, D> {
         // SAFETY: Storage guarantees valid base pointer + len.
-        let storage =
-            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
+        let storage = unsafe {
+            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
+        };
         unsafe {
             TensorBase::new_unchecked(
                 storage,
