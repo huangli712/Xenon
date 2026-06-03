@@ -107,16 +107,16 @@ impl ParallelExecStrategy {
         self.chunk_size
     }
 
-    /// Maximum worker count for the parallel backend, or `None` for
-    /// the rayon default pool size.
+    /// Maximum worker count for the parallel backend, or `None` for the
+    /// rayon default pool size.
     pub(crate) fn max_workers(&self) -> Option<usize> {
         self.max_workers
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // ParallelGuard — nested-parallel guard (feature-gated)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// RAII guard that indicates the current thread is inside a
 /// library-internal parallel region.
@@ -139,15 +139,6 @@ pub struct ParallelGuard {
     pub(crate) _private: PhantomData<*const ()>,
 }
 
-#[cfg(feature = "parallel")]
-impl Drop for ParallelGuard {
-    /// Clears the thread-local `IN_PARALLEL` flag, allowing nested
-    /// `select_exec_path` calls to re-enter the parallel region.
-    fn drop(&mut self) {
-        IN_PARALLEL.with(|flag| flag.set(false));
-    }
-}
-
 /// Placeholder `ParallelGuard` when `feature = "parallel"` is disabled.
 ///
 /// Zero-size, never constructed; no Drop, intentionally `Send + Sync`.
@@ -157,6 +148,15 @@ impl Drop for ParallelGuard {
 #[derive(Debug)]
 pub struct ParallelGuard {
     pub(crate) _private: PhantomData<()>,
+}
+
+#[cfg(feature = "parallel")]
+impl Drop for ParallelGuard {
+    /// Clears the thread-local `IN_PARALLEL` flag, allowing nested
+    /// `select_exec_path` calls to re-enter the parallel region.
+    fn drop(&mut self) {
+        IN_PARALLEL.with(|flag| flag.set(false));
+    }
 }
 
 #[cfg(test)]
