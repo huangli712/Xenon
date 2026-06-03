@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.21] — 2026-06-03
+
+### Added
+
+- Test: `AxisIterMut`/`IndexedIterMut`/`IterMut`/`StrideState` tests (write, empty, 3D, Ix0, size_hint).
+- Field and method doc comments to all iter submodules (Iter, IterMut, StrideState, AxisIter, IndexedIter).
+- Module-level docs to axis, impls, and indexed modules.
+
+### Removed
+
+- Section comment markers from all iter submodules.
+- Stale design-doc cross-references from iter module.
+- Redundant test imports and deduplicated test module structure.
+
+### Changed
+
+- Extracted `TensorBase` entry methods into `iter/impls.rs`.
+- Extracted `StrideState` into `iter/types.rs`; renamed `iter/elements.rs` to `iter/primitives.rs`.
+- Reordered module declarations and re-exports by dependency in `iter/mod.rs`.
+- Replaced `crate::iter::` with `super::` sibling imports throughout iter submodules.
+- Replaced fully-qualified paths with local imports in iter test code.
+- Standardized unsafe block wrapping, doc comment line lengths, and import ordering.
 ## [v0.0.20] — 2026-06-02
 
 ### Added
