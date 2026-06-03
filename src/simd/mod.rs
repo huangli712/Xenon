@@ -18,6 +18,8 @@ use crate::private::Sealed;
 #[cfg(feature = "simd")]
 mod binary;
 #[cfg(feature = "simd")]
+mod unary;
+#[cfg(feature = "simd")]
 mod vector;
 #[cfg(feature = "simd")]
 use pulp::Arch;
