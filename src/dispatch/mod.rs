@@ -33,12 +33,14 @@ pub(crate) use threshold::get_simd_threshold;
 // --- types re-exports ---
 
 pub use types::{ExecPath, ParallelGuard};
+
 #[cfg(feature = "parallel")]
 pub use types::{ParallelExecStrategy};
 
 // --- exec re-exports ---
 
 pub use exec::select_exec_path;
+
 #[cfg(feature = "parallel")]
 pub(crate) use exec::with_parallel_worker_context;
 
