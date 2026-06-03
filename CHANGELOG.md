@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.23] — 2026-06-03
+
+### Removed
+
+- `serial_test` dev-dependency (replaced by process-global `ThresholdTestGuard`).
+- `#[serial]` annotations on all SIMD and parallel integration tests.
+- Redundant `reset_*_threshold()` calls (handled by `ThresholdTestGuard` drop).
+
+### Changed
+
+- Promoted `ThresholdTestGuard` from `pub(crate) mod test_support` to `pub` struct in `dispatch.rs`.
+- Gated `ThresholdTestGuard` fields per-feature so it compiles under any feature combination.
+- Exported `ThresholdTestGuard` through `crate::prelude` for external integration tests.
+- Added `Default` impl for `ThresholdTestGuard`.
+
 ## [v0.0.22] — 2026-06-03
 
 ### Added
@@ -9,14 +24,14 @@ All notable changes to this project are documented in this file.
 - `serial_test` dev-dependency for thread-safe threshold-mutating tests.
 - Shared `ThresholdTestGuard` in `dispatch.rs` for parallel/SIMD threshold isolation.
 - Integration test: SIMD-vs-serial consistency for `Complex<f64>` (`add`, `sum`, `dot`) at N=2048.
-- #[serial] to all simd and parallel integration tests to eliminate threshold races.
+- `#[serial]` to all simd and parallel integration tests to eliminate threshold races.
 
 ### Changed
 
 - Extracted `AddF32Kernel` from `simd/vector.rs` into `simd/binary.rs`.
 - Replaced redundant `set_simd_threshold(1024)` calls with `#[serial]` ordering.
 - All parallel test functions now acquire `ThresholdTestGuard` for sandboxed thresholds.
-- Updated complex path test to use Tensor1 API and proper reduction tolerances.
+- Updated complex path test to use `Tensor1` API and proper reduction tolerances.
 
 ## [v0.0.21] — 2026-06-03
 

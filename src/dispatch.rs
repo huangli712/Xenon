@@ -433,6 +433,13 @@ impl ThresholdTestGuard<'_> {
 }
 
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
+impl Default for ThresholdTestGuard<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(any(test, feature = "parallel", feature = "simd"))]
 impl Drop for ThresholdTestGuard<'_> {
     fn drop(&mut self) {
         #[cfg(any(test, feature = "parallel"))]
