@@ -1,3 +1,9 @@
+//! Execution-path types consumed by dispatch.
+//!
+//! Defines `ExecPath` (Serial / Simd / Parallel), the parallel
+//! `ParallelExecStrategy`, and the `ParallelGuard` RAII sentinel
+//! (with its placeholder variant for non-parallel builds).
+
 use core::marker::PhantomData;
 
 #[cfg(feature = "parallel")]
@@ -95,10 +101,14 @@ impl ParallelExecStrategy {
         Self { chunk_size: None, max_workers: None }
     }
 
+    /// Suggested chunk size for parallel processing, or `None` to let
+    /// the parallel backend decide.
     pub(crate) fn chunk_size(&self) -> Option<usize> {
         self.chunk_size
     }
 
+    /// Maximum worker count for the parallel backend, or `None` for
+    /// the rayon default pool size.
     pub(crate) fn max_workers(&self) -> Option<usize> {
         self.max_workers
     }
@@ -131,6 +141,8 @@ pub struct ParallelGuard {
 
 #[cfg(feature = "parallel")]
 impl Drop for ParallelGuard {
+    /// Clears the thread-local `IN_PARALLEL` flag, allowing nested
+    /// `select_exec_path` calls to re-enter the parallel region.
     fn drop(&mut self) {
         IN_PARALLEL.with(|flag| flag.set(false));
     }

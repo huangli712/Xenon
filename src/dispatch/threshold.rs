@@ -1,3 +1,10 @@
+//! Runtime-overridable dispatch thresholds.
+//!
+//! Compile-time defaults, lock-free atomic storage, and the
+//! public `set_parallel_threshold` / `set_simd_threshold` /
+//! `reset_parallel_threshold` / `reset_simd_threshold` API used
+//! by benchmarks and integration tests.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ---------------------------------------------------------------------------

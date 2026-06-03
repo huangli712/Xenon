@@ -1,3 +1,10 @@
+//! Test-support utilities for threshold mutation.
+//!
+//! Holds `ThresholdTestLock` (the global mutex marker) and
+//! `ThresholdTestGuard` (the RAII snapshot/restore guard) so that
+//! tests can safely mutate the global threshold atomics without
+//! leaking state to subsequent tests.
+
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
 use std::sync::{Mutex, MutexGuard};
 
@@ -68,6 +75,7 @@ impl ThresholdTestGuard<'_> {
 
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
 impl Default for ThresholdTestGuard<'_> {
+    /// Delegates to [`ThresholdTestGuard::new`].
     fn default() -> Self {
         Self::new()
     }
@@ -75,6 +83,7 @@ impl Default for ThresholdTestGuard<'_> {
 
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
 impl Drop for ThresholdTestGuard<'_> {
+    /// Restores the captured parallel and SIMD thresholds.
     fn drop(&mut self) {
         #[cfg(any(test, feature = "parallel"))]
         set_parallel_threshold(self.parallel_threshold);

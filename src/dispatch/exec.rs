@@ -1,3 +1,9 @@
+//! Execution-path selection engine.
+//!
+//! Provides `select_exec_path()`, the thread-local `IN_PARALLEL` flag,
+//! guard-acquisition helpers, the `with_parallel_worker_context` TLS
+//! wrapper, and the private `dispatch_invalid_argument` error constructor.
+
 #[cfg(feature = "parallel")]
 use core::marker::PhantomData;
 
