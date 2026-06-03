@@ -23,7 +23,10 @@ where
     fn as_view(&self) -> crate::tensor::TensorView<'_, A, D> {
         // SAFETY: Storage guarantees valid base pointer + len.
         let storage = unsafe {
-            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
+            ViewRepr::from_raw_parts(
+                self.storage.as_ptr(),
+                self.storage.len()
+            )
         };
         unsafe {
             TensorBase::new_unchecked(
@@ -54,15 +57,15 @@ where
     ///
     /// Returns `XenonError::InvalidAxis` if `axis` is out of range for the
     /// tensor's dimensionality.
-    pub fn axis_iter(&self, axis: Axis) -> Result<AxisIter<'_, A, D>, XenonError>
+    pub fn axis_iter(
+        &self, axis: Axis
+    ) -> Result<AxisIter<'_, A, D>, XenonError>
     where
         D: RemoveAxis,
     {
         AxisIter::new(self.as_view(), axis)
     }
 }
-
-// ── Mutable entry methods ──
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -72,7 +75,10 @@ where
     fn as_view_mut(&mut self) -> crate::tensor::TensorViewMut<'_, A, D> {
         // SAFETY: StorageMut guarantees valid base pointer + len.
         let storage = unsafe {
-            ViewMutRepr::from_raw_parts_mut(self.storage.as_mut_ptr(), self.storage.len())
+            ViewMutRepr::from_raw_parts_mut(
+                self.storage.as_mut_ptr(),
+                self.storage.len()
+            )
         };
         unsafe {
             TensorBase::new_unchecked(
@@ -103,7 +109,9 @@ where
     ///
     /// Returns `XenonError::InvalidAxis` if `axis` is out of range for the
     /// tensor's dimensionality.
-    pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>
+    pub fn axis_iter_mut(
+        &mut self, axis: Axis
+    ) -> Result<AxisIterMut<'_, A, D>, XenonError>
     where
         D: RemoveAxis,
     {
@@ -111,13 +119,11 @@ where
     }
 }
 
-// ── Tests ──
-
 #[cfg(test)]
 mod tests {
     use super::TensorBase;
-    use crate::dimension::{Axis, Dimension, IxDyn};
     use crate::error::XenonError;
+    use crate::dimension::{Axis, Dimension, IxDyn};
 
     unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(
         data: Vec<A>,
