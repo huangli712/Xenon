@@ -24,6 +24,7 @@ All notable changes to this project are documented in this file.
 - Replaced `crate::iter::` with `super::` sibling imports throughout iter submodules.
 - Replaced fully-qualified paths with local imports in iter test code.
 - Standardized unsafe block wrapping, doc comment line lengths, and import ordering.
+
 ## [v0.0.20] — 2026-06-02
 
 ### Added
