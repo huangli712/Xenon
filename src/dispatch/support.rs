@@ -42,9 +42,15 @@ static THRESHOLD_TEST_LOCK: Mutex<ThresholdTestLock> = Mutex::new(ThresholdTestL
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
 #[derive(Debug)]
 pub struct ThresholdTestGuard<'lock> {
+    /// Held for the guard's lifetime to serialize threshold-mutating
+    /// tests. Underscore-prefixed: never read, only its `Drop` matters.
     _lock: MutexGuard<'lock, ThresholdTestLock>,
+
+    /// Parallel threshold captured at construction, restored on drop.
     #[cfg(any(test, feature = "parallel"))]
     parallel_threshold: usize,
+
+    /// SIMD threshold captured at construction, restored on drop.
     #[cfg(any(test, feature = "simd"))]
     simd_threshold: usize,
 }
