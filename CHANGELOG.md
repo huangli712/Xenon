@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 
 - `serial_test` dev-dependency for thread-safe threshold-mutating tests.
 - Shared `ThresholdTestGuard` in `dispatch.rs` for parallel/SIMD threshold isolation.
-- Integration test: SIMD-vs-serial consistency for Complex<f64> (add, sum, dot) at N=2048.
+- Integration test: SIMD-vs-serial consistency for `Complex<f64>` (`add`, `sum`, `dot`) at N=2048.
 - #[serial] to all simd and parallel integration tests to eliminate threshold races.
 
 ### Changed
