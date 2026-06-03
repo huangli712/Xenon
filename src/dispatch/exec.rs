@@ -466,7 +466,10 @@ mod tests {
         let _threshold_guard = ThresholdTestGuard::new();
         let get_grade = |len: usize| -> u8 {
             let (path, guard) = select_exec_path(len, true, true);
+            #[cfg(feature = "parallel")]
             drop(guard);
+            #[cfg(not(feature = "parallel"))]
+            let _ = guard;
             path_grade(path)
         };
         let sizes = [0usize, 1, 63, 64, 65_535, 65_536, 65_537];
