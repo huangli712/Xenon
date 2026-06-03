@@ -7,9 +7,10 @@
 use core::marker::PhantomData;
 
 #[cfg(feature = "parallel")]
-use super::exec::{dispatch_invalid_argument, IN_PARALLEL};
-#[cfg(feature = "parallel")]
 use crate::error::Result;
+
+#[cfg(feature = "parallel")]
+use super::exec::{dispatch_invalid_argument, IN_PARALLEL};
 
 // ----------------------------------------------------------------------------
 // Execution path types
@@ -100,8 +101,8 @@ impl ParallelExecStrategy {
         Self { chunk_size: None, max_workers: None }
     }
 
-    /// Suggested chunk size for parallel processing, or `None` to let
-    /// the parallel backend decide.
+    /// Suggested chunk size for parallel processing, or `None` to let the
+    /// parallel backend decide.
     pub(crate) fn chunk_size(&self) -> Option<usize> {
         self.chunk_size
     }
