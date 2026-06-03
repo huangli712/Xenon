@@ -244,7 +244,9 @@ mod tests {
             })
         ));
 
-        let mut tensor_mut = unsafe { make_tensor(vec![0.0_f64; 6], Ix2(2, 3)) };
+        let mut tensor_mut = unsafe {
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
+        };
         assert!(matches!(
             tensor_mut.axis_iter_mut(Axis(2)),
             Err(XenonError::InvalidAxis {
@@ -261,7 +263,9 @@ mod tests {
     fn test_elements_large_tensor_count() {
         let n0: usize = 100;
         let n1: usize = 1_000;
-        let tensor = unsafe { make_tensor(vec![0_i32; 100_000], Ix2(n0, n1)) };
+        let tensor = unsafe {
+            make_tensor(vec![0_i32; 100_000], Ix2(n0, n1))
+        };
         assert_eq!(tensor.iter().len(), n0 * n1);
         assert_eq!(tensor.iter().count(), n0 * n1);
     }
