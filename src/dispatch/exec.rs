@@ -180,8 +180,8 @@ mod tests {
         assert_eq!(path == ExecPath::Parallel, guard.is_some());
     }
 
-    /// Verify a nested `select_exec_path()` falls back to `Serial`
-    /// when an outer parallel guard is alive.
+    /// Verify a nested `select_exec_path()` falls back to `Serial` when an
+    /// outer parallel guard is alive.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_nested_select_falls_back_to_serial() {
@@ -192,8 +192,8 @@ mod tests {
         assert!(guard.is_none());
     }
 
-    /// Verify a nested SIMD-eligible call inside a worker context
-    /// still falls back to `Serial`.
+    /// Verify a nested SIMD-eligible call inside a worker context still
+    /// falls back to `Serial`.
     #[cfg(all(feature = "parallel", feature = "simd"))]
     #[test]
     fn test_nested_simd_eligible_select_falls_back_to_serial() {
@@ -207,7 +207,7 @@ mod tests {
         assert!(guard.is_none());
     }
 
-    // --- Threshold configuration ---------------------------------------------
+    // --- Threshold configuration --------------------------------------------
 
     /// Verify runtime threshold override is honored by `select_exec_path()`.
     #[cfg(feature = "parallel")]
@@ -270,7 +270,7 @@ mod tests {
         assert_eq!(get_simd_threshold(), DEFAULT_SIMD_THRESHOLD);
     }
 
-    // --- Full dispatch unit tests --------------------------------------------
+    // --- Full dispatch unit tests -------------------------------------------
 
     // --- Path selection — Serial ---
 
