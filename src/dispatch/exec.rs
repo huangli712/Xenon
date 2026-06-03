@@ -19,8 +19,7 @@ use super::get_parallel_threshold;
 #[cfg(feature = "simd")]
 use super::get_simd_threshold;
 
-use super::ExecPath;
-use super::ParallelGuard;
+use super::{ExecPath, ParallelGuard};
 
 // ----------------------------------------------------------------------------
 // Core dispatch functions
