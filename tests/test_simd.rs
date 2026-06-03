@@ -13,7 +13,7 @@ use xenon::complex::Complex;
 use xenon::dimension::Ix1;
 use xenon::{reset_simd_threshold, select_exec_path, set_simd_threshold};
 use xenon::layout::Strides;
-use xenon::tensor::{TensorView};
+use xenon::tensor::{Tensor1, TensorView};
 
 use serial_test::serial;
 
@@ -230,49 +230,109 @@ fn test_simd_fallback_small() {
 #[test]
 #[serial]
 fn test_simd_complex_path() {
-    // Verify that complex number operations are consistent regardless of path.
-    // The SIMD module supports Complex<f32> and Complex<f64> element-wise ops.
+    // Genuine SIMD-vs-serial consistency check for Complex<f64>.
+    //
+    // The `simd` module is `pub(crate)`, so this external integration test
+    // cannot call the kernels directly. Instead it drives the public Tensor
+    // API and flips the SIMD admission threshold to force each path on the
+    // SAME inputs:
+    //   * set_simd_threshold(1)         -> select_exec_path returns Simd
+    //   * set_simd_threshold(usize::MAX) -> sentinel, forces Serial
+    //     (see dispatch.rs: "Use usize::MAX to disable the SIMD path").
+    // Comparing the two runs needs no hand-computed expected values: the
+    // serial run IS the reference.
+    //
+    // N clears every complex kernel admission threshold so add/sum/dot all
+    // take the real SIMD path: element-wise=128, dot=512, sum=1024
+    // (08-simd §5.8 / W14).
+    const N: usize = 2048;
+
+    let a_data: Vec<Complex<f64>> = (0..N)
+        .map(|i| Complex::new((i as f64) * 0.5 - 512.0, (i as f64) * -0.25 + 128.0))
+        .collect();
+    let b_data: Vec<Complex<f64>> = (0..N)
+        .map(|i| Complex::new((i as f64) * -0.125 + 64.0, (i as f64) * 0.75 - 256.0))
+        .collect();
+
+    let a = Tensor1::from_shape_vec(Ix1(N), a_data.clone()).expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(N), b_data.clone()).expect("valid construction");
+
+    // Guard against a silent serial-vs-serial false positive: SIMD admission
+    // requires F-contiguous inputs, and at threshold=1 dispatch MUST pick the
+    // Simd path. If either precondition breaks, the comparison below would be
+    // meaningless, so assert them up front.
+    assert!(
+        a.is_f_contiguous() && b.is_f_contiguous(),
+        "inputs must be F-contiguous for the SIMD path to admit"
+    );
     set_simd_threshold(1);
-
-    // Complex<f64> serial operations.
-    let a: Vec<Complex<f64>> = (0..128)
-        .map(|i| Complex::new(i as f64, (i as f64) * 2.0))
-        .collect();
-    let b: Vec<Complex<f64>> = (0..128)
-        .map(|i| Complex::new((255 - i) as f64, (i as f64) * 3.0))
-        .collect();
-
-    let serial_add: Vec<Complex<f64>> = a.iter().zip(b.iter()).map(|(x, y)| *x + *y).collect();
-    let serial_sum: Complex<f64> = a.iter().copied().fold(Complex::new(0.0, 0.0), |acc, x| acc + x);
-    let serial_dot: Complex<f64> = a
-        .iter()
-        .zip(b.iter())
-        .map(|(x, y)| *x * *y)
-        .fold(Complex::new(0.0, 0.0), |acc, x| acc + x);
-
-    for (idx, (av, bv)) in a.iter().zip(b.iter()).enumerate() {
-        let expected = *av + *bv;
-        assert!(
-            (expected.re - serial_add[idx].re).abs() < 1e-12,
-            "complex add element {idx} real mismatch"
-        );
-    }
-
-    // The serial sum should be non-trivial for these integer-valued Complex numbers.
-    assert!(
-        serial_sum.re > 0.0,
-        "complex sum real part must be positive"
+    let (path, _guard) = select_exec_path(a.len(), a.is_f_contiguous(), a.is_aligned());
+    assert_eq!(
+        path,
+        xenon::ExecPath::Simd,
+        "threshold=1 must select the SIMD path for N={N}"
     );
-    // serial_dot = sum_{i=0..127} a[i] * b[i]
-    // a[i] = (i, 2i), b[i] = (255-i, 3i) => a[i] * b[i] = (255i - 7i^2, i^2 + 510i)
-    assert!(
-        (serial_dot.re - (-2763520.0)).abs() < 1e-6,
-        "complex dot real part mismatch"
-    );
-    assert!(
-        (serial_dot.im - 4836160.0).abs() < 1e-6,
-        "complex dot imag part mismatch"
-    );
+
+    // SIMD path.
+    let add_simd = (&a + &b).expect("add must succeed");
+    let sum_simd = a.sum();
+    let dot_simd = a.dot(&b).expect("dot must succeed");
+
+    // Serial path (usize::MAX sentinel disables SIMD admission).
+    set_simd_threshold(usize::MAX);
+    let add_serial = (&a + &b).expect("add must succeed");
+    let sum_serial = a.sum();
+    let dot_serial = a.dot(&b).expect("dot must succeed");
 
     reset_simd_threshold();
+
+    // Element-wise add applies the same per-component f64 additions in both
+    // paths (no accumulation reordering), so results must be bit-identical.
+    let add_simd_s = add_simd.as_slice().expect("add result is contiguous");
+    let add_serial_s = add_serial.as_slice().expect("add result is contiguous");
+    assert_eq!(add_simd_s.len(), N, "add result length");
+    for (idx, (s, r)) in add_simd_s.iter().zip(add_serial_s.iter()).enumerate() {
+        assert_eq!(s.re, r.re, "complex add real mismatch at {idx}");
+        assert_eq!(s.im, r.im, "complex add imag mismatch at {idx}");
+    }
+
+    // Sum/dot accumulate in a different order under SIMD (lane-local partials
+    // + horizontal merge) than the serial sequential fold, so compare within
+    // the documented reduction tolerance (13-reduction §6.3, 12-matrix §10.1)
+    // rather than bit-exactly.
+    let max_abs = a_data
+        .iter()
+        .chain(b_data.iter())
+        .map(|c| c.re.abs().max(c.im.abs()))
+        .fold(0.0_f64, f64::max);
+    let sum_tol = (4.0 * f64::EPSILON * N as f64 * max_abs).max(4.0 * f64::MIN_POSITIVE);
+    assert!(
+        (sum_simd.re - sum_serial.re).abs() <= sum_tol,
+        "complex sum real mismatch: simd={} serial={} tol={sum_tol}",
+        sum_simd.re,
+        sum_serial.re
+    );
+    assert!(
+        (sum_simd.im - sum_serial.im).abs() <= sum_tol,
+        "complex sum imag mismatch: simd={} serial={} tol={sum_tol}",
+        sum_simd.im,
+        sum_serial.im
+    );
+
+    let max_norm_a = a_data.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+    let max_norm_b = b_data.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+    let dot_tol =
+        (16.0 * f64::EPSILON * N as f64 * max_norm_a * max_norm_b).max(4.0 * f64::MIN_POSITIVE);
+    assert!(
+        (dot_simd.re - dot_serial.re).abs() <= dot_tol,
+        "complex dot real mismatch: simd={} serial={} tol={dot_tol}",
+        dot_simd.re,
+        dot_serial.re
+    );
+    assert!(
+        (dot_simd.im - dot_serial.im).abs() <= dot_tol,
+        "complex dot imag mismatch: simd={} serial={} tol={dot_tol}",
+        dot_simd.im,
+        dot_serial.im
+    );
 }
