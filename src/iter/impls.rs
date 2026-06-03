@@ -161,13 +161,16 @@ mod tests {
         assert_eq!(after, vec![2, 3, 4, 5]);
     }
 
-    /// Verifies that `axis_iter_mut` yields mutable subviews whose elements can
-    /// be modified through nested `iter_mut`, and the changes are visible when
-    /// the tensor is iterated afterwards.
+    /// Verifies that `axis_iter_mut` yields mutable subviews whose elements
+    /// can be modified through nested `iter_mut`, and the changes are visible
+    /// when the tensor is iterated afterwards.
     #[test]
     fn test_axis_iter_mut_integration() {
-        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
-        for mut row in tensor.axis_iter_mut(Axis(0)).expect("Axis(0) is valid") {
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2))
+        };
+        for mut row in
+            tensor.axis_iter_mut(Axis(0)).expect("Axis(0) is valid") {
             for value in row.iter_mut() {
                 *value += 10;
             }
