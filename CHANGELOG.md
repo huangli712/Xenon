@@ -7,7 +7,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Test: `AxisIterMut`/`IndexedIterMut`/`IterMut`/`StrideState` tests (write, empty, 3D, Ix0, size_hint).
-- Field and method doc comments to all iter submodules (Iter, IterMut, StrideState, AxisIter, IndexedIter).
+- Field and method doc comments to all iter submodules (`Iter`, `IterMut`, `StrideState`, `AxisIter`, `IndexedIter`).
 - Module-level docs to axis, impls, and indexed modules.
 
 ### Removed
@@ -141,10 +141,6 @@ All notable changes to this project are documented in this file.
 - Moved inline `use` to top-level test imports in `transpose.rs`.
 - Cleaned up shape module docs with concise descriptions.
 
-### Fixed
-
-- None.
-
 ## [v0.0.15] — 2026-05-30
 
 ### Added
@@ -187,9 +183,6 @@ All notable changes to this project are documented in this file.
 - Consolidated test imports in `unique.rs` using pre-imported short paths.
 - Replaced fully-qualified `crate::dimension::IxDyn` with imported `IxDyn`.
 - Converted `///` SAFETY doc comments to `//` in `owned.rs`.
-
-### Fixed
-
 - Escaped angle brackets in `unique.rs` module doc to prevent HTML parsing.
 
 ## [v0.0.13] — 2026-05-29
@@ -220,9 +213,6 @@ All notable changes to this project are documented in this file.
 - Replaced fully-qualified paths with local imports throughout storage module.
 - Converted `///` SAFETY doc comments to `//` comments on unsafe impl blocks in `owned.rs`.
 - Reorganized `storage/mod.rs` declarations and re-exports.
-
-### Fixed
-
 - Broken intra-doc links for `pub(crate)` items across storage module.
 
 ## [v0.0.12] — 2026-05-28
@@ -245,9 +235,6 @@ All notable changes to this project are documented in this file.
 - Moved `is_aligned`/`is_aligned_to` from `strides.rs` to `flags.rs`, then to dedicated `aligned.rs`.
 - Switched all callers from `compute_f_strides` to `Strides::f_contiguous()`.
 - Replaced fully-qualified paths with local imports throughout element module.
-
-### Fixed
-
 - Intra-doc links for `pub(crate)` items.
 
 ## [v0.0.11] — 2026-05-28
@@ -293,9 +280,6 @@ All notable changes to this project are documented in this file.
 - Colocated `Reverse`/`RemoveAxis`/`Index`/`From` impls with respective `IxN` structs.
 - Moved `into_dyn`/`try_from_dyn` methods next to each `IxN` struct definition.
 - Added `///` doc comments to all `Reverse`/`RemoveAxis` impls.
-
-### Fixed
-
 - Missing `IntoDimension` import in `types.rs` test module.
 
 
@@ -347,9 +331,6 @@ All notable changes to this project are documented in this file.
 - Replaced Python regression reporter with Rust binary (`benches/tool/bench-report`).
 - Extended clippy config with `disallowed-methods` (transmute).
 - Added type-complexity and too-many-arguments thresholds to clippy config.
-
-### Fixed
-
 - `.gitignore` patterns for `.sisyphus`, `.omo`, `__pycache__` now dir-specific.
 
 ## [v0.0.6] — 2026-05-25
@@ -378,7 +359,4 @@ All notable changes to this project are documented in this file.
 - `ParallelGuard` now derives `Debug`; `TensorBase` derives `Debug`.
 - Gated parallel threshold functions behind feature flags.
 - Simplified `SimdElement` trait interface.
-
-### Fixed
-
 - Synchronized test version assertion and cleaned up inactive work-in-progress test placeholders.
