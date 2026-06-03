@@ -328,35 +328,6 @@ pub(crate) fn try_dot_complex_f64_impl(
     Some(arch.dispatch(ComplexDotF64Kernel { lhs, rhs }))
 }
 
-// ---------------------------------------------------------------------------
-// Complex element-wise kernels (W14T11 — Neg)
-// ---------------------------------------------------------------------------
-
-pub(crate) struct ComplexNegF32Kernel<'a> {
-    pub(crate) src: &'a [Complex<f32>],
-    pub(crate) dst: &'a mut [Complex<f32>],
-}
-
-impl WithSimd for ComplexNegF32Kernel<'_> {
-    type Output = ();
-
-    fn with_simd<S: Simd>(self, simd: S) {
-        let n = self.src.len();
-        let src_f32 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f32, n * 2) };
-        let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
-        let (src_body, src_tail) = S::as_simd_f32s(src_f32);
-        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
-
-        for i in 0..src_body.len() {
-            dst_body[i] = simd.neg_f32s(src_body[i]);
-        }
-        for i in 0..src_tail.len() {
-            dst_tail[i] = -src_tail[i];
-        }
-    }
-}
-
 /// Dispatches Complex<f32> binary element-wise op to the kernel.
 pub(crate) fn dispatch_binary_complex_f32(
     op: BinaryOp,
@@ -388,35 +359,9 @@ pub(crate) fn dispatch_unary_complex_f32(
     }
     let arch = get_arch();
     match op {
-        UnaryOp::Neg => arch.dispatch(ComplexNegF32Kernel { src, dst }),
+        UnaryOp::Neg => arch.dispatch(super::unary::ComplexNegF32Kernel { src, dst }),
     }
     true
-}
-
-// Complex<f64> element-wise kernels (Neg)
-pub(crate) struct ComplexNegF64Kernel<'a> {
-    pub(crate) src: &'a [Complex<f64>],
-    pub(crate) dst: &'a mut [Complex<f64>],
-}
-
-impl WithSimd for ComplexNegF64Kernel<'_> {
-    type Output = ();
-
-    fn with_simd<S: Simd>(self, simd: S) {
-        let n = self.src.len();
-        let src_f64 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
-        let dst_f64 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
-        let (src_body, src_tail) = S::as_simd_f64s(src_f64);
-        let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
-
-        for i in 0..src_body.len() {
-            dst_body[i] = simd.neg_f64s(src_body[i]);
-        }
-        for i in 0..src_tail.len() {
-            dst_tail[i] = -src_tail[i];
-        }
-    }
 }
 
 pub(crate) fn dispatch_binary_complex_f64(
@@ -448,7 +393,7 @@ pub(crate) fn dispatch_unary_complex_f64(
     }
     let arch = get_arch();
     match op {
-        UnaryOp::Neg => arch.dispatch(ComplexNegF64Kernel { src, dst }),
+        UnaryOp::Neg => arch.dispatch(super::unary::ComplexNegF64Kernel { src, dst }),
     }
     true
 } 

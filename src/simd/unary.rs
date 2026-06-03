@@ -2,6 +2,8 @@
 
 use pulp::{Simd, WithSimd};
 
+use crate::complex::Complex;
+
 // ---------------------------------------------------------------------------
 // Neg kernel
 // ---------------------------------------------------------------------------
@@ -35,6 +37,64 @@ impl WithSimd for NegKernel<'_, f64> {
     fn with_simd<S: Simd>(self, simd: S) {
         let (src_body, src_tail) = S::as_simd_f64s(self.src);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(self.dst);
+
+        for i in 0..src_body.len() {
+            dst_body[i] = simd.neg_f64s(src_body[i]);
+        }
+        for i in 0..src_tail.len() {
+            dst_tail[i] = -src_tail[i];
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Complex<f32> Neg kernel
+// ---------------------------------------------------------------------------
+
+pub(crate) struct ComplexNegF32Kernel<'a> {
+    pub(crate) src: &'a [Complex<f32>],
+    pub(crate) dst: &'a mut [Complex<f32>],
+}
+
+impl WithSimd for ComplexNegF32Kernel<'_> {
+    type Output = ();
+
+    fn with_simd<S: Simd>(self, simd: S) {
+        let n = self.src.len();
+        let src_f32 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f32, n * 2) };
+        let dst_f32 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let (src_body, src_tail) = S::as_simd_f32s(src_f32);
+        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
+
+        for i in 0..src_body.len() {
+            dst_body[i] = simd.neg_f32s(src_body[i]);
+        }
+        for i in 0..src_tail.len() {
+            dst_tail[i] = -src_tail[i];
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Complex<f64> Neg kernel
+// ---------------------------------------------------------------------------
+
+pub(crate) struct ComplexNegF64Kernel<'a> {
+    pub(crate) src: &'a [Complex<f64>],
+    pub(crate) dst: &'a mut [Complex<f64>],
+}
+
+impl WithSimd for ComplexNegF64Kernel<'_> {
+    type Output = ();
+
+    fn with_simd<S: Simd>(self, simd: S) {
+        let n = self.src.len();
+        let src_f64 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
+        let dst_f64 =
+            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+        let (src_body, src_tail) = S::as_simd_f64s(src_f64);
+        let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
 
         for i in 0..src_body.len() {
             dst_body[i] = simd.neg_f64s(src_body[i]);
