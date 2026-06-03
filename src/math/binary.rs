@@ -645,6 +645,7 @@ where
             }
             #[cfg(not(feature = "parallel"))]
             {
+                let _ = guard;
                 apply_binary_scalar(&a_view, &b_view, op)
             }
         },
