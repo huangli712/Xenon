@@ -189,57 +189,6 @@ pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
     Some(arch.dispatch(super::dot::DotF64Kernel { lhs, rhs }))
 }
 
-// ---------------------------------------------------------------------------
-// Complex dot kernels (W14T6)
-// ---------------------------------------------------------------------------
-
-pub(crate) struct ComplexDotF32Kernel<'a> {
-    pub(crate) lhs: &'a [Complex<f32>],
-    pub(crate) rhs: &'a [Complex<f32>],
-}
-
-impl WithSimd for ComplexDotF32Kernel<'_> {
-    type Output = Complex<f32>;
-
-    fn with_simd<S: Simd>(self, simd: S) -> Complex<f32> {
-        // BLAS xdotc contract: dot = sum(conj(lhs_i) * rhs_i)
-        // conj(lhs) * rhs = (re_l * re_r + im_l * im_r) + (re_l * im_r - im_l * re_r)i
-        let mut re_acc = 0.0f32;
-        let mut im_acc = 0.0f32;
-        for i in 0..self.lhs.len() {
-            let l = self.lhs[i];
-            let r = self.rhs[i];
-            // conj(l) * r
-            re_acc += l.re * r.re + l.im * r.im;
-            im_acc += l.re * r.im - l.im * r.re;
-        }
-        let _ = simd;
-        Complex::new(re_acc, im_acc)
-    }
-}
-
-pub(crate) struct ComplexDotF64Kernel<'a> {
-    pub(crate) lhs: &'a [Complex<f64>],
-    pub(crate) rhs: &'a [Complex<f64>],
-}
-
-impl WithSimd for ComplexDotF64Kernel<'_> {
-    type Output = Complex<f64>;
-
-    fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
-        let mut re_acc = 0.0f64;
-        let mut im_acc = 0.0f64;
-        for i in 0..self.lhs.len() {
-            let l = self.lhs[i];
-            let r = self.rhs[i];
-            re_acc += l.re * r.re + l.im * r.im;
-            im_acc += l.re * r.im - l.im * r.re;
-        }
-        let _ = simd;
-        Complex::new(re_acc, im_acc)
-    }
-}
-
 pub(crate) fn try_dot_complex_f32_impl(
     lhs: &[Complex<f32>],
     rhs: &[Complex<f32>],
@@ -249,7 +198,7 @@ pub(crate) fn try_dot_complex_f32_impl(
         return None;
     }
     let arch = get_arch();
-    Some(arch.dispatch(ComplexDotF32Kernel { lhs, rhs }))
+    Some(arch.dispatch(super::dot::ComplexDotF32Kernel { lhs, rhs }))
 }
 
 pub(crate) fn try_dot_complex_f64_impl(
@@ -261,7 +210,7 @@ pub(crate) fn try_dot_complex_f64_impl(
         return None;
     }
     let arch = get_arch();
-    Some(arch.dispatch(ComplexDotF64Kernel { lhs, rhs }))
+    Some(arch.dispatch(super::dot::ComplexDotF64Kernel { lhs, rhs }))
 }
 
 /// Dispatches Complex<f32> binary element-wise op to the kernel.
