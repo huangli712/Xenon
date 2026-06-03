@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.24] — 2026-06-03
+
+### Added
+
+- Module-level doc comments to all dispatch submodules.
+- Field doc comments to `ThresholdTestGuard` fields.
+- Unit tests: `ThresholdTestGuard` construction, default, and threshold restoration.
+- `Default` impl for `ThresholdTestGuard`.
+
+### Removed
+
+- `serial_test` dev-dependency (replaced by `ThresholdTestGuard` mutex).
+- `#[serial]` annotations on all SIMD and parallel integration tests.
+- Redundant `reset_*_threshold()` cleanup calls.
+
+### Changed
+
+- Split `dispatch.rs` into `dispatch/` directory module: `mod.rs`, `threshold.rs`, `types.rs`, `exec.rs`, `support.rs`.
+- Replaced `#[allow(dead_code)]` with proper `#[cfg]` feature gates.
+- Made `ParallelGuard` unconditionally re-exported (both feature-gated and placeholder variants).
+- Consolidated imports and standardized section separator style across all dispatch submodules.
+- Replaced fully-qualified paths with imported types in `exec.rs` and `types.rs`.
+- Added blank line separators between `#[cfg]`-gated re-exports.
+
 ## [v0.0.23] — 2026-06-03
 
 ### Removed
