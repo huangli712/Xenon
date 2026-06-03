@@ -28,10 +28,8 @@ pub(crate) use threshold::{get_parallel_threshold, get_simd_threshold};
 // --- types re-exports ---
 
 pub use types::ExecPath;
-#[allow(unused_imports)]
-pub use types::ParallelGuard;
 #[cfg(feature = "parallel")]
-pub use types::ParallelExecStrategy;
+pub use types::{ParallelExecStrategy, ParallelGuard};
 
 // --- exec re-exports ---
 
