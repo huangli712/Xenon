@@ -179,11 +179,13 @@ mod tests {
         ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
+    use crate::dispatch::test_support::ThresholdTestGuard;
     use crate::layout::Strides;
     use crate::tensor::TensorView;
 
     #[test]
     fn test_par_map_parallel_path() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
 
         let data = [1.0f64, 2.0, 3.0, 4.0];
@@ -242,6 +244,7 @@ mod tests {
 
     #[test]
     fn test_par_zip_map_matches_serial_add() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
         let rhs_data = vec![10.0f64, 20.0, 30.0, 40.0];
@@ -261,6 +264,7 @@ mod tests {
 
     #[test]
     fn test_par_zip_map_broadcast_rhs_scalar() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
         // Length-1 broadcasted to length-4. The math layer normally

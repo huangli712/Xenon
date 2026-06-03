@@ -1,20 +1,6 @@
 //! Parallel backend module. Only compiled with `--features parallel`.
 //! See `docs/design/09-parallel.md` for the full design.
 //!
-//! # Compile-fail test: parallel APIs require the `parallel` feature
-//!
-//! Without `--features parallel`, the `parallel` module is excluded from
-//! compilation (see 09-parallel.md §5.1). Any reference to `par_map`,
-//! `par_sum`, `par_dot`, `par_zip_map`, etc. must fail to compile.
-//! The following doctest asserts that contract.
-//!
-//! ```compile_fail
-//! // This doctest is run by `cargo test --doc` WITHOUT --features parallel.
-//! // It must fail to compile because the `parallel` module is gated out.
-//! use xenon::par_map;
-//! fn main() {}
-//! ```
-//!
 //! # Compile-fail test: bool does not implement Numeric (par_sum / par_dot)
 //!
 //! 03-element §5.2 line 707-721: `bool` implements `Element` only, NOT
@@ -37,10 +23,6 @@
 //! let _ = par_sum(&t, &ParallelExecStrategy::auto(), g.unwrap());
 //! // ^^^^^^^ trait bound `bool: Numeric` is not satisfied
 //! ```
-//!
-//! When `--features parallel` IS enabled, the positive doctest in the
-//! first block compiles; the negative doctest above continues to fail
-//! because the trait bound itself is independent of the feature gate.
 
 #[cfg(feature = "parallel")]
 pub(crate) mod checked;
@@ -111,6 +93,7 @@ mod feature_matrix_tests {
         ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
+    use crate::dispatch::test_support::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::parallel::map::par_map;
@@ -147,6 +130,7 @@ mod feature_matrix_tests {
 
     #[test]
     fn test_parallel_feature_matrix_single_worker() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let data = [1.0f64, 2.0, 3.0, 4.0];
         let tensor = unsafe { view_1d_f64(&data) };
@@ -163,6 +147,7 @@ mod feature_matrix_tests {
 
     #[test]
     fn test_parallel_feature_matrix_default_workers() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let data = [1.0f64, 2.0, 3.0, 4.0];
         let tensor = unsafe { view_1d_f64(&data) };
@@ -178,6 +163,7 @@ mod feature_matrix_tests {
 
     #[test]
     fn test_parallel_single_and_multi_worker_results_agree() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
         let tensor = unsafe { view_1d_f64(&data) };

@@ -191,6 +191,7 @@ mod tests {
         ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
+    use crate::dispatch::test_support::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
@@ -238,6 +239,7 @@ mod tests {
 
     #[test]
     fn test_par_sum_serial_match_and_empty_identity() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
 
         let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
@@ -267,6 +269,7 @@ mod tests {
 
     #[test]
     fn test_par_dot_matches_serial_and_empty_identity() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
 
         let a_vec: Vec<f64> = (0..256).map(|i| i as f64).collect();
@@ -299,6 +302,7 @@ mod tests {
 
     #[test]
     fn test_par_dot_error_cases() {
+        let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let strategy = ParallelExecStrategy::auto();
 

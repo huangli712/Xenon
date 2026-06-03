@@ -35,7 +35,6 @@ impl WithSimd for AddF32Kernel<'_> {
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use super::*;
     use crate::simd::BinaryOp;
 
     fn assert_add_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {

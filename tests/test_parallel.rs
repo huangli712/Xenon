@@ -82,6 +82,8 @@ use xenon::par_map;
 use xenon::{par_dot, par_sum};
 #[cfg(feature = "parallel")]
 use xenon::tensor::{TensorBase, TensorView};
+#[cfg(feature = "parallel")]
+use serial_test::serial;
 
 #[cfg(feature = "parallel")]
 unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
@@ -113,6 +115,7 @@ where
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_sum_parallel_feature_consistency() {
     set_parallel_threshold(1);
     let data: Vec<f64> = (0..4096).map(|i| i as f64).collect();
@@ -136,6 +139,7 @@ fn test_sum_parallel_feature_consistency() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_par_add_consistency() {
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..2048).map(|i| i as f64 * 2.0).collect();
@@ -153,6 +157,7 @@ fn test_par_add_consistency() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_par_dot_consistency() {
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..256).map(|i| i as f64).collect();
@@ -178,6 +183,7 @@ fn test_par_dot_consistency() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_parallel_read() {
     set_parallel_threshold(1);
     let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
@@ -198,6 +204,7 @@ fn test_parallel_read() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_nested_parallel_falls_back_to_serial() {
     set_parallel_threshold(1);
     // First parallel call acquires the guard (marks thread as in-parallel).
@@ -217,6 +224,7 @@ fn test_nested_parallel_falls_back_to_serial() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_determinism_add_same_path() {
     set_parallel_threshold(1);
     // Same input -> same output for par_map.
@@ -237,6 +245,7 @@ fn test_determinism_add_same_path() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_determinism_sum_same_path() {
     set_parallel_threshold(1);
     let data: Vec<f64> = (0..4096).map(|i| i as f64).collect();
@@ -257,6 +266,7 @@ fn test_determinism_sum_same_path() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_determinism_dot_same_path() {
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..256).map(|i| i as f64).collect();
@@ -278,6 +288,7 @@ fn test_determinism_dot_same_path() {
 
 #[cfg(feature = "parallel")]
 #[test]
+#[serial]
 fn test_determinism_across_dispatch() {
     set_parallel_threshold(1);
     // Verify that dispatching through different parallel strategies on the

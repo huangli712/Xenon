@@ -371,13 +371,16 @@ fn dispatch_invalid_argument(
     }
 }
 
+/// Shared test-only infrastructure for serializing tests that mutate the
+/// global threshold atomics. Exposed as `pub(crate)` so unit tests in other
+/// modules (e.g. `parallel`) acquire the SAME lock and restore behavior
+/// instead of racing on threshold state through a competing mechanism.
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod test_support {
+    use super::{
+        get_parallel_threshold, get_simd_threshold, set_parallel_threshold, set_simd_threshold,
+    };
     use std::sync::{Mutex, MutexGuard};
-
-    #[cfg(feature = "parallel")]
-    use crate::error::{InvalidArgumentKind, XenonError};
 
     /// Marker type held inside `THRESHOLD_TEST_LOCK` to give the mutex
     /// a distinct type without carrying meaningful data.
@@ -391,7 +394,7 @@ mod tests {
     /// RAII guard that captures the current thresholds on construction
     /// and restores them on drop, so threshold-mutating tests do not
     /// leak state to subsequent tests.
-    struct ThresholdTestGuard<'lock> {
+    pub(crate) struct ThresholdTestGuard<'lock> {
         _lock: MutexGuard<'lock, ThresholdTestLock>,
         parallel_threshold: usize,
         simd_threshold: usize,
@@ -400,7 +403,7 @@ mod tests {
     impl ThresholdTestGuard<'_> {
         /// Acquire the global threshold lock (recovering from poisoning)
         /// and snapshot the current parallel and SIMD thresholds.
-        fn new() -> Self {
+        pub(crate) fn new() -> Self {
             let lock = match THRESHOLD_TEST_LOCK.lock() {
                 Ok(lock) => lock,
                 Err(poisoned) => poisoned.into_inner(),
@@ -419,6 +422,15 @@ mod tests {
             set_simd_threshold(self.simd_threshold);
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::test_support::ThresholdTestGuard;
+
+    #[cfg(feature = "parallel")]
+    use crate::error::{InvalidArgumentKind, XenonError};
 
     // === ExecPath enum smoke ===
 
