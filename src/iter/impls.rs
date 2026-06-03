@@ -209,7 +209,9 @@ mod tests {
             tensor.axis_iter(Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
         ));
-        let mut tensor_mut = unsafe { make_tensor(vec![0.0_f64; 6], Ix2(2, 3)) };
+        let mut tensor_mut = unsafe {
+            make_tensor(vec![0.0_f64; 6], Ix2(2, 3))
+        };
         assert!(matches!(
             tensor_mut.axis_iter_mut(Axis(usize::MAX)),
             Err(XenonError::InvalidAxis { .. })
