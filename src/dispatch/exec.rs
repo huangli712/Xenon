@@ -14,12 +14,13 @@ use core::cell::Cell;
 use std::borrow::Cow;
 
 #[cfg(feature = "parallel")]
-use super::threshold::get_parallel_threshold;
+use super::get_parallel_threshold;
 
 #[cfg(feature = "simd")]
-use super::threshold::get_simd_threshold;
+use super::get_simd_threshold;
 
-use super::types::{ExecPath, ParallelGuard};
+use super::ExecPath;
+use super::ParallelGuard;
 
 // ----------------------------------------------------------------------------
 // Core dispatch functions
