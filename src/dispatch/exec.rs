@@ -15,13 +15,15 @@ use std::borrow::Cow;
 
 #[cfg(feature = "parallel")]
 use super::threshold::get_parallel_threshold;
+
 #[cfg(feature = "simd")]
 use super::threshold::get_simd_threshold;
+
 use super::types::{ExecPath, ParallelGuard};
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Core dispatch functions
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Selects the optimal execution path for an operation, atomically
 /// binding "select Parallel" with "enter the parallel region".
