@@ -165,6 +165,7 @@ fn test_simd_fallback_small() {
     let tensor = unsafe { view_1d_f64(&small_data) };
 
     // With threshold at 1024 and len=3, select_exec_path must return Serial.
+    set_simd_threshold(1024);
     let (path, _guard) = select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
     assert_eq!(
         path,
@@ -177,6 +178,7 @@ fn test_simd_fallback_small() {
     assert_eq!(serial_sum, 6.0);
 
     // Also test with f32.
+    set_simd_threshold(1024);
     let small_f32: Vec<f32> = vec![1.0, 2.0, 3.0];
     let _tensor_f32 = unsafe { view_1d_f32(&small_f32) };
     let (path_f32, _guard_f32) = select_exec_path(
@@ -191,6 +193,7 @@ fn test_simd_fallback_small() {
     );
 
     // Test with i32.
+    set_simd_threshold(1024);
     let small_i32: Vec<i32> = vec![1, 2, 3];
     let _tensor_i32 = unsafe { view_1d_i32(&small_i32) };
     let (path_i32, _guard_i32) = select_exec_path(
@@ -205,6 +208,7 @@ fn test_simd_fallback_small() {
     );
 
     // Test with i64.
+    set_simd_threshold(1024);
     let small_i64: Vec<i64> = vec![10, 20, 30];
     let _tensor_i64 = unsafe { view_1d_i64(&small_i64) };
     let (path_i64, _guard_i64) = select_exec_path(
@@ -256,9 +260,15 @@ fn test_simd_complex_path() {
         serial_sum.re > 0.0,
         "complex sum real part must be positive"
     );
+    // serial_dot = sum_{i=0..127} a[i] * b[i]
+    // a[i] = (i, 2i), b[i] = (255-i, 3i) => a[i] * b[i] = (255i - 7i^2, i^2 + 510i)
     assert!(
-        serial_dot.re > 0.0,
-        "complex dot real part must be positive"
+        (serial_dot.re - (-2763520.0)).abs() < 1e-6,
+        "complex dot real part mismatch"
+    );
+    assert!(
+        (serial_dot.im - 4836160.0).abs() < 1e-6,
+        "complex dot imag part mismatch"
     );
 
     reset_simd_threshold();
