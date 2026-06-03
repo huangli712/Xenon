@@ -14,6 +14,9 @@ use core::cell::Cell;
 use std::borrow::Cow;
 
 #[cfg(feature = "parallel")]
+use crate::error::{InvalidArgumentKind, XenonError};
+
+#[cfg(feature = "parallel")]
 use super::get_parallel_threshold;
 
 #[cfg(feature = "simd")]
@@ -70,19 +73,20 @@ pub fn select_exec_path(
     // Discard unused params under feature-disabled builds.
     #[cfg(not(feature = "parallel"))]
     let _ = (len, is_contiguous);
+
     #[cfg(not(feature = "simd"))]
     let _ = alignment_ok;
 
     (ExecPath::Serial, None)
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Thread-local IN_PARALLEL flag and guard acquisition helpers
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-// Per-thread flag indicating the current thread is inside a
-// library-internal parallel region. Set by `try_acquire_guard()` when
-// a `ParallelGuard` is issued; cleared by the guard's `Drop`.
+// Per-thread flag indicating the current thread is inside a library-internal
+// parallel region. Set by `try_acquire_guard()` when a `ParallelGuard` is
+// issued; cleared by the guard's `Drop`.
 //
 // Read by `select_exec_path()` to force nested calls to fall back to
 // `Serial`, preventing rayon worker threads from re-entering rayon.
@@ -107,9 +111,9 @@ fn is_in_parallel() -> bool {
     IN_PARALLEL.with(|flag| flag.get())
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // with_parallel_worker_context — worker TLS helper
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Runs `f` while marking the current worker thread as being inside a
 /// Xenon-internal parallel region.
@@ -136,9 +140,9 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
     })
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Error construction helper
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Construct a dispatch-specific `InvalidArgument` error with an
 /// `InvalidConfig` detail. Private to `dispatch` so the error module
@@ -148,10 +152,10 @@ pub(crate) fn dispatch_invalid_argument(
     argument: impl Into<Cow<'static, str>>,
     constraint: impl Into<Cow<'static, str>>,
     actual: impl Into<Cow<'static, str>>,
-) -> crate::error::XenonError {
-    crate::error::XenonError::InvalidArgument {
+) -> XenonError {
+    XenonError::InvalidArgument {
         operation: Cow::Borrowed("dispatch"),
-        kind: crate::error::InvalidArgumentKind::InvalidConfig {
+        kind: InvalidArgumentKind::InvalidConfig {
             argument: argument.into(),
             constraint: constraint.into(),
             actual: actual.into(),
