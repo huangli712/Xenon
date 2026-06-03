@@ -14,33 +14,6 @@ use pulp::{Simd, WithSimd};
 const ELEMENTWISE_F32_F64_THRESHOLD: usize = 64;
 
 // ---------------------------------------------------------------------------
-// f32 binary kernel (Div)
-// ---------------------------------------------------------------------------
-
-pub(crate) struct DivF32Kernel<'a> {
-    pub(crate) lhs: &'a [f32],
-    pub(crate) rhs: &'a [f32],
-    pub(crate) dst: &'a mut [f32],
-}
-
-impl WithSimd for DivF32Kernel<'_> {
-    type Output = ();
-
-    fn with_simd<S: Simd>(self, simd: S) {
-        let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
-        let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
-        let (dst_body, dst_tail) = S::as_mut_simd_f32s(self.dst);
-
-        for i in 0..lhs_body.len() {
-            dst_body[i] = simd.div_f32s(lhs_body[i], rhs_body[i]);
-        }
-        for i in 0..lhs_tail.len() {
-            dst_tail[i] = lhs_tail[i] / rhs_tail[i];
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // f64 binary kernels (Add/Sub/Mul/Div)
 // ---------------------------------------------------------------------------
 
@@ -194,7 +167,7 @@ pub(crate) fn dispatch_binary_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32], dst: &
         BinaryOp::Add => arch.dispatch(super::binary::AddF32Kernel { lhs, rhs, dst }),
         BinaryOp::Sub => arch.dispatch(super::binary::SubF32Kernel { lhs, rhs, dst }),
         BinaryOp::Mul => arch.dispatch(super::binary::MulF32Kernel { lhs, rhs, dst }),
-        BinaryOp::Div => arch.dispatch(DivF32Kernel { lhs, rhs, dst }),
+        BinaryOp::Div => arch.dispatch(super::binary::DivF32Kernel { lhs, rhs, dst }),
     }
     true
 }
