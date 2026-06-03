@@ -141,12 +141,16 @@ mod tests {
     /// and mutation through `iter_mut` is observable via `iter`.
     #[test]
     fn test_tensor_iter_integration() {
-        let mut tensor = unsafe { make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2)) };
+        let mut tensor = unsafe {
+            make_tensor(vec![1i32, 2, 3, 4], Ix2(2, 2))
+        };
         assert_eq!(tensor.iter().len(), 4);
 
-        let (idx0, _) = tensor.indexed_iter().next().expect("tensor has 4 elements");
+        let (idx0, _) = tensor
+            .indexed_iter()
+            .next()
+            .expect("tensor has 4 elements");
         assert_eq!(idx0, Ix2(0, 0));
-
         assert_eq!(
             tensor.axis_iter(Axis(1)).expect("Axis(1) is valid").len(),
             2
