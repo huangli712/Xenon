@@ -91,3 +91,72 @@ impl Drop for ThresholdTestGuard<'_> {
         set_simd_threshold(self.simd_threshold);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::threshold::{DEFAULT_PARALLEL_THRESHOLD, DEFAULT_SIMD_THRESHOLD};
+
+    /// Verify guard can be constructed and dropped (proves mutex
+    /// acquisition does not deadlock).
+    #[test]
+    fn test_construction_and_drop() {
+        let guard = ThresholdTestGuard::new();
+        drop(guard);
+    }
+
+    /// Verify `Default` produces a valid guard.
+    #[test]
+    fn test_default() {
+        let guard = ThresholdTestGuard::default();
+        drop(guard);
+    }
+
+    /// Verify drop restores the parallel threshold after mutation.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_restores_parallel_threshold() {
+        let original = get_parallel_threshold();
+        {
+            let _guard = ThresholdTestGuard::new();
+            set_parallel_threshold(0);
+            assert_eq!(get_parallel_threshold(), 0);
+        }
+        assert_eq!(get_parallel_threshold(), original);
+    }
+
+    /// Verify drop restores the SIMD threshold after mutation.
+    #[cfg(feature = "simd")]
+    #[test]
+    fn test_restores_simd_threshold() {
+        let original = get_simd_threshold();
+        {
+            let _guard = ThresholdTestGuard::new();
+            set_simd_threshold(usize::MAX);
+            assert_eq!(get_simd_threshold(), usize::MAX);
+        }
+        assert_eq!(get_simd_threshold(), original);
+    }
+
+    /// Verify drop restores both thresholds independently.
+    #[cfg(all(feature = "parallel", feature = "simd"))]
+    #[test]
+    fn test_restores_both_thresholds() {
+        let par_orig = get_parallel_threshold();
+        let simd_orig = get_simd_threshold();
+        {
+            let _guard = ThresholdTestGuard::new();
+            set_parallel_threshold(0);
+            set_simd_threshold(usize::MAX);
+        }
+        assert_eq!(get_parallel_threshold(), par_orig);
+        assert_eq!(get_simd_threshold(), simd_orig);
+    }
+
+    /// Verify the compile-time defaults match the documented values.
+    #[test]
+    fn test_default_threshold_values() {
+        assert_eq!(DEFAULT_PARALLEL_THRESHOLD, 65_536);
+        assert_eq!(DEFAULT_SIMD_THRESHOLD, 64);
+    }
+}
