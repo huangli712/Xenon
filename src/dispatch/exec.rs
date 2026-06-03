@@ -13,8 +13,10 @@ use core::cell::Cell;
 #[cfg(feature = "parallel")]
 use std::borrow::Cow;
 
-#[cfg(any(feature = "parallel", feature = "simd"))]
-use super::threshold::{get_parallel_threshold, get_simd_threshold};
+#[cfg(feature = "parallel")]
+use super::threshold::get_parallel_threshold;
+#[cfg(feature = "simd")]
+use super::threshold::get_simd_threshold;
 use super::types::{ExecPath, ParallelGuard};
 
 // ---------------------------------------------------------------------------
