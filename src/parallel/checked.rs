@@ -92,7 +92,7 @@ mod tests {
         ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
-    use crate::dispatch::test_support::ThresholdTestGuard;
+    use crate::dispatch::ThresholdTestGuard;
     use crate::error::InvalidArgumentKind;
     use crate::layout::Strides;
     use crate::tensor::TensorView;

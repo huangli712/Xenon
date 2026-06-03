@@ -72,7 +72,7 @@ use common::assertions::{
 
 #[cfg(feature = "parallel")]
 use xenon::{
-    reset_parallel_threshold, select_exec_path, set_parallel_threshold, ParallelExecStrategy,
+    select_exec_path, set_parallel_threshold, ParallelExecStrategy, ThresholdTestGuard,
 };
 #[cfg(feature = "parallel")]
 use xenon::layout::Strides;
@@ -82,8 +82,6 @@ use xenon::par_map;
 use xenon::{par_dot, par_sum};
 #[cfg(feature = "parallel")]
 use xenon::tensor::{TensorBase, TensorView};
-#[cfg(feature = "parallel")]
-use serial_test::serial;
 
 #[cfg(feature = "parallel")]
 unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
@@ -115,8 +113,8 @@ where
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_sum_parallel_feature_consistency() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     let data: Vec<f64> = (0..4096).map(|i| i as f64).collect();
     let tensor = unsafe { view_1d_f64(&data) };
@@ -134,13 +132,12 @@ fn test_sum_parallel_feature_consistency() {
             },
         "par_sum={par_result} vs serial={serial_result}"
     );
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_par_add_consistency() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..2048).map(|i| i as f64 * 2.0).collect();
     // let b_data: Vec<f64> = (0..2048).map(|i| i as f64 * 3.0).collect();
@@ -152,13 +149,12 @@ fn test_par_add_consistency() {
     // Drop the guard before calling par_map again (we use the same tensor a).
     // Just check the result length.
     assert_eq!(result.len(), 2048);
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_par_dot_consistency() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..256).map(|i| i as f64).collect();
     let b_data: Vec<f64> = (0..256).map(|i| (255 - i) as f64).collect();
@@ -178,13 +174,12 @@ fn test_par_dot_consistency() {
             },
         "par_dot={par_result} vs serial={serial_result}"
     );
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_parallel_read() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
 
@@ -199,13 +194,12 @@ fn test_parallel_read() {
     let serial: f64 = data.iter().sum();
     assert!((r1 - serial).abs() < 1e-6);
     assert!((r2 - serial).abs() < 1e-6);
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_nested_parallel_falls_back_to_serial() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     // First parallel call acquires the guard (marks thread as in-parallel).
     let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
@@ -219,13 +213,12 @@ fn test_nested_parallel_falls_back_to_serial() {
     assert!(nested_guard.is_none());
 
     drop(guard);
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_determinism_add_same_path() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     // Same input -> same output for par_map.
     let data: Vec<f64> = (0..512).map(|i| i as f64).collect();
@@ -240,13 +233,12 @@ fn test_determinism_add_same_path() {
         &r2,
         "determinism_add_same_path: same-path par_map must produce identical results",
     );
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_determinism_sum_same_path() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     let data: Vec<f64> = (0..4096).map(|i| i as f64).collect();
     let tensor = unsafe { view_1d_f64(&data) };
@@ -261,13 +253,12 @@ fn test_determinism_sum_same_path() {
         r2.to_bits(),
         "same-path par_sum must be deterministic: {r1} vs {r2}"
     );
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_determinism_dot_same_path() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..256).map(|i| i as f64).collect();
     let b_data: Vec<f64> = (0..256).map(|i| (255 - i) as f64).collect();
@@ -283,13 +274,12 @@ fn test_determinism_dot_same_path() {
         r2.to_bits(),
         "same-path par_dot must be deterministic: {r1} vs {r2}"
     );
-    reset_parallel_threshold();
 }
 
 #[cfg(feature = "parallel")]
 #[test]
-#[serial]
 fn test_determinism_across_dispatch() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_parallel_threshold(1);
     // Verify that dispatching through different parallel strategies on the
     // same data produces equivalent (though not necessarily bit-identical)
@@ -330,5 +320,4 @@ fn test_determinism_across_dispatch() {
             },
         "single-worker par_sum={single_result} vs serial={serial_result}"
     );
-    reset_parallel_threshold();
 }

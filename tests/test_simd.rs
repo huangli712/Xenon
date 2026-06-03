@@ -11,11 +11,9 @@ mod common;
 
 use xenon::complex::Complex;
 use xenon::dimension::Ix1;
-use xenon::{reset_simd_threshold, select_exec_path, set_simd_threshold};
+use xenon::{select_exec_path, set_simd_threshold, ThresholdTestGuard};
 use xenon::layout::Strides;
 use xenon::tensor::{Tensor1, TensorView};
-
-use serial_test::serial;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -82,8 +80,8 @@ unsafe fn view_1d_i64<'a>(data: &'a [i64]) -> TensorView<'a, i64, Ix1> {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_simd_add_consistency() {
+    let _threshold_guard = ThresholdTestGuard::new();
     // Lower SIMD threshold so the test triggers SIMD dispatch.
     set_simd_threshold(1);
 
@@ -112,13 +110,11 @@ fn test_simd_add_consistency() {
             "element {idx}: {av} + {bv} != {sv}"
         );
     }
-
-    reset_simd_threshold();
 }
 
 #[test]
-#[serial]
 fn test_simd_sum_consistency() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_simd_threshold(1);
 
     let data: Vec<f64> = (0..4096).map(|i| i as f64).collect();
@@ -133,13 +129,11 @@ fn test_simd_sum_consistency() {
         (serial_sum - expected).abs() < 1e-6,
         "serial sum {serial_sum} != expected {expected}"
     );
-
-    reset_simd_threshold();
 }
 
 #[test]
-#[serial]
 fn test_simd_dot_consistency() {
+    let _threshold_guard = ThresholdTestGuard::new();
     set_simd_threshold(1);
 
     let a_data: Vec<f64> = (0..256).map(|i| i as f64).collect();
@@ -156,13 +150,11 @@ fn test_simd_dot_consistency() {
         (serial_dot - expected).abs() < 1e-6,
         "serial dot {serial_dot} != expected {expected}"
     );
-
-    reset_simd_threshold();
 }
 
 #[test]
-#[serial]
 fn test_simd_fallback_small() {
+    let _threshold_guard = ThresholdTestGuard::new();
     // For very small inputs (below SIMD threshold), dispatch must select
     // Serial path, ensuring correctness for edge-case sizes.
     set_simd_threshold(1024); // Set high threshold to ensure SIMD is not triggered.
@@ -223,13 +215,11 @@ fn test_simd_fallback_small() {
         xenon::ExecPath::Serial,
         "small i64 input must select Serial path"
     );
-
-    reset_simd_threshold();
 }
 
 #[test]
-#[serial]
 fn test_simd_complex_path() {
+    let _threshold_guard = ThresholdTestGuard::new();
     // Genuine SIMD-vs-serial consistency check for Complex<f64>.
     //
     // The `simd` module is `pub(crate)`, so this external integration test
@@ -283,8 +273,6 @@ fn test_simd_complex_path() {
     let add_serial = (&a + &b).expect("add must succeed");
     let sum_serial = a.sum();
     let dot_serial = a.dot(&b).expect("dot must succeed");
-
-    reset_simd_threshold();
 
     // Element-wise add applies the same per-component f64 additions in both
     // paths (no accumulation reordering), so results must be bit-identical.

@@ -183,6 +183,9 @@ pub use crate::dispatch::{
     select_exec_path
 };
 
+#[cfg(any(feature = "parallel", feature = "simd"))]
+pub use crate::dispatch::ThresholdTestGuard;
+
 #[cfg(feature = "simd")]
 pub use crate::dispatch::{
     reset_simd_threshold,

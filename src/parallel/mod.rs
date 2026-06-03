@@ -93,7 +93,7 @@ mod feature_matrix_tests {
         ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
-    use crate::dispatch::test_support::ThresholdTestGuard;
+    use crate::dispatch::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::parallel::map::par_map;
