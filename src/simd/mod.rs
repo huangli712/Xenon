@@ -204,19 +204,19 @@ where
 // ---------------------------------------------------------------------------
 
 pub(crate) fn try_sum_f32(data: &[f32]) -> Option<f32> {
-    vector::try_sum_f32_impl(data)
+    sum::try_sum_f32_impl(data)
 }
 
 pub(crate) fn try_sum_f64(data: &[f64]) -> Option<f64> {
-    vector::try_sum_f64_impl(data)
+    sum::try_sum_f64_impl(data)
 }
 
 pub(crate) fn try_sum_complex_f32(data: &[Complex<f32>]) -> Option<Complex<f32>> {
-    vector::try_sum_complex_f32_impl(data)
+    sum::try_sum_complex_f32_impl(data)
 }
 
 pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>> {
-    vector::try_sum_complex_f64_impl(data)
+    sum::try_sum_complex_f64_impl(data)
 }
 
 #[allow(

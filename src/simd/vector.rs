@@ -45,51 +45,12 @@ mod tests {
         }
     }
 }
-/// Sum threshold per 08-simd §5.8 L457.
-const SUM_F32_F64_THRESHOLD: usize = 1024;
-
-/// Dispatches f32 sum to the SIMD kernel if the threshold is met.
-pub(crate) fn try_sum_f32_impl(data: &[f32]) -> Option<f32> {
-    if data.len() < SUM_F32_F64_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::sum::SumF32Kernel { data }))
-}
-
-/// Dispatches f64 sum to the SIMD kernel if the threshold is met.
-pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
-    if data.len() < SUM_F32_F64_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::sum::SumF64Kernel { data }))
-} // ---------------------------------------------------------------------------
-/// Complex sum threshold per PLAN.md W14 补充决策 (derived from §5.8 f32/f64 sum=1024).
-const COMPLEX_SUM_THRESHOLD: usize = 1024;
-
 /// Dot threshold for f32/f64 (08-simd §5.8 L456).
 const DOT_F32_F64_THRESHOLD: usize = 512;
 /// Dot threshold for Complex (PLAN.md W14, derived from f32/f64 dot=512).
 const COMPLEX_DOT_THRESHOLD: usize = 512;
 
 use crate::complex::Complex;
-
-pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<f32>> {
-    if data.len() < COMPLEX_SUM_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::sum::ComplexSumF32Kernel { data }))
-}
-
-pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<f64>> {
-    if data.len() < COMPLEX_SUM_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::sum::ComplexSumF64Kernel { data }))
-}
 
 pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
     assert_eq!(lhs.len(), rhs.len());
