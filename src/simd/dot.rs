@@ -5,6 +5,58 @@ use pulp::{Simd, WithSimd};
 use crate::complex::Complex;
 
 // ---------------------------------------------------------------------------
+// Dispatch helpers (called from mod.rs facade)
+// ---------------------------------------------------------------------------
+
+/// Dot threshold for f32/f64 (08-simd §5.8 L456).
+const DOT_THRESHOLD: usize = 512;
+
+pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(DotF32Kernel { lhs, rhs }))
+}
+
+pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(DotF64Kernel { lhs, rhs }))
+}
+
+/// Dot threshold for Complex (PLAN.md W14, derived from f32/f64 dot=512).
+const COMPLEX_DOT_THRESHOLD: usize = 512;
+
+pub(crate) fn try_dot_complex_f32_impl(
+    lhs: &[Complex<f32>],
+    rhs: &[Complex<f32>],
+) -> Option<Complex<f32>> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < COMPLEX_DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(ComplexDotF32Kernel { lhs, rhs }))
+}
+
+pub(crate) fn try_dot_complex_f64_impl(
+    lhs: &[Complex<f64>],
+    rhs: &[Complex<f64>],
+) -> Option<Complex<f64>> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < COMPLEX_DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(ComplexDotF64Kernel { lhs, rhs }))
+}
+
+// ---------------------------------------------------------------------------
 // f32 dot kernel
 // ---------------------------------------------------------------------------
 

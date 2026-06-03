@@ -244,12 +244,12 @@ pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
 
 pub(crate) fn try_dot_f32(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
     assert_eq!(lhs.len(), rhs.len());
-    vector::try_dot_f32_impl(lhs, rhs)
+    dot::try_dot_f32_impl(lhs, rhs)
 }
 
 pub(crate) fn try_dot_f64(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
     assert_eq!(lhs.len(), rhs.len());
-    vector::try_dot_f64_impl(lhs, rhs)
+    dot::try_dot_f64_impl(lhs, rhs)
 }
 
 pub(crate) fn try_dot_complex_f32(
@@ -257,7 +257,7 @@ pub(crate) fn try_dot_complex_f32(
     rhs: &[Complex<f32>],
 ) -> Option<Complex<f32>> {
     assert_eq!(lhs.len(), rhs.len());
-    vector::try_dot_complex_f32_impl(lhs, rhs)
+    dot::try_dot_complex_f32_impl(lhs, rhs)
 }
 
 pub(crate) fn try_dot_complex_f64(
@@ -265,7 +265,7 @@ pub(crate) fn try_dot_complex_f64(
     rhs: &[Complex<f64>],
 ) -> Option<Complex<f64>> {
     assert_eq!(lhs.len(), rhs.len());
-    vector::try_dot_complex_f64_impl(lhs, rhs)
+    dot::try_dot_complex_f64_impl(lhs, rhs)
 }
 
 #[allow(

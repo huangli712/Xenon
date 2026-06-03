@@ -4,7 +4,7 @@
 //! The facade functions in [`super`] perform threshold admission and
 //! type-based dispatch before routing to these kernels.
 
-use crate::simd::{BinaryOp, UnaryOp, get_arch};
+use crate::simd::{BinaryOp, UnaryOp};
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -45,55 +45,6 @@ mod tests {
         }
     }
 }
-/// Dot threshold for f32/f64 (08-simd §5.8 L456).
-const DOT_F32_F64_THRESHOLD: usize = 512;
-/// Dot threshold for Complex (PLAN.md W14, derived from f32/f64 dot=512).
-const COMPLEX_DOT_THRESHOLD: usize = 512;
-
-use crate::complex::Complex;
-
-pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < DOT_F32_F64_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::dot::DotF32Kernel { lhs, rhs }))
-}
-
-pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < DOT_F32_F64_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::dot::DotF64Kernel { lhs, rhs }))
-}
-
-pub(crate) fn try_dot_complex_f32_impl(
-    lhs: &[Complex<f32>],
-    rhs: &[Complex<f32>],
-) -> Option<Complex<f32>> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < COMPLEX_DOT_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::dot::ComplexDotF32Kernel { lhs, rhs }))
-}
-
-pub(crate) fn try_dot_complex_f64_impl(
-    lhs: &[Complex<f64>],
-    rhs: &[Complex<f64>],
-) -> Option<Complex<f64>> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < COMPLEX_DOT_THRESHOLD {
-        return None;
-    }
-    let arch = get_arch();
-    Some(arch.dispatch(super::dot::ComplexDotF64Kernel { lhs, rhs }))
-}
-
 // ---------------------------------------------------------------------------
 // W14T8 Element-wise consistency tests
 // ---------------------------------------------------------------------------
