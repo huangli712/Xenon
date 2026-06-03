@@ -9,17 +9,10 @@
 use std::sync::{Mutex, MutexGuard};
 
 #[cfg(any(test, feature = "parallel"))]
-use super::get_parallel_threshold;
-#[cfg(any(test, feature = "simd"))]
-use super::get_simd_threshold;
-#[cfg(any(test, feature = "parallel"))]
-use super::set_parallel_threshold;
-#[cfg(any(test, feature = "simd"))]
-use super::set_simd_threshold;
+use super::{get_parallel_threshold, set_parallel_threshold};
 
-// ---------------------------------------------------------------------------
-// Threshold test guard — serialization + state restoration for tests
-// ---------------------------------------------------------------------------
+#[cfg(any(test, feature = "simd"))]
+use super::{get_simd_threshold, set_simd_threshold};
 
 /// Marker type held inside `THRESHOLD_TEST_LOCK` to give the mutex a distinct
 /// type without carrying meaningful data.
