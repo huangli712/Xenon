@@ -15,6 +15,8 @@ use xenon::{reset_simd_threshold, select_exec_path, set_simd_threshold};
 use xenon::layout::Strides;
 use xenon::tensor::{TensorView};
 
+use serial_test::serial;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ unsafe fn view_1d_i64<'a>(data: &'a [i64]) -> TensorView<'a, i64, Ix1> {
 // ---------------------------------------------------------------------------
 
 #[test]
+#[serial]
 fn test_simd_add_consistency() {
     // Lower SIMD threshold so the test triggers SIMD dispatch.
     set_simd_threshold(1);
@@ -114,6 +117,7 @@ fn test_simd_add_consistency() {
 }
 
 #[test]
+#[serial]
 fn test_simd_sum_consistency() {
     set_simd_threshold(1);
 
@@ -134,6 +138,7 @@ fn test_simd_sum_consistency() {
 }
 
 #[test]
+#[serial]
 fn test_simd_dot_consistency() {
     set_simd_threshold(1);
 
@@ -156,6 +161,7 @@ fn test_simd_dot_consistency() {
 }
 
 #[test]
+#[serial]
 fn test_simd_fallback_small() {
     // For very small inputs (below SIMD threshold), dispatch must select
     // Serial path, ensuring correctness for edge-case sizes.
@@ -165,7 +171,6 @@ fn test_simd_fallback_small() {
     let tensor = unsafe { view_1d_f64(&small_data) };
 
     // With threshold at 1024 and len=3, select_exec_path must return Serial.
-    set_simd_threshold(1024);
     let (path, _guard) = select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
     assert_eq!(
         path,
@@ -178,7 +183,6 @@ fn test_simd_fallback_small() {
     assert_eq!(serial_sum, 6.0);
 
     // Also test with f32.
-    set_simd_threshold(1024);
     let small_f32: Vec<f32> = vec![1.0, 2.0, 3.0];
     let _tensor_f32 = unsafe { view_1d_f32(&small_f32) };
     let (path_f32, _guard_f32) = select_exec_path(
@@ -193,7 +197,6 @@ fn test_simd_fallback_small() {
     );
 
     // Test with i32.
-    set_simd_threshold(1024);
     let small_i32: Vec<i32> = vec![1, 2, 3];
     let _tensor_i32 = unsafe { view_1d_i32(&small_i32) };
     let (path_i32, _guard_i32) = select_exec_path(
@@ -208,7 +211,6 @@ fn test_simd_fallback_small() {
     );
 
     // Test with i64.
-    set_simd_threshold(1024);
     let small_i64: Vec<i64> = vec![10, 20, 30];
     let _tensor_i64 = unsafe { view_1d_i64(&small_i64) };
     let (path_i64, _guard_i64) = select_exec_path(
@@ -226,6 +228,7 @@ fn test_simd_fallback_small() {
 }
 
 #[test]
+#[serial]
 fn test_simd_complex_path() {
     // Verify that complex number operations are consistent regardless of path.
     // The SIMD module supports Complex<f32> and Complex<f64> element-wise ops.
