@@ -320,8 +320,7 @@ mod tests {
         let mut tensor = unsafe {
             make_tensor(vec![1i32, 2, 3, 4, 5, 6], Ix2(3, 2))
         };
-        let mut count = 0;
-        for (idx, value) in tensor.indexed_iter_mut() {
+        for (count, (idx, value)) in tensor.indexed_iter_mut().enumerate() {
             *value *= 10;
             match count {
                 0 => assert_eq!(idx, Ix2(0, 0)),
@@ -332,7 +331,6 @@ mod tests {
                 5 => assert_eq!(idx, Ix2(2, 1)),
                 _ => unreachable!(),
             }
-            count += 1;
         }
         let collected: Vec<_> = tensor.iter().copied().collect();
         assert_eq!(collected, vec![10, 20, 30, 40, 50, 60]);
