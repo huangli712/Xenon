@@ -7,46 +7,6 @@
 use crate::simd::{BinaryOp, UnaryOp, get_arch};
 
 // ---------------------------------------------------------------------------
-// Concrete dispatch helpers (called from mod.rs facade)
-// ---------------------------------------------------------------------------
-
-/// Dispatches f32 unary Neg to the kernel.
-pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> bool {
-    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => {
-            arch.dispatch(super::unary::NegKernel {
-                src,
-                dst,
-                _marker: std::marker::PhantomData,
-            });
-        },
-    }
-    true
-}
-
-/// Dispatches f64 unary Neg to the kernel.
-pub(crate) fn dispatch_unary_f64(op: UnaryOp, src: &[f64], dst: &mut [f64]) -> bool {
-    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => {
-            arch.dispatch(super::unary::NegKernel {
-                src,
-                dst,
-                _marker: std::marker::PhantomData,
-            });
-        },
-    }
-    true
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -172,37 +132,6 @@ pub(crate) fn try_dot_complex_f64_impl(
     let arch = get_arch();
     Some(arch.dispatch(super::dot::ComplexDotF64Kernel { lhs, rhs }))
 }
-
-/// Dispatches Complex<f32> unary op to the kernel.
-pub(crate) fn dispatch_unary_complex_f32(
-    op: UnaryOp,
-    src: &[Complex<f32>],
-    dst: &mut [Complex<f32>],
-) -> bool {
-    if src.len() < super::binary::COMPLEX_ELEMENTWISE_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => arch.dispatch(super::unary::ComplexNegF32Kernel { src, dst }),
-    }
-    true
-}
-
-pub(crate) fn dispatch_unary_complex_f64(
-    op: UnaryOp,
-    src: &[Complex<f64>],
-    dst: &mut [Complex<f64>],
-) -> bool {
-    if src.len() < super::binary::COMPLEX_ELEMENTWISE_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => arch.dispatch(super::unary::ComplexNegF64Kernel { src, dst }),
-    }
-    true
-} 
 
 // ---------------------------------------------------------------------------
 // W14T8 Element-wise consistency tests
