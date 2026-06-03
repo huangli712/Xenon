@@ -170,10 +170,9 @@ mod tests {
     use super::super::*;
     use super::super::threshold::{DEFAULT_PARALLEL_THRESHOLD, DEFAULT_SIMD_THRESHOLD};
 
-    // === select_exec_path ===
+    // --- select_exec_path ---------------------------------------------------
 
-    /// Verify `select_exec_path` returns `Some(guard)` iff path is
-    /// `Parallel`.
+    /// Verify `select_exec_path` returns `Some(guard)` iff path is `Parallel`.
     #[test]
     fn test_select_returns_guard_iff_parallel() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -208,7 +207,7 @@ mod tests {
         assert!(guard.is_none());
     }
 
-    // === Threshold configuration ===
+    // --- Threshold configuration ---------------------------------------------
 
     /// Verify runtime threshold override is honored by `select_exec_path()`.
     #[cfg(feature = "parallel")]
@@ -271,7 +270,7 @@ mod tests {
         assert_eq!(get_simd_threshold(), DEFAULT_SIMD_THRESHOLD);
     }
 
-    // === Full dispatch unit tests ===
+    // --- Full dispatch unit tests --------------------------------------------
 
     // --- Path selection — Serial ---
 
