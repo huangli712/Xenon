@@ -275,7 +275,9 @@ mod tests {
     /// immutable iteration.
     #[test]
     fn test_iter_mut_accepts_non_broadcast_owned_tensor() {
-        let mut tensor = unsafe { make_tensor((0..9).collect(), Ix2(3, 3)) };
+        let mut tensor = unsafe {
+            make_tensor((0..9).collect(), Ix2(3, 3))
+        };
         tensor.iter_mut().for_each(|v| *v *= 2);
         assert_eq!(
             tensor.iter().copied().collect::<Vec<_>>(),
