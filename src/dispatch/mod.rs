@@ -11,28 +11,35 @@
 //! thresholds, and exercise parallel kernels directly. Those
 //! re-exports are NOT a stable public API.
 
-#[cfg(any(test, feature = "parallel", feature = "simd"))]
 mod support;
+mod threshold;
+mod types;
+mod exec;
+
+// --- threshold re-exports ---
+
+#[cfg(any(test, feature = "parallel"))]
+pub use threshold::{set_parallel_threshold, reset_parallel_threshold};
+#[cfg(any(test, feature = "simd"))]
+pub use threshold::{set_simd_threshold, reset_simd_threshold};
+pub(crate) use threshold::{
+    DEFAULT_PARALLEL_THRESHOLD, DEFAULT_SIMD_THRESHOLD,
+    get_parallel_threshold, get_simd_threshold,
+};
+
+// --- types re-exports ---
+
+pub use types::{ExecPath, ParallelGuard};
+#[cfg(feature = "parallel")]
+pub use types::ParallelExecStrategy;
+
+// --- exec re-exports ---
+
+pub use exec::select_exec_path;
+#[cfg(feature = "parallel")]
+pub(crate) use exec::with_parallel_worker_context;
+
+// --- support re-exports ---
 
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
-pub use self::support::ThresholdTestGuard;
-
-mod threshold;
-#[cfg(any(test, feature = "parallel"))]
-pub use self::threshold::{set_parallel_threshold, reset_parallel_threshold};
-#[cfg(any(test, feature = "simd"))]
-pub use self::threshold::{set_simd_threshold, reset_simd_threshold};
-
-pub(crate) use self::threshold::{DEFAULT_PARALLEL_THRESHOLD, DEFAULT_SIMD_THRESHOLD};
-pub(crate) use self::threshold::{get_parallel_threshold, get_simd_threshold};
-
-mod types;
-pub use self::types::ExecPath;
-#[cfg(feature = "parallel")]
-pub use self::types::ParallelExecStrategy;
-pub use self::types::ParallelGuard;
-
-mod exec;
-pub use self::exec::select_exec_path;
-#[cfg(feature = "parallel")]
-pub(crate) use self::exec::with_parallel_worker_context;
+pub use support::ThresholdTestGuard;

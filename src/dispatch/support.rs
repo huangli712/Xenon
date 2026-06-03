@@ -1,9 +1,10 @@
 use std::sync::{Mutex, MutexGuard};
 
-use super::{
-    get_parallel_threshold, get_simd_threshold,
-    set_parallel_threshold, set_simd_threshold,
-};
+use super::{get_parallel_threshold, get_simd_threshold};
+#[cfg(any(test, feature = "parallel"))]
+use super::set_parallel_threshold;
+#[cfg(any(test, feature = "simd"))]
+use super::set_simd_threshold;
 
 // ---------------------------------------------------------------------------
 // Threshold test guard — serialization + state restoration for tests
