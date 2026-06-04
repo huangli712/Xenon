@@ -304,7 +304,7 @@ impl WithSimd for DivF64Kernel<'_> {
 }
 
 // ----------------------------------------------------------------------------
-// Complex<f32> binary kernels (Add)
+// Complex<f32> binary kernel (Add)
 // ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f32>` addition.
@@ -358,7 +358,7 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
 }
 
 // ----------------------------------------------------------------------------
-// Complex<f32> binary kernels (Sub)
+// Complex<f32> binary kernel (Sub)
 // ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f32>` subtraction.
@@ -503,6 +503,7 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
 // ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f64>` addition.
+/// Reinterprets the interleaved real/imag layout as `[f64]` for SIMD.
 pub(crate) struct ComplexAddF64Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f64>],
@@ -551,12 +552,17 @@ impl WithSimd for ComplexAddF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Dispatch helpers (called from driver.rs facade)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Dispatches f32 binary op to the corresponding kernel.
-pub(crate) fn dispatch_binary_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32], dst: &mut [f32]) -> bool {
+pub(crate) fn dispatch_binary_f32(
+    op: BinaryOp,
+    lhs: &[f32],
+    rhs: &[f32],
+    dst: &mut [f32]
+) -> bool {
     if lhs.len() < ELEMENTWISE_THRESHOLD {
         return false;
     }
@@ -571,7 +577,12 @@ pub(crate) fn dispatch_binary_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32], dst: &
 }
 
 /// Dispatches f64 binary op to the corresponding kernel.
-pub(crate) fn dispatch_binary_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64], dst: &mut [f64]) -> bool {
+pub(crate) fn dispatch_binary_f64(
+    op: BinaryOp,
+    lhs: &[f64],
+    rhs: &[f64],
+    dst: &mut [f64]
+) -> bool {
     if lhs.len() < ELEMENTWISE_THRESHOLD {
         return false;
     }
@@ -621,14 +632,14 @@ pub(crate) fn dispatch_binary_complex_f64(
         BinaryOp::Add => arch.dispatch(ComplexAddF64Kernel { lhs, rhs, dst }),
         BinaryOp::Sub => return false, // Sub not implemented for f64 complex
         BinaryOp::Mul => return false, // Mul not implemented for f64 complex
-        BinaryOp::Div => return false,
+        BinaryOp::Div => return false, // Div not implemented for f64 complex
     }
     true
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
@@ -637,16 +648,22 @@ mod tests {
 
     /// Width used for boundary / tail coverage tests.
     const SIMD_WIDTH: usize = 64;
+
     /// Number of random cases per property test.
     const CASES: usize = 32;
+    
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- f32 admission ------------------------------------------------------
+    // ---- f32 admission -----------------------------------------------------
 
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
-        let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l + r).collect();
+        let expected: Vec<f32> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l + r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
