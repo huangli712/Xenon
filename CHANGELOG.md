@@ -6,51 +6,39 @@ All notable changes to this project are documented in this file.
 
 ### Removed
 
-- `src/ffi/blas.rs`, `src/ffi/offset.rs`, `src/ffi/private.rs`.
-  Content merged into `impls.rs` and `types.rs`.
-- `TensorExport<'a, A>` / `TensorExportMut<'a, A>` intermediate
-  generic descriptor types.
-- Removed `From` impls for `TensorExport` / `TensorExportMut`.
+- `src/ffi/blas.rs` (content merged into `impls.rs`).
+- `src/ffi/offset.rs` (content merged into `impls.rs`).
+- `src/ffi/private.rs` (content merged into `types.rs`).
+- `TensorExport<'a, A>` intermediate generic descriptor type.
+- `TensorExportMut<'a, A>` intermediate generic descriptor type.
+- `From` impls for `TensorExport` / `TensorExportMut`.
 - Module-level compile probe test from `ffi/mod.rs`.
-- Stale `compile_fail` doctest (`into_raw_parts` on view) from `impls.rs`.
-- Stale design-doc cross-references from all ffi module doc comments.
-- Stale task-tracking markers from all ffi module doc comments.
-- Unicode `─` section separators (replaced with ASCII `--`) across ffi module.
+- Stale `compile_fail` doctest from `impls.rs`.
+- Stale design-doc cross-references from ffi module doc comments.
+- Stale task-tracking markers from ffi module doc comments.
+- Unicode `─` section separators across ffi module.
 
 ### Changed
 
-- Refactored FFI module from 5 files (`blas.rs`, `offset.rs`,
-  `private.rs`, `ptr.rs`, `types.rs`) to 3 files (`impls.rs`,
-  `types.rs`, `mod.rs`).
-- Merged `offset.rs` (index→offset helpers, BLAS layout queries)
-  into `ptr.rs`.
-- Merged `blas.rs` (BLAS methods) into `offset.rs`, then both into `ptr.rs`.
-- Renamed `ptr.rs` → `impls.rs`.
-- Merged `private.rs` (generic `TensorExport` types, `From` impls,
-  tests) into `types.rs`.
-- Inlined `export_internal()` — `export()` now builds
-  `TensorExportRaw` directly.
-- Inlined `export_mut_internal()` — `export_mut()` now builds
-  `TensorExportMutRaw` directly.
-- Re-export `TensorBase` directly from `crate::tensor`
-  (not transitively via `impls.rs`).
-- Re-export `OwnedRawParts` directly from `crate::tensor`
-  (not transitively via `impls.rs`).
-- Re-export `FfiBackend` directly from `crate::error`
-  (not via `types.rs`).
-- Re-export `FfiErrorCategory` directly from `crate::error`
-  (not via `types.rs`).
-- Reordered module declarations and re-exports alphabetically
-  in `mod.rs`.
-- Standardized `.expect()` placement (same line as closing `}`).
+- Reduced FFI module from 5 files to 3 files (`impls.rs`, `types.rs`, `mod.rs`).
+- Merged `offset.rs` into `ptr.rs`.
+- Merged `blas.rs` into `ptr.rs`.
+- Renamed `ptr.rs` to `impls.rs`.
+- Merged `private.rs` into `types.rs`.
+- Inlined `export_internal()` into `export()`.
+- Inlined `export_mut_internal()` into `export_mut()`.
+- Re-export `TensorBase` directly from `crate::tensor`.
+- Re-export `OwnedRawParts` directly from `crate::tensor`.
+- Re-export `FfiBackend` directly from `crate::error`.
+- Re-export `FfiErrorCategory` directly from `crate::error`.
+- Reordered module declarations alphabetically in `mod.rs`.
+- Reordered re-exports alphabetically in `mod.rs`.
+- Standardized `.expect()` placement to same line as closing `}`.
 - Removed inline argument comments from unsafe `from_raw_parts` calls.
-- Added blank-line separators between struct fields in
-  `TensorExportRaw`.
-- Added blank-line separators between struct fields in
-  `TensorExportMutRaw`.
-- Added blank-line separators between struct fields in `BlasInfo`.
-- Moved inline `use` imports in test functions to module-level
-  `use super::*`.
+- Added blank-line separators between `TensorExportRaw` struct fields.
+- Added blank-line separators between `TensorExportMutRaw` struct fields.
+- Added blank-line separators between `BlasInfo` struct fields.
+- Moved inline `use` imports in tests to module-level `use super::*`.
 - Converted markdown error tables to bullet lists in doc comments.
 - Formatted operator placement in multi-line `assert!` macros.
 - Formatted operator placement in multi-line `assert_eq!` macros.
@@ -62,12 +50,9 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- SIMD `Complex<f32>` multiplication via `deinterleave_shfl`
-  (SoA multiply, re-interleave).
-- SIMD `Complex<f32>` conjugate dot product via `deinterleave_shfl`
-  (SoA multiply-accumulate, horizontal reduction).
-- SIMD `Complex<f64>` conjugate dot product via `deinterleave_shfl`
-  (SoA multiply-accumulate, horizontal reduction).
+- SIMD `Complex<f32>` multiplication via `deinterleave_shfl`.
+- SIMD `Complex<f32>` conjugate dot product via `deinterleave_shfl`.
+- SIMD `Complex<f64>` conjugate dot product via `deinterleave_shfl`.
 - Property-based tests for ComplexMulF32 tail coverage.
 - Property-based tests for ComplexMulF32 leftover-register coverage.
 - Property-based tests for ComplexDotF32 tail coverage.
@@ -81,8 +66,7 @@ All notable changes to this project are documented in this file.
 - `use std::sync::OnceLock` imports across SIMD modules.
 - `use std::mem::size_of` imports across SIMD modules.
 - `use std::any::TypeId` imports across SIMD modules.
-- `///` doc comments to all kernel structs (`DotF32Kernel`,
-  `SumF32Kernel`, etc.).
+- `///` doc comments to all kernel structs.
 - `///` doc comments to all dispatch helper functions.
 
 ### Changed
@@ -92,27 +76,21 @@ All notable changes to this project are documented in this file.
 - Replaced `std::sync::OnceLock` with `OnceLock`.
 - Replaced `crate::simd::` path prefix with direct names in SIMD tests.
 - Replaced `simd::` path prefix with direct names in SIMD tests.
-- Simplified `ComplexSumF32Kernel` deinterleave:
-  byte-level extraction replaced with direct `&[f32]` slice cast.
-- Simplified `ComplexSumF64Kernel` deinterleave:
-  byte-level extraction replaced with direct `&[f64]` slice cast.
-- Normalized `ELEMENTWISE_F32_F64_THRESHOLD` → `ELEMENTWISE_THRESHOLD`.
+- Simplified `ComplexSumF32Kernel` deinterleave to direct `&[f32]` slice cast.
+- Simplified `ComplexSumF64Kernel` deinterleave to direct `&[f64]` slice cast.
+- Normalized `ELEMENTWISE_F32_F64_THRESHOLD` to `ELEMENTWISE_THRESHOLD`.
 - Removed duplicate test-local threshold constants.
-- Reordered all kernel modules to
-  `thresholds → kernel structs → dispatch helpers → tests`.
-- Standardized section separator comments to fixed-width 80-column
-  format across all SIMD modules.
+- Reordered kernel modules to standard layout order.
+- Standardized section separator comments to fixed-width 80-column format.
 - Unified `unsafe { slice::from_raw_parts }` block formatting.
 - Unified `// SAFETY:` comment placement.
-- Consolidated `let handled = dispatch(...); if handled {`
-  into `if dispatch(...) {`.
-- Replaced `std::slice::` with `use std::slice;` throughout SIMD modules.
+- Consolidated `let handled = dispatch(...); if handled {` into `if dispatch(...) {`.
+- Replaced `std::slice::` with `use std::slice;` in SIMD modules.
 - Reordered imports (stdlib before crate) in SIMD modules.
 - Reordered imports (public before test) in SIMD modules.
 - Added blank-line separators between struct field doc comments.
 - Added blank-line separators between constant declarations.
-- Reordered `mod.rs` declarations
-  (types → binary → unary → dot → sum → driver).
+- Reordered `mod.rs` declarations by dependency order.
 - Reordered `mod.rs` re-exports.
 
 ## [v0.0.24] — 2026-06-03
