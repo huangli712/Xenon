@@ -700,14 +700,23 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Sub,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_sub_f32(&lhs, &rhs, &dst);
     }
 
     /// Asserts SIMD and scalar multiplication produce identical results.
     fn assert_mul_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
-        let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l * r).collect();
+        let expected: Vec<f32> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l * r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
@@ -717,14 +726,23 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Mul,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_mul_f32(&lhs, &rhs, &dst);
     }
 
     /// Asserts SIMD and scalar division produce identical results.
     fn assert_div_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
-        let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l / r).collect();
+        let expected: Vec<f32> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l / r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
