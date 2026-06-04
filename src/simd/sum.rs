@@ -566,20 +566,32 @@ mod tests {
     }
 
     /// Asserts f64 is within a generous reduction bound.
-    fn assert_within_reduction_bound_f64(actual: f64, expected: f64, len: usize, op: &str) {
+    fn assert_within_reduction_bound_f64(
+        actual: f64,
+        expected: f64,
+        len: usize,
+        op: &str
+    ) {
         let bound = reduction_bound_f64(expected, len);
         assert!(
             (actual - expected).abs() <= bound,
-            "{op} outside bound at len={len}: actual={actual}, expected={expected}, bound={bound}"
+            "{op} outside bound at len={len}: \
+            actual={actual}, expected={expected}, bound={bound}"
         );
     }
 
     /// Asserts f32 is within a generous reduction bound.
-    fn assert_within_reduction_bound_f32(actual: f32, expected: f32, len: usize, op: &str) {
+    fn assert_within_reduction_bound_f32(
+        actual: f32,
+        expected: f32,
+        len: usize,
+        op: &str
+    ) {
         let bound = reduction_bound_f32(expected, len);
         assert!(
             (actual - expected).abs() <= bound,
-            "{op} outside bound at len={len}: actual={actual}, expected={expected}, bound={bound}"
+            "{op} outside bound at len={len}: \
+            actual={actual}, expected={expected}, bound={bound}"
         );
     }
 
