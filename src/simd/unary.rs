@@ -169,6 +169,7 @@ pub(crate) struct ComplexNegF64Kernel<'a> {
 impl WithSimd for ComplexNegF64Kernel<'_> {
     type Output = ();
 
+    /// Reinterprets complex slices as f64 and applies SIMD neg.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.src.len();
         let src_f64 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
