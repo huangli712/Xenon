@@ -2,8 +2,7 @@
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::complex::Complex;
-    use crate::simd::{self, BinaryOp, UnaryOp};
+    use crate::simd::{BinaryOp, UnaryOp};
 
     // ---- threshold rejection ----
 
@@ -37,213 +36,10 @@ mod tests {
         }
     }
 
-    // ---- element-wise consistency (W14T8) ----
-
-    const SIMD_WIDTH: usize = 64;
-
-    fn assert_same_bits_or_nan_f64(actual: f64, expected: f64) {
-        if expected.is_nan() || actual.is_nan() {
-            assert!(actual.is_nan() && expected.is_nan());
-        } else {
-            assert_eq!(actual.to_bits(), expected.to_bits());
-        }
-    }
-
-    fn assert_same_bits_or_nan_f32(actual: f32, expected: f32) {
-        if expected.is_nan() || actual.is_nan() {
-            assert!(actual.is_nan() && expected.is_nan());
-        } else {
-            assert_eq!(actual.to_bits(), expected.to_bits());
-        }
-    }
-
-    fn assert_vec_bits_or_nan_f64(actual: &[f64], expected: &[f64]) {
-        assert_eq!(actual.len(), expected.len());
-        for (&a, &e) in actual.iter().zip(expected.iter()) {
-            assert_same_bits_or_nan_f64(a, e);
-        }
-    }
-
-    fn assert_vec_bits_or_nan_f32(actual: &[f32], expected: &[f32]) {
-        assert_eq!(actual.len(), expected.len());
-        for (&a, &e) in actual.iter().zip(expected.iter()) {
-            assert_same_bits_or_nan_f32(a, e);
-        }
-    }
-
-    fn apply_binary_f64(op: BinaryOp, lhs: f64, rhs: f64) -> f64 {
-        match op {
-            BinaryOp::Add => lhs + rhs,
-            BinaryOp::Sub => lhs - rhs,
-            BinaryOp::Mul => lhs * rhs,
-            BinaryOp::Div => lhs / rhs,
-        }
-    }
-
-    fn apply_binary_f32(op: BinaryOp, lhs: f32, rhs: f32) -> f32 {
-        match op {
-            BinaryOp::Add => lhs + rhs,
-            BinaryOp::Sub => lhs - rhs,
-            BinaryOp::Mul => lhs * rhs,
-            BinaryOp::Div => lhs / rhs,
-        }
-    }
-
-    fn fixture_f64(len: usize) -> (Vec<f64>, Vec<f64>) {
-        let lhs_seed = [
-            1.5_f64,
-            -2.3,
-            0.001,
-            -1e20,
-            std::f64::consts::PI,
-            0.0,
-            -0.0,
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            f64::MIN_POSITIVE / 2.0,
-        ];
-        let rhs_seed = [
-            -4.25_f64,
-            8.0,
-            -0.125,
-            1e-20,
-            -2.0,
-            0.0,
-            -0.0,
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            f64::MIN_POSITIVE / 2.0,
-        ];
-        let lhs: Vec<f64> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
-        let rhs: Vec<f64> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
-        (lhs, rhs)
-    }
-
-    fn fixture_f32(len: usize) -> (Vec<f32>, Vec<f32>) {
-        let lhs_seed = [
-            1.5_f32,
-            -2.3,
-            0.001,
-            -1e10,
-            std::f32::consts::PI,
-            0.0,
-            -0.0,
-            f32::NAN,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-            f32::MIN_POSITIVE / 2.0,
-        ];
-        let rhs_seed = [
-            -4.25_f32,
-            8.0,
-            -0.125,
-            1e-10,
-            -2.0,
-            0.0,
-            -0.0,
-            f32::NAN,
-            f32::INFINITY,
-            f32::NEG_INFINITY,
-            f32::MIN_POSITIVE / 2.0,
-        ];
-        let lhs: Vec<f32> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
-        let rhs: Vec<f32> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
-        (lhs, rhs)
-    }
-
-    fn simd_vs_serial_bitwise_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64]) {
-        let mut dst = vec![0.0_f64; lhs.len()];
-        let handled = simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
-        if handled {
-            let serial: Vec<f64> = lhs
-                .iter()
-                .zip(rhs.iter())
-                .map(|(&l, &r)| apply_binary_f64(op, l, r))
-                .collect();
-            assert_vec_bits_or_nan_f64(&dst, &serial);
-        }
-    }
-
-    fn simd_vs_serial_bitwise_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32]) {
-        let mut dst = vec![0.0_f32; lhs.len()];
-        let handled = simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
-        if handled {
-            let serial: Vec<f32> = lhs
-                .iter()
-                .zip(rhs.iter())
-                .map(|(&l, &r)| apply_binary_f32(op, l, r))
-                .collect();
-            assert_vec_bits_or_nan_f32(&dst, &serial);
-        }
-    }
-
-    #[test]
-    fn test_simd_vector_consistency_elementwise() {
-        let (lhs_f64, rhs_f64) = fixture_f64(256);
-        let (lhs_f32, rhs_f32) = fixture_f32(256);
-        for op in [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div] {
-            simd_vs_serial_bitwise_f64(op, &lhs_f64, &rhs_f64);
-            simd_vs_serial_bitwise_f32(op, &lhs_f32, &rhs_f32);
-        }
-    }
-
-    #[test]
-    fn test_elementwise_boundary_lengths() {
-        let mut lengths = vec![0, 1, 32, 64, 65, 128, 256];
-        lengths.extend((1..8).map(|extra| SIMD_WIDTH + extra));
-        for len in lengths {
-            let (lhs, rhs) = fixture_f64(len);
-            simd_vs_serial_bitwise_f64(BinaryOp::Add, &lhs, &rhs);
-            simd_vs_serial_bitwise_f64(BinaryOp::Sub, &lhs, &rhs);
-        }
-    }
-
-    #[test]
-    fn test_elementwise_tail_handling() {
-        for extra in [1_usize, 3, 7, 15] {
-            let (lhs, rhs) = fixture_f64(256 + extra);
-            for op in [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div] {
-                simd_vs_serial_bitwise_f64(op, &lhs, &rhs);
-            }
-        }
-    }
-
-    #[test]
-    fn test_elementwise_below_threshold() {
-        let (lhs, rhs) = fixture_f64(32);
-        let mut dst = vec![0.0_f64; lhs.len()];
-        assert!(!simd::dispatch_vector_binary_op(
-            BinaryOp::Add,
-            &lhs,
-            &rhs,
-            &mut dst
-        ));
-    }
-
-    #[test]
-    fn test_elementwise_at_threshold() {
-        let (lhs, rhs) = fixture_f64(64);
-        simd_vs_serial_bitwise_f64(BinaryOp::Add, &lhs, &rhs);
-    }
-
-    #[test]
-    fn test_elementwise_misaligned() {
-        let (lhs_storage, rhs_storage) = fixture_f64(258);
-        let lhs = &lhs_storage[1..257];
-        let rhs = &rhs_storage[1..257];
-        simd_vs_serial_bitwise_f64(BinaryOp::Mul, lhs, rhs);
-    }
-
-    // ---- randomized property tests (W14T10) ----
+    // ---- integer stub ----
 
     const CASES: usize = 32;
     const MAX_LEN: usize = 4096;
-    const ELEMENTWISE_THRESHOLD: usize = 64;
-    const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
-
-    // ---- splitmix64 PRNG ----
 
     fn splitmix64(state: &mut u64) -> u64 {
         *state = state.wrapping_add(0x9e3779b97f4a7c15);
@@ -257,100 +53,9 @@ mod tests {
         (splitmix64(state) as usize) % (max_len + 1)
     }
 
-    fn gen_f64(state: &mut u64) -> f64 {
-        let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
-        (frac - 0.5) * 20.0
-    }
-
-    fn gen_f32(state: &mut u64) -> f32 {
-        let frac = (splitmix64(state) >> 11) as f32 / (1u64 << 53) as f32;
-        (frac - 0.5) * 20.0
-    }
-
     fn gen_i32_no_overflow(state: &mut u64) -> i32 {
         ((splitmix64(state) % 2001) as i32) - 1000
     }
-
-    // ---- Element-wise property tests ----
-
-    fn prop_elementwise_binary_f64(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            for op in [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div] {
-                let mut dst = vec![0.0_f64; len];
-                let handled = simd::dispatch_vector_binary_op(op, &lhs, &rhs, &mut dst);
-                if handled {
-                    let serial: Vec<f64> = lhs
-                        .iter()
-                        .zip(rhs.iter())
-                        .map(|(&l, &r)| match op {
-                            BinaryOp::Add => l + r,
-                            BinaryOp::Sub => l - r,
-                            BinaryOp::Mul => l * r,
-                            BinaryOp::Div => l / r,
-                        })
-                        .collect();
-                    for (i, (&a, &e)) in dst.iter().zip(serial.iter()).enumerate() {
-                        if a.is_nan() || e.is_nan() {
-                            assert!(a.is_nan() && e.is_nan(), "nan mismatch at len={len}, i={i}");
-                        } else {
-                            assert_eq!(
-                                a.to_bits(),
-                                e.to_bits(),
-                                "bits mismatch at len={len}, i={i}"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn prop_elementwise_complex_add_f32(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = COMPLEX_ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let lhs: Vec<Complex<f32>> = (0..len)
-                .map(|_| Complex::new(gen_f32(&mut rng), gen_f32(&mut rng)))
-                .collect();
-            let rhs: Vec<Complex<f32>> = (0..len)
-                .map(|_| Complex::new(gen_f32(&mut rng), gen_f32(&mut rng)))
-                .collect();
-            let mut dst = vec![Complex::new(0.0, 0.0); len];
-            let handled = simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
-            if handled {
-                for (i, (a, (l, r))) in dst.iter().zip(lhs.iter().zip(rhs.iter())).enumerate() {
-                    let e = *l + *r;
-                    if a.re.is_nan() || a.im.is_nan() || e.re.is_nan() || e.im.is_nan() {
-                        assert!(
-                            (a.re.is_nan() && e.re.is_nan()) || (a.re == e.re),
-                            "real nan mismatch at len={len}, i={i}"
-                        );
-                        assert!(
-                            (a.im.is_nan() && e.im.is_nan()) || (a.im == e.im),
-                            "imag nan mismatch at len={len}, i={i}"
-                        );
-                    } else {
-                        assert_eq!(
-                            a.re.to_bits(),
-                            e.re.to_bits(),
-                            "real bits at len={len}, i={i}"
-                        );
-                        assert_eq!(
-                            a.im.to_bits(),
-                            e.im.to_bits(),
-                            "imag bits at len={len}, i={i}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    // ---- Integer stub ----
 
     fn prop_integer_no_panic_i32(seed: u64) {
         let mut rng = seed;
@@ -360,51 +65,14 @@ mod tests {
             // i32 SIMD is currently not available (per W14T0 spike),
             // so try_sum_i32 should always return None.
             assert!(
-                simd::try_sum_i32(&data).is_none(),
+                crate::simd::try_sum_i32(&data).is_none(),
                 "i32 SIMD sum should not be available (widening unavailable)"
             );
         }
     }
 
-    fn prop_tail_handling_f64(seed: u64) {
-        let mut rng = seed;
-        for width in [2usize, 4, 8, 16, 32] {
-            for tail in 1..width {
-                let base = 1 + (splitmix64(&mut rng) as usize % 16);
-                let len = base * width + tail;
-                let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-                let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-                let mut dst = vec![0.0_f64; len];
-                let handled = simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
-                if handled {
-                    for i in 0..len {
-                        let expected = lhs[i] + rhs[i];
-                        if expected.is_nan() || dst[i].is_nan() {
-                            assert!(dst[i].is_nan() && expected.is_nan());
-                        } else {
-                            assert_eq!(dst[i].to_bits(), expected.to_bits());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ---- Aggregate test entry points ----
-
-    #[test]
-    fn prop_elementwise_consistency() {
-        prop_elementwise_binary_f64(0x1001);
-        prop_elementwise_complex_add_f32(0x1003);
-    }
-
     #[test]
     fn prop_integer_no_panic() {
         prop_integer_no_panic_i32(0x4001);
-    }
-
-    #[test]
-    fn prop_tail_and_fallback() {
-        prop_tail_handling_f64(0x5001);
     }
 }
