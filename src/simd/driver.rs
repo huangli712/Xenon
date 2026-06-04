@@ -58,41 +58,57 @@ where
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr() as *const f32, lhs.len()) };
+        let lhs = unsafe {
+            slice::from_raw_parts(lhs.as_ptr() as *const f32, lhs.len())
+        };
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let rhs = unsafe { slice::from_raw_parts(rhs.as_ptr() as *const f32, rhs.len()) };
+        let rhs = unsafe {
+            slice::from_raw_parts(rhs.as_ptr() as *const f32, rhs.len())
+        };
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
+        let dst = unsafe {
+            slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len())
+        };
         return binary::dispatch_binary_f32(op, lhs, rhs, dst);
     }
     if tid == TypeId::of::<f64>() {
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr() as *const f64, lhs.len()) };
+        let lhs = unsafe {
+            slice::from_raw_parts(lhs.as_ptr() as *const f64, lhs.len())
+        };
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let rhs = unsafe { slice::from_raw_parts(rhs.as_ptr() as *const f64, rhs.len()) };
+        let rhs = unsafe {
+            slice::from_raw_parts(rhs.as_ptr() as *const f64, rhs.len())
+        };
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
+        let dst = unsafe {
+            slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len())
+        };
         return binary::dispatch_binary_f64(op, lhs, rhs, dst);
     }
     if tid == TypeId::of::<Complex<f32>>() {
         // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
         // identical to [T; 2]. The cast through raw pointers preserves
         // provenance and the length 2*n is correct.
-        let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr() as *const Complex<f32>, lhs.len()) };
+        let lhs = unsafe {
+            slice::from_raw_parts(lhs.as_ptr() as *const Complex<f32>, lhs.len())
+        };
         // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
         // identical to [T; 2]. The cast through raw pointers preserves
         // provenance and the length 2*n is correct.
-        let rhs = unsafe { slice::from_raw_parts(rhs.as_ptr() as *const Complex<f32>, rhs.len()) };
+        let rhs = unsafe {
+            slice::from_raw_parts(rhs.as_ptr() as *const Complex<f32>, rhs.len())
+        };
         // SAFETY: dst has the same layout guarantee as lhs/rhs — Complex<T>
         // is repr(C) with two T fields.
         let dst = unsafe {
@@ -104,11 +120,15 @@ where
         // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
         // identical to [T; 2]. The cast through raw pointers preserves
         // provenance and the length 2*n is correct.
-        let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr() as *const Complex<f64>, lhs.len()) };
+        let lhs = unsafe {
+            slice::from_raw_parts(lhs.as_ptr() as *const Complex<f64>, lhs.len())
+        };
         // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
         // identical to [T; 2]. The cast through raw pointers preserves
         // provenance and the length 2*n is correct.
-        let rhs = unsafe { slice::from_raw_parts(rhs.as_ptr() as *const Complex<f64>, rhs.len()) };
+        let rhs = unsafe {
+            slice::from_raw_parts(rhs.as_ptr() as *const Complex<f64>, rhs.len())
+        };
         // SAFETY: dst has the same layout guarantee as lhs/rhs — Complex<T>
         // is repr(C) with two T fields.
         let dst = unsafe {
