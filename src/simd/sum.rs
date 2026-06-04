@@ -430,8 +430,16 @@ mod tests {
         if let Some(simd) = try_sum_complex_f64(&data) {
             let real: Vec<f64> = data.iter().map(|v| v.re).collect();
             let imag: Vec<f64> = data.iter().map(|v| v.im).collect();
-            assert_within_tolerance_f64(simd.re, scalar.re, tolerance_f64(&real));
-            assert_within_tolerance_f64(simd.im, scalar.im, tolerance_f64(&imag));
+            assert_within_tolerance_f64(
+                simd.re,
+                scalar.re,
+                tolerance_f64(&real)
+            );
+            assert_within_tolerance_f64(
+                simd.im,
+                scalar.im,
+                tolerance_f64(&imag)
+            );
         }
     }
 
