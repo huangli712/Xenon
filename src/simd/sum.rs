@@ -19,6 +19,7 @@ const COMPLEX_SUM_THRESHOLD: usize = 1024;
 // f32 sum kernel
 // ---------------------------------------------------------------------------
 
+/// Reduction sum of an `f32` slice.
 pub(crate) struct SumF32Kernel<'a> {
     /// Slice of f32 values to sum.
     pub(crate) data: &'a [f32],
@@ -53,6 +54,7 @@ impl WithSimd for SumF32Kernel<'_> {
 // f64 sum kernel
 // ---------------------------------------------------------------------------
 
+/// Reduction sum of an `f64` slice.
 pub(crate) struct SumF64Kernel<'a> {
     /// Slice of f64 values to sum.
     pub(crate) data: &'a [f64],
@@ -84,6 +86,8 @@ impl WithSimd for SumF64Kernel<'_> {
 // Complex<f32> sum kernel
 // ---------------------------------------------------------------------------
 
+/// Reduction sum of a `Complex<f32>` slice.
+/// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
 pub(crate) struct ComplexSumF32Kernel<'a> {
     /// Slice of `Complex<f32>` values to sum (interleaved real/imag).
     pub(crate) data: &'a [Complex<f32>],
@@ -162,6 +166,8 @@ impl ComplexSumF32Kernel<'_> {
 // Complex<f64> sum kernel
 // ---------------------------------------------------------------------------
 
+/// Reduction sum of a `Complex<f64>` slice.
+/// Reinterprets the interleaved real/imag layout as `[f64]` for SIMD.
 pub(crate) struct ComplexSumF64Kernel<'a> {
     /// Slice of `Complex<f64>` values to sum (interleaved real/imag).
     pub(crate) data: &'a [Complex<f64>],

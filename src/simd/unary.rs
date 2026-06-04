@@ -124,10 +124,13 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
         let n = self.src.len();
         // SAFETY: Complex<f64> is repr(C) with two f64 fields;
         // same reasoning as the f32 variant.
-        let src_f64 = unsafe { slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
+        let src_f64 = unsafe {
+            slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2)
+        };
         // SAFETY: destination has the same layout as source.
-        let dst_f64 =
-            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+        let dst_f64 = unsafe {
+            slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2)
+        };
         let (src_body, src_tail) = S::as_simd_f64s(src_f64);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
 

@@ -18,6 +18,7 @@ const COMPLEX_DOT_THRESHOLD: usize = 512;
 // f32 dot kernel
 // ---------------------------------------------------------------------------
 
+/// Inner product of two `f32` slices: `sum(lhs[i] * rhs[i])`.
 pub(crate) struct DotF32Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f32],
@@ -58,6 +59,7 @@ impl WithSimd for DotF32Kernel<'_> {
 // f64 dot kernel
 // ---------------------------------------------------------------------------
 
+/// Inner product of two `f64` slices: `sum(lhs[i] * rhs[i])`.
 pub(crate) struct DotF64Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f64],
@@ -94,6 +96,7 @@ impl WithSimd for DotF64Kernel<'_> {
 // Complex<f32> dot kernel
 // ---------------------------------------------------------------------------
 
+/// Inner product of two `Complex<f32>` slices under `conj(lhs)·rhs`.
 pub(crate) struct ComplexDotF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f32>],
@@ -126,6 +129,7 @@ impl WithSimd for ComplexDotF32Kernel<'_> {
 // Complex<f64> dot kernel
 // ---------------------------------------------------------------------------
 
+/// Inner product of two `Complex<f64>` slices under `conj(lhs)·rhs`.
 pub(crate) struct ComplexDotF64Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f64>],
