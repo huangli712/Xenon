@@ -59,7 +59,6 @@
 //! undefined behavior. Wrappers must capture the panic and convert it to
 //! an upstream ABI error code (or use `panic = "abort"`).
 
-mod blas;
 mod offset;
 mod ptr;
 mod types;
@@ -89,8 +88,7 @@ mod tests {
         let _ = std::any::type_name::<crate::ffi::types::TensorExport<'static, f64>>();
         // ptr.rs: verify `mod ptr;` → OwnedRawParts exists
         let _ = std::any::type_name::<crate::ffi::ptr::OwnedRawParts<f64, crate::dimension::Ix0>>();
-        // blas.rs / offset.rs: verified by their own unit tests;
-        // the `mod blas;` / `mod offset;` declarations are validated
-        // by cargo compiling blas.rs / offset.rs successfully.
+        // offset.rs: verified by its own unit tests;
+        // the `mod offset;` declaration is validated
     }
 }
