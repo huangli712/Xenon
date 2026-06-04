@@ -183,7 +183,7 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::simd::{BinaryOp, UnaryOp};
+    use crate::simd::UnaryOp;
 
     // ---- basic correctness ----
 

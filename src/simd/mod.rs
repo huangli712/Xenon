@@ -29,6 +29,7 @@ mod unary;
 // Re-exports so existing imports still resolve
 // ---------------------------------------------------------------------------
 
+#[allow(unused_imports)]
 pub(crate) use driver::{
     dispatch_vector_binary_op,
     dispatch_vector_unary_op,

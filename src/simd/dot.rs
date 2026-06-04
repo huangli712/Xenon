@@ -188,18 +188,6 @@ mod tests {
     use crate::complex::Complex;
     use crate::simd;
 
-    fn tolerance_f64(data: &[f64]) -> f64 {
-        let n = data.len();
-        let max_abs_input = data.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
-        (4.0 * f64::EPSILON * (n as f64) * max_abs_input).max(4.0 * f64::MIN_POSITIVE)
-    }
-
-    fn tolerance_f32(data: &[f32]) -> f32 {
-        let n = data.len();
-        let max_abs_input = data.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
-        (4.0 * f32::EPSILON * (n as f32) * max_abs_input).max(4.0 * f32::MIN_POSITIVE)
-    }
-
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
