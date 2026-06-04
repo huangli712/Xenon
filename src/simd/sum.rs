@@ -358,7 +358,7 @@ mod tests {
         );
     }
 
-    // ---- tolerance bounds ---------------------------------------------------
+    // ---- tolerance bounds --------------------------------------------------
 
     /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
@@ -367,7 +367,9 @@ mod tests {
         } else if expected.is_infinite() || actual.is_infinite() {
             assert_eq!(actual, expected);
         } else {
-            assert!((actual - expected).abs() <= tol.max(4.0 * f64::MIN_POSITIVE));
+            assert!(
+                (actual - expected).abs() <= tol.max(4.0 * f64::MIN_POSITIVE)
+            );
         }
     }
 
@@ -378,7 +380,9 @@ mod tests {
         } else if expected.is_infinite() || actual.is_infinite() {
             assert_eq!(actual, expected);
         } else {
-            assert!((actual - expected).abs() <= tol.max(4.0 * f32::MIN_POSITIVE));
+            assert!(
+                (actual - expected).abs() <= tol.max(4.0 * f32::MIN_POSITIVE)
+            );
         }
     }
 
