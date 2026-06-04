@@ -148,7 +148,11 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 /// Dispatches f32 unary Neg to the kernel.
-pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> bool {
+pub(crate) fn dispatch_unary_f32(
+    op: UnaryOp,
+    src: &[f32],
+    dst: &mut [f32]
+) -> bool {
     if src.len() < super::binary::ELEMENTWISE_THRESHOLD {
         return false;
     }
@@ -166,7 +170,11 @@ pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> b
 }
 
 /// Dispatches f64 unary Neg to the kernel.
-pub(crate) fn dispatch_unary_f64(op: UnaryOp, src: &[f64], dst: &mut [f64]) -> bool {
+pub(crate) fn dispatch_unary_f64(
+    op: UnaryOp,
+    src: &[f64],
+    dst: &mut [f64]
+) -> bool {
     if src.len() < super::binary::ELEMENTWISE_THRESHOLD {
         return false;
     }
@@ -215,9 +223,9 @@ pub(crate) fn dispatch_unary_complex_f64(
     true
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
