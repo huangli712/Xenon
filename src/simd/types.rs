@@ -58,6 +58,7 @@ pub(crate) enum UnaryOp {
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
+    use crate::simd::simd_vector_width;
     use super::*;
 
     /// Verifies that the capability query returns `None` for every
