@@ -138,6 +138,14 @@ where
 // Facade entry points — sum (reduction)
 // ---------------------------------------------------------------------------
 
+/// Stub: i32 sum has no SIMD path (i32 widening unavailable).
+/// Always returns `None` so callers fall back to scalar.
+#[allow(dead_code, reason = "i32 sum stub — no SIMD widening available")]
+pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
+    let _ = data;
+    None
+}
+
 pub(crate) fn try_sum_f32(data: &[f32]) -> Option<f32> {
     sum::try_sum_f32_impl(data)
 }
@@ -152,14 +160,6 @@ pub(crate) fn try_sum_complex_f32(data: &[Complex<f32>]) -> Option<Complex<f32>>
 
 pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>> {
     sum::try_sum_complex_f64_impl(data)
-}
-
-/// Stub: i32 sum has no SIMD path (i32 widening unavailable).
-/// Always returns `None` so callers fall back to scalar.
-#[allow(dead_code, reason = "i32 sum stub — no SIMD widening available")]
-pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
-    let _ = data;
-    None
 }
 
 // ---------------------------------------------------------------------------
