@@ -67,6 +67,5 @@ mod types;
 // items it introduces, following the module-declaration-evolution
 // protocol defined by W1T3.
 pub use impls::{OwnedRawParts, TensorBase};
-pub use types::{
-    BlasInfo, FfiBackend, FfiErrorCategory, TensorExportMutRaw, TensorExportRaw,
-};
+pub use types::{BlasInfo, TensorExportMutRaw, TensorExportRaw};
+pub use crate::error::{FfiBackend, FfiErrorCategory};
