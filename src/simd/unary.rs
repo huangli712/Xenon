@@ -217,6 +217,7 @@ mod tests {
         assert_neg_f32(&src, &dst);
     }
 
+    /// Asserts 128-element f64 negation goes through SIMD and matches scalar.
     #[test]
     fn test_vector_neg_f64() {
         let src: Vec<f64> = (0..128).map(|v| v as f64 - 64.0).collect();
@@ -226,8 +227,10 @@ mod tests {
         assert_neg_f64(&src, &dst);
     }
 
-    // ---- consistency vs serial (W14T8) ----
+    // Verifies SIMD neg matches scalar bit-for-bit (or NaN-for-NaN)
+    // against a fixture containing extreme float values.
 
+    /// Checks two f64 values are bit-identical or both NaN.
     fn assert_same_bits_or_nan_f64(actual: f64, expected: f64) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -236,6 +239,7 @@ mod tests {
         }
     }
 
+    /// Checks two f32 values are bit-identical or both NaN.
     fn assert_same_bits_or_nan_f32(actual: f32, expected: f32) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -278,6 +282,8 @@ mod tests {
         (lhs, rhs)
     }
 
+    /// Compares f64 SIMD neg against serial for a fixture containing
+    /// extreme values, NaNs, and infinities.
     #[test]
     fn test_simd_neg_f64_matches_serial() {
         let (src, _) = fixture_f64(256);
@@ -291,6 +297,8 @@ mod tests {
         }
     }
 
+    /// Compares f32 SIMD neg against serial for a fixture containing
+    /// extreme values, NaNs, and infinities.
     #[test]
     fn test_simd_neg_f32_matches_serial() {
         let (src, _) = fixture_f32(256);
@@ -354,6 +362,7 @@ mod tests {
         }
     }
 
+    /// Aggregates the neg property sub-tests.
     #[test]
     fn prop_neg_consistency() {
         prop_elementwise_neg_f64(0x1002);
