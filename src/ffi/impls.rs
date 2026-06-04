@@ -14,19 +14,11 @@ use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
 use crate::dimension::Dimension;
 use crate::element::{Element, element_type_of};
 use crate::storage::{Storage, StorageMut};
-use crate::tensor::{StorageKind, StorageSemantics};
+use crate::tensor::{StorageKind, StorageSemantics, TensorBase};
 
 use super::types::{BlasInfo, TensorExportMutRaw, TensorExportRaw};
 
-// `TensorBase` is imported so the `impl TensorBase { ... }` blocks below
-// resolve. The public FFI re-export of `TensorBase` / `OwnedRawParts`
-// (stable `crate::ffi::*` path) lives in `mod.rs`, sourced directly from
-// `crate::tensor`. The raw-parts constructors (`from_raw_parts` /
-// `from_raw_parts_mut` / `into_raw_parts` / `from_raw_parts_owned`) are
-// inherent methods on `TensorBase` and need no separate import here.
-use crate::tensor::TensorBase;
-
-// ── Index → offset / pointer ─────────────────────────────────
+// -- Index → offset / pointer ------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -134,7 +126,7 @@ where
     }
 }
 
-// ── BLAS layout ───────────────────────────────────────────────
+// -- BLAS layout -------------------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -301,7 +293,7 @@ where
     }
 }
 
-// ── Export API ────────────────────────────────────────────────
+// -- Export API --------------------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -408,7 +400,7 @@ mod tests {
     use crate::layout::Strides;
     use crate::tensor::{TensorView, TensorViewMut};
 
-    // ── Helpers ─────────────────────────────────────────────────
+    // -- Helpers -------------------------------------------------------------
 
     /// Helper: build a `TensorView<Ix2>` over a slice via `from_raw_parts`.
     fn make_view_ix2<'a>(
@@ -462,7 +454,7 @@ mod tests {
         .expect("valid F-order 1-D")
     }
 
-    // ── BLAS tests ──────────────────────────────────────────────
+    // -- BLAS tests ----------------------------------------------------------
 
     /// F-order 2D tensor passes the BLAS layout check.
     #[test]
@@ -615,7 +607,7 @@ mod tests {
         }
     }
 
-    // ── Offset/pointer tests ────────────────────────────────────
+    // -- Offset/pointer tests ------------------------------------------------
 
     /// F-order [2, 3] tensor, strides=[1,2]; index [1, 2] yields
     /// 1*1 + 2*2 = 5.
@@ -739,7 +731,7 @@ mod tests {
         assert!(matches!(err, XenonError::IndexOutOfBounds { .. }));
     }
 
-    // ── Export tests ────────────────────────────────────────────
+    // -- Export tests --------------------------------------------------------
 
     /// Exports match source metadata, and crucially `data ==
     /// as_storage_ptr()` (NOT `as_ptr()`).
