@@ -94,7 +94,7 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
     /// Accumulates interleaved real/imag lanes, deinterleaves, sums scalar tail.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f32> {
         // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...] f32 slice.
-        // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields (complex/mod.rs:119-126).
+        // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields.
         let f32_data: &[f32] = unsafe {
             std::slice::from_raw_parts(self.data.as_ptr() as *const f32, self.data.len() * 2)
         };
@@ -212,7 +212,7 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
+// Dispatch helpers (called from driver.rs facade)
 // ---------------------------------------------------------------------------
 
 /// Dispatches f32 sum to the SIMD kernel if the threshold is met.

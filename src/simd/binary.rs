@@ -441,7 +441,7 @@ impl WithSimd for ComplexAddF64Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
+// Dispatch helpers (called from driver.rs facade)
 // ---------------------------------------------------------------------------
 
 /// Dispatches f32 binary op to the corresponding kernel.

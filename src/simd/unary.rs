@@ -119,7 +119,7 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
+// Dispatch helpers (called from driver.rs facade)
 // ---------------------------------------------------------------------------
 
 /// Dispatches f32 unary Neg to the kernel.
@@ -317,7 +317,7 @@ mod tests {
         }
     }
 
-    // ---- neg property tests (W14T10) ----
+    // ---- neg property tests ----
 
     /// Number of random cases per property test.
     const CASES: usize = 32;

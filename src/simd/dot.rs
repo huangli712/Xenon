@@ -152,10 +152,10 @@ impl WithSimd for ComplexDotF64Kernel<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
+// Dispatch helpers (called from driver.rs facade)
 // ---------------------------------------------------------------------------
 
-/// Admission helper for f32 dot product (W14T6).
+/// Admission helper for f32 dot product.
 pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
     assert_eq!(lhs.len(), rhs.len());
     if lhs.len() < DOT_THRESHOLD {
@@ -165,7 +165,7 @@ pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
     Some(arch.dispatch(DotF32Kernel { lhs, rhs }))
 }
 
-/// Admission helper for f64 dot product (W14T6).
+/// Admission helper for f64 dot product.
 pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
     assert_eq!(lhs.len(), rhs.len());
     if lhs.len() < DOT_THRESHOLD {
@@ -175,7 +175,7 @@ pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
     Some(arch.dispatch(DotF64Kernel { lhs, rhs }))
 }
 
-/// Admission helper for `Complex<f32>` dot product (W14T6).
+/// Admission helper for `Complex<f32>` dot product.
 pub(crate) fn try_dot_complex_f32_impl(
     lhs: &[Complex<f32>],
     rhs: &[Complex<f32>],
@@ -188,7 +188,7 @@ pub(crate) fn try_dot_complex_f32_impl(
     Some(arch.dispatch(ComplexDotF32Kernel { lhs, rhs }))
 }
 
-/// Admission helper for `Complex<f64>` dot product (W14T6).
+/// Admission helper for `Complex<f64>` dot product.
 pub(crate) fn try_dot_complex_f64_impl(
     lhs: &[Complex<f64>],
     rhs: &[Complex<f64>],
