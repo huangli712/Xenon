@@ -213,7 +213,7 @@ mod tests {
     // ---- tolerance ----
 
     use crate::complex::Complex;
-    use crate::simd;
+    use crate::simd::{try_dot_f32, try_dot_f64, try_dot_complex_f32, try_dot_complex_f64, try_dot_i32};
 
     /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
@@ -253,7 +253,7 @@ mod tests {
         let lhs = data_f64(1024);
         let rhs: Vec<f64> = data_f64(1024).into_iter().map(|v| v * -0.5).collect();
         let scalar: f64 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
-        if let Some(simd) = simd::try_dot_f64(&lhs, &rhs) {
+        if let Some(simd) = try_dot_f64(&lhs, &rhs) {
             let max_abs_a = lhs.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
             let max_abs_b = rhs.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
             let tol = (8.0 * f64::EPSILON * (lhs.len() as f64) * max_abs_a * max_abs_b)
@@ -268,7 +268,7 @@ mod tests {
         let lhs = data_f32(1024);
         let rhs: Vec<f32> = data_f32(1024).into_iter().map(|v| v * -0.5).collect();
         let scalar: f32 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
-        if let Some(simd) = simd::try_dot_f32(&lhs, &rhs) {
+        if let Some(simd) = try_dot_f32(&lhs, &rhs) {
             let max_abs_a = lhs.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
             let max_abs_b = rhs.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
             let tol = (8.0 * f32::EPSILON * (lhs.len() as f32) * max_abs_a * max_abs_b)
@@ -292,7 +292,7 @@ mod tests {
             .zip(rhs.iter())
             .map(|(l, r)| l.conj() * *r)
             .fold(Complex::new(0.0, 0.0), |a, b| a + b);
-        if let Some(simd) = simd::try_dot_complex_f64(&lhs, &rhs) {
+        if let Some(simd) = try_dot_complex_f64(&lhs, &rhs) {
             let max_abs_a = lhs.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
             let max_abs_b = rhs.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
             let tol = (16.0 * f64::EPSILON * (lhs.len() as f64) * max_abs_a * max_abs_b)
@@ -317,7 +317,7 @@ mod tests {
             .zip(rhs.iter())
             .map(|(l, r)| l.conj() * *r)
             .fold(Complex::new(0.0, 0.0), |a, b| a + b);
-        if let Some(simd) = simd::try_dot_complex_f32(&lhs, &rhs) {
+        if let Some(simd) = try_dot_complex_f32(&lhs, &rhs) {
             let max_abs_a = lhs.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
             let max_abs_b = rhs.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
             let tol = (16.0 * f32::EPSILON * (lhs.len() as f32) * max_abs_a * max_abs_b)
@@ -334,7 +334,7 @@ mod tests {
     fn test_dot_dispatch_simd_int_admission() {
         let lhs: Vec<i32> = (0..512).collect();
         let rhs: Vec<i32> = (0..512).map(|v| v - 128).collect();
-        if let Some(simd) = simd::try_dot_i32(&lhs, &rhs) {
+        if let Some(simd) = try_dot_i32(&lhs, &rhs) {
             let scalar_i64: i64 = lhs
                 .iter()
                 .zip(rhs.iter())
@@ -401,7 +401,7 @@ mod tests {
             let len = DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            if let Some(simd) = simd::try_dot_f64(&lhs, &rhs) {
+            if let Some(simd) = try_dot_f64(&lhs, &rhs) {
                 let scalar: f64 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
                 assert_within_reduction_bound_f64(simd, scalar, len, "dot f64");
             }
@@ -419,7 +419,7 @@ mod tests {
             let rhs: Vec<Complex<f64>> = (0..len)
                 .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
                 .collect();
-            if let Some(simd) = simd::try_dot_complex_f64(&lhs, &rhs) {
+            if let Some(simd) = try_dot_complex_f64(&lhs, &rhs) {
                 let scalar: Complex<f64> = lhs
                     .iter()
                     .zip(rhs.iter())
