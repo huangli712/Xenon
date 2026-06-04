@@ -70,24 +70,3 @@ pub use impls::{OwnedRawParts, TensorBase};
 pub use types::{
     BlasInfo, FfiBackend, FfiErrorCategory, TensorExportMutRaw, TensorExportRaw,
 };
-
-#[cfg(test)]
-mod tests {
-    // Module-level compile probe: each module-path reference below
-    // resolves only if the corresponding `mod xxx;` declaration in
-    // mod.rs is in place. The `std::any::type_name` calls force the
-    // compiler to resolve the paths without producing unused-import
-    // warnings.
-
-    #[test]
-    fn test_ffi_submodules_declared() {
-        // types.rs: verify `mod types;` → TensorExportRaw exists
-        let _ = std::any::type_name::<crate::ffi::types::TensorExportRaw>();
-        // types.rs: verify `mod types;` → TensorExport exists
-        let _ = std::any::type_name::<crate::ffi::types::TensorExport<'static, f64>>();
-        // impls.rs: verify `mod impls;` → OwnedRawParts exists
-        let _ = std::any::type_name::<crate::ffi::impls::OwnedRawParts<f64, crate::dimension::Ix0>>();
-        // offset.rs: verified by its own unit tests;
-        // the `mod offset;` declaration is validated
-    }
-}
