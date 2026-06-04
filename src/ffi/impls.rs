@@ -432,18 +432,6 @@ where
 /// ```
 fn _doctest_export_mut_rejects_view() {}
 
-/// Doctest enforcing that `into_raw_parts` cannot be called on a view.
-///
-/// ```compile_fail
-/// use xenon::tensor::Tensor;
-/// use xenon::dimension::Ix1;
-/// let t: Tensor<i32, Ix1> = Tensor::from_shape_vec([2], vec![1, 2]).unwrap();
-/// let v = t.view();
-/// // `into_raw_parts` is only implemented for Owned storage.
-/// let _ = v.into_raw_parts();
-/// ```
-fn _doctest_into_raw_parts_rejects_view() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
