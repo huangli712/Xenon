@@ -204,6 +204,7 @@ mod tests {
     use crate::complex::Complex;
     use crate::simd;
 
+    /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -214,6 +215,7 @@ mod tests {
         }
     }
 
+    /// Asserts f32 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f32(actual: f32, expected: f32, tol: f32) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -224,15 +226,17 @@ mod tests {
         }
     }
 
+    /// Generates deterministic f64 test data via sin.
     fn data_f64(len: usize) -> Vec<f64> {
         (0..len).map(|i| ((i as f64) * 0.25).sin()).collect()
     }
 
+    /// Generates deterministic f32 test data via sin.
     fn data_f32(len: usize) -> Vec<f32> {
         (0..len).map(|i| ((i as f32) * 0.25).sin()).collect()
     }
 
-    /// Asserts f32 dot-product is within documented tolerance.
+    /// Asserts f64 dot-product is within documented tolerance.
     #[test]
     fn test_dot_tolerance_f64_within_documented_bounds() {
         let lhs = data_f64(1024);
@@ -247,6 +251,7 @@ mod tests {
         }
     }
 
+    /// Asserts f32 dot-product is within documented tolerance.
     #[test]
     fn test_dot_tolerance_f32_within_documented_bounds() {
         let lhs = data_f32(1024);
@@ -286,6 +291,8 @@ mod tests {
         }
     }
 
+    /// Asserts complex f32 dot product (BLAS xdotc) is within documented
+    /// tolerance on both real and imaginary components.
     #[test]
     fn test_complex_dot_tolerance_f32_real_imag_components() {
         let lhs: Vec<Complex<f32>> = (0..1024)
@@ -309,6 +316,7 @@ mod tests {
         }
     }
 
+    /// Asserts i32 dot (stub) returns None so caller falls back to scalar.
     #[test]
     fn test_dot_dispatch_simd_int_admission() {
         let lhs: Vec<i32> = (0..512).collect();
@@ -328,11 +336,16 @@ mod tests {
     // ---- dot property tests ----
     // Randomized property-based tests for SIMD dot-product.
 
+    /// Number of random cases per property test.
     const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
+    /// Dot-product threshold used by property tests.
     const DOT_THRESHOLD: usize = 512;
+    /// Complex dot-product threshold used by property tests.
     const COMPLEX_DOT_THRESHOLD: usize = 512;
 
+    /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
         *state = state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = *state;
@@ -341,21 +354,25 @@ mod tests {
         z ^ (z >> 31)
     }
 
+    /// Generates a random length in `[0, max_len]` from a PRNG state.
     fn gen_len(state: &mut u64, max_len: usize) -> usize {
         (splitmix64(state) as usize) % (max_len + 1)
     }
 
+    /// Generates a random f64 in `[-10, 10)` from a PRNG state.
     fn gen_f64(state: &mut u64) -> f64 {
         let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
         (frac - 0.5) * 20.0
     }
 
+    /// Loose tolerance bound based on expected magnitude.
     fn reduction_bound_f64(expected: f64, len: usize) -> f64 {
         let eps = f64::EPSILON;
         let magnitude = expected.abs().max(1.0);
         ((len as f64) * eps * magnitude * 4.0).max(4.0 * f64::MIN_POSITIVE)
     }
 
+    /// Asserts f64 is within a generous reduction bound.
     fn assert_within_reduction_bound_f64(actual: f64, expected: f64, len: usize, op: &str) {
         let bound = reduction_bound_f64(expected, len);
         assert!(
@@ -364,6 +381,7 @@ mod tests {
         );
     }
 
+    /// Randomised f64 dot-product within tolerance check.
     fn prop_dot_tolerance_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -377,6 +395,7 @@ mod tests {
         }
     }
 
+    /// Randomised complex f64 conjugate dot-product within tolerance check.
     fn prop_dot_conjugate_complex_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -399,6 +418,7 @@ mod tests {
         }
     }
 
+    /// Aggregate: runs f64 dot and complex f64 conjugate dot property tests.
     #[test]
     fn prop_dot_conjugate_contract() {
         prop_dot_tolerance_f64(0x3001);

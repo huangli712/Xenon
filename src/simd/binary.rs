@@ -580,11 +580,13 @@ mod tests {
 
     // ---- f64 ----
 
+    /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
         let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l + r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f64 addition goes through SIMD and matches scalar.
     #[test]
     fn test_vector_add_f64() {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
@@ -595,11 +597,13 @@ mod tests {
         assert_add_f64(&lhs, &rhs, &dst);
     }
 
+    /// Asserts SIMD and scalar subtraction produce identical results.
     fn assert_sub_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
         let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l - r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f64 subtraction goes through SIMD and matches scalar.
     #[test]
     fn test_vector_sub_f64() {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
@@ -610,11 +614,13 @@ mod tests {
         assert_sub_f64(&lhs, &rhs, &dst);
     }
 
+    /// Asserts SIMD and scalar multiplication produce identical results.
     fn assert_mul_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
         let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l * r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f64 multiplication goes through SIMD and matches scalar.
     #[test]
     fn test_vector_mul_f64() {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
@@ -625,11 +631,14 @@ mod tests {
         assert_mul_f64(&lhs, &rhs, &dst);
     }
 
+    /// Asserts SIMD and scalar division produce identical results.
     fn assert_div_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
         let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l / r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f64 division goes through SIMD and matches scalar.
+    /// Offsets inputs by +1.0 to avoid division by zero.
     #[test]
     fn test_vector_div_f64() {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64 + 1.0).collect();
@@ -649,6 +658,7 @@ mod tests {
     /// Width used for boundary / tail coverage tests.
     const SIMD_WIDTH: usize = 64;
 
+    /// Checks two f64 values are bit-identical or both NaN.
     fn assert_same_bits_or_nan_f64(actual: f64, expected: f64) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -657,6 +667,7 @@ mod tests {
         }
     }
 
+    /// Checks two f32 values are bit-identical or both NaN.
     fn assert_same_bits_or_nan_f32(actual: f32, expected: f32) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -665,6 +676,7 @@ mod tests {
         }
     }
 
+    /// Asserts two f64 slices are element-wise bit-identical (or both NaN).
     fn assert_vec_bits_or_nan_f64(actual: &[f64], expected: &[f64]) {
         assert_eq!(actual.len(), expected.len());
         for (&a, &e) in actual.iter().zip(expected.iter()) {
@@ -672,6 +684,7 @@ mod tests {
         }
     }
 
+    /// Asserts two f32 slices are element-wise bit-identical (or both NaN).
     fn assert_vec_bits_or_nan_f32(actual: &[f32], expected: &[f32]) {
         assert_eq!(actual.len(), expected.len());
         for (&a, &e) in actual.iter().zip(expected.iter()) {
@@ -679,6 +692,7 @@ mod tests {
         }
     }
 
+    /// Applies a binary op to two scalars for reference comparison.
     fn apply_binary_f64(op: BinaryOp, lhs: f64, rhs: f64) -> f64 {
         match op {
             BinaryOp::Add => lhs + rhs,
@@ -688,6 +702,7 @@ mod tests {
         }
     }
 
+    /// Applies a binary op to two scalars for reference comparison.
     fn apply_binary_f32(op: BinaryOp, lhs: f32, rhs: f32) -> f32 {
         match op {
             BinaryOp::Add => lhs + rhs,
@@ -697,6 +712,7 @@ mod tests {
         }
     }
 
+    /// Generates two `Vec<f64>` from seeded extreme-value fixtures.
     fn fixture_f64(len: usize) -> (Vec<f64>, Vec<f64>) {
         let lhs_seed = [
             1.5_f64, -2.3, 0.001, -1e20, std::f64::consts::PI,
@@ -713,6 +729,7 @@ mod tests {
         (lhs, rhs)
     }
 
+    /// Generates two `Vec<f32>` from seeded extreme-value fixtures.
     fn fixture_f32(len: usize) -> (Vec<f32>, Vec<f32>) {
         let lhs_seed = [
             1.5_f32, -2.3, 0.001, -1e10, std::f32::consts::PI,
@@ -729,6 +746,7 @@ mod tests {
         (lhs, rhs)
     }
 
+    /// Runs SIMD vs scalar comparison for f64, checking bitwise equivalence.
     fn simd_vs_serial_bitwise_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64]) {
         let mut dst = vec![0.0_f64; lhs.len()];
         let handled = crate::simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
@@ -742,6 +760,7 @@ mod tests {
         }
     }
 
+    /// Runs SIMD vs scalar comparison for f32, checking bitwise equivalence.
     fn simd_vs_serial_bitwise_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32]) {
         let mut dst = vec![0.0_f32; lhs.len()];
         let handled = crate::simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
@@ -767,6 +786,8 @@ mod tests {
         }
     }
 
+    /// Tests various lengths (including 0, 1, and multiples of SIMD width)
+    /// for bit-for-bit agreement between SIMD and scalar add/sub.
     #[test]
     fn test_elementwise_boundary_lengths() {
         let mut lengths = vec![0, 1, 32, 64, 65, 128, 256];
@@ -778,6 +799,8 @@ mod tests {
         }
     }
 
+    /// Tests that slices whose length is misaligned with the SIMD width
+    /// (256 + small tail) still produce correct results for all four ops.
     #[test]
     fn test_elementwise_tail_handling() {
         for extra in [1_usize, 3, 7, 15] {
@@ -788,6 +811,7 @@ mod tests {
         }
     }
 
+    /// Slice below the element-wise threshold must be rejected.
     #[test]
     fn test_elementwise_below_threshold() {
         let (lhs, rhs) = fixture_f64(32);
@@ -800,12 +824,15 @@ mod tests {
         ));
     }
 
+    /// Slice exactly at the element-wise threshold must be admitted.
     #[test]
     fn test_elementwise_at_threshold() {
         let (lhs, rhs) = fixture_f64(64);
         simd_vs_serial_bitwise_f64(BinaryOp::Add, &lhs, &rhs);
     }
 
+    /// Offsetting a slice within a larger allocation (misaligned pointer)
+    /// must still produce correct SIMD results.
     #[test]
     fn test_elementwise_misaligned() {
         let (lhs_storage, rhs_storage) = fixture_f64(258);
@@ -818,11 +845,16 @@ mod tests {
 
     use crate::complex::Complex;
 
+    /// Number of random cases per property test.
     const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
+    /// Element-wise threshold used by property tests.
     const ELEMENTWISE_THRESHOLD: usize = 64;
+    /// Complex element-wise threshold used by property tests.
     const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
+    /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
         *state = state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = *state;
@@ -831,20 +863,24 @@ mod tests {
         z ^ (z >> 31)
     }
 
+    /// Generates a random length in `[0, max_len]` from a PRNG state.
     fn gen_len(state: &mut u64, max_len: usize) -> usize {
         (splitmix64(state) as usize) % (max_len + 1)
     }
 
+    /// Generates a random f64 in `[-10, 10)` from a PRNG state.
     fn gen_f64(state: &mut u64) -> f64 {
         let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
         (frac - 0.5) * 20.0
     }
 
+    /// Generates a random f32 in `[-10, 10)` from a PRNG state.
     fn gen_f32(state: &mut u64) -> f32 {
         let frac = (splitmix64(state) >> 11) as f32 / (1u64 << 53) as f32;
         (frac - 0.5) * 20.0
     }
 
+    /// Randomised binary element-wise consistency check.
     fn prop_elementwise_binary_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -877,6 +913,7 @@ mod tests {
         }
     }
 
+    /// Randomised complex f32 element-wise add consistency check.
     fn prop_elementwise_complex_add_f32(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -910,6 +947,7 @@ mod tests {
         }
     }
 
+    /// Randomised tail-handling test with varying SIMD widths and tail sizes.
     fn prop_tail_handling_f64(seed: u64) {
         let mut rng = seed;
         for width in [2usize, 4, 8, 16, 32] {
@@ -934,12 +972,16 @@ mod tests {
         }
     }
 
+    /// Randomised element-wise comparison between SIMD and scalar
+    /// for all four binary operations against Complex<f32> add.
     #[test]
     fn prop_elementwise_consistency() {
         prop_elementwise_binary_f64(0x1001);
         prop_elementwise_complex_add_f32(0x1003);
     }
 
+    /// Randomised tail-handling test across multiple SIMD widths
+    /// and tail sizes verifying correct fallback.
     #[test]
     fn prop_tail_and_fallback() {
         prop_tail_handling_f64(0x5001);

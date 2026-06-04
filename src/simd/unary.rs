@@ -195,16 +195,19 @@ mod tests {
 
     // ---- basic correctness ----
 
+    /// Asserts SIMD and scalar negation produce identical results.
     fn assert_neg_f32(src: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = src.iter().map(|&v| -v).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts SIMD and scalar negation produce identical results.
     fn assert_neg_f64(src: &[f64], actual: &[f64]) {
         let expected: Vec<f64> = src.iter().map(|&v| -v).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f32 negation goes through SIMD and matches scalar.
     #[test]
     fn test_vector_neg_f32() {
         let src: Vec<f32> = (0..128).map(|v| v as f32 - 64.0).collect();
@@ -241,6 +244,7 @@ mod tests {
         }
     }
 
+    /// Generates two `Vec<f64>` from seeded extreme-value fixtures.
     fn fixture_f64(len: usize) -> (Vec<f64>, Vec<f64>) {
         let lhs_seed = [
             1.5_f64, -2.3, 0.001, -1e20, std::f64::consts::PI,
@@ -257,6 +261,7 @@ mod tests {
         (lhs, rhs)
     }
 
+    /// Generates two `Vec<f32>` from seeded extreme-value fixtures.
     fn fixture_f32(len: usize) -> (Vec<f32>, Vec<f32>) {
         let lhs_seed = [
             1.5_f32, -2.3, 0.001, -1e10, std::f32::consts::PI,
@@ -301,10 +306,14 @@ mod tests {
 
     // ---- neg property tests (W14T10) ----
 
+    /// Number of random cases per property test.
     const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
+    /// Element-wise threshold used by property tests.
     const ELEMENTWISE_THRESHOLD: usize = 64;
 
+    /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
         *state = state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = *state;
@@ -313,15 +322,18 @@ mod tests {
         z ^ (z >> 31)
     }
 
+    /// Generates a random length in `[0, max_len]` from a PRNG state.
     fn gen_len(state: &mut u64, max_len: usize) -> usize {
         (splitmix64(state) as usize) % (max_len + 1)
     }
 
+    /// Generates a random f64 in `[-10, 10)` from a PRNG state.
     fn gen_f64(state: &mut u64) -> f64 {
         let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
         (frac - 0.5) * 20.0
     }
 
+    /// Randomised f64 negation consistency check.
     fn prop_elementwise_neg_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {

@@ -257,6 +257,8 @@ mod tests {
 
     /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
     /// for floating-point SIMD sum accumulation.
+    /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
+    /// for floating-point SIMD sum accumulation.
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len() as f64;
         let max_abs = data.iter().map(|v| v.abs() as f64).fold(0.0f64, f64::max);
@@ -282,12 +284,14 @@ mod tests {
         );
     }
 
+    /// Computing tolerance as 4·ε·n·max(|input|) for f64.
     fn tolerance_f64(data: &[f64]) -> f64 {
         let n = data.len() as f64;
         let max_abs = data.iter().map(|v| v.abs()).fold(0.0f64, f64::max);
         (4.0 * f64::EPSILON * n * max_abs).max(4.0 * f64::MIN_POSITIVE)
     }
 
+    /// Asserts 2048-element f64 sum enters SIMD and stays within tolerance.
     #[test]
     fn test_sum_dispatch_simd_float_f64() {
         let data: Vec<f64> = (0..2048).map(|v| v as f64 * 0.125 - 128.0).collect();
@@ -323,6 +327,7 @@ mod tests {
 
     // ---- tolerance bounds ----
 
+    /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -333,6 +338,7 @@ mod tests {
         }
     }
 
+    /// Asserts f32 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f32(actual: f32, expected: f32, tol: f32) {
         if expected.is_nan() || actual.is_nan() {
             assert!(actual.is_nan() && expected.is_nan());
@@ -343,14 +349,17 @@ mod tests {
         }
     }
 
+    /// Generates deterministic f64 test data via sin.
     fn data_f64(len: usize) -> Vec<f64> {
         (0..len).map(|i| ((i as f64) * 0.25).sin()).collect()
     }
 
+    /// Generates deterministic f32 test data via sin.
     fn data_f32(len: usize) -> Vec<f32> {
         (0..len).map(|i| ((i as f32) * 0.25).sin()).collect()
     }
 
+    /// Asserts f64 sum is within tolerance when SIMD is available.
     #[test]
     fn test_sum_tolerance_f64_within_documented_bounds() {
         let data = data_f64(2048);
@@ -360,6 +369,7 @@ mod tests {
         }
     }
 
+    /// Asserts f32 sum is within tolerance when SIMD is available.
     #[test]
     fn test_sum_tolerance_f32_within_documented_bounds() {
         let data = data_f32(2048);
@@ -369,6 +379,8 @@ mod tests {
         }
     }
 
+    /// Asserts complex f64 sum matches scalar on both real and imag
+    /// components within documented tolerance.
     #[test]
     fn test_complex_sum_tolerance_real_imag_components() {
         let data: Vec<Complex<f64>> = (0..2048)
@@ -386,6 +398,8 @@ mod tests {
         }
     }
 
+    /// Asserts complex f32 sum matches scalar on both real and imag
+    /// components within documented tolerance.
     #[test]
     fn test_complex_sum_tolerance_f32_real_imag_components() {
         let data: Vec<Complex<f32>> = (0..2048)
@@ -403,6 +417,7 @@ mod tests {
         }
     }
 
+    /// Asserts i32 sum (stub) returns None so caller falls back to scalar.
     #[test]
     fn test_sum_dispatch_simd_int_admission() {
         let data: Vec<i32> = (0..1024).collect();
@@ -434,6 +449,8 @@ mod tests {
         }
     }
 
+    /// Just-below-threshold is rejected; just-at-threshold is admitted
+    /// and within tolerance.
     #[test]
     fn test_entry_threshold_boundary() {
         let below = vec![1.0_f64; 1023];
@@ -448,11 +465,16 @@ mod tests {
     // Randomized property-based tests that compare SIMD sum against
     // scalar across many seed-driven random inputs.
 
+    /// Number of random cases per property test.
     const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
+    /// Sum threshold used by property tests.
     const SUM_THRESHOLD: usize = 1024;
+    /// Complex sum threshold used by property tests.
     const COMPLEX_SUM_THRESHOLD: usize = 1024;
 
+    /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
         *state = state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = *state;
@@ -461,32 +483,38 @@ mod tests {
         z ^ (z >> 31)
     }
 
+    /// Generates a random length in `[0, max_len]` from a PRNG state.
     fn gen_len(state: &mut u64, max_len: usize) -> usize {
         (splitmix64(state) as usize) % (max_len + 1)
     }
 
+    /// Generates a random f64 in `[-10, 10)` from a PRNG state.
     fn gen_f64(state: &mut u64) -> f64 {
         let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
         (frac - 0.5) * 20.0
     }
 
+    /// Generates a random f32 in `[-10, 10)` from a PRNG state.
     fn gen_f32(state: &mut u64) -> f32 {
         let frac = (splitmix64(state) >> 11) as f32 / (1u64 << 53) as f32;
         (frac - 0.5) * 20.0
     }
 
+    /// Loose tolerance bound based on expected magnitude.
     fn reduction_bound_f64(expected: f64, len: usize) -> f64 {
         let eps = f64::EPSILON;
         let magnitude = expected.abs().max(1.0);
         ((len as f64) * eps * magnitude * 4.0).max(4.0 * f64::MIN_POSITIVE)
     }
 
+    /// Loose tolerance bound for f32.
     fn reduction_bound_f32(expected: f32, len: usize) -> f32 {
         let eps = f32::EPSILON;
         let magnitude = expected.abs().max(1.0);
         ((len as f32) * eps * magnitude * 4.0).max(4.0 * f32::MIN_POSITIVE)
     }
 
+    /// Asserts f64 is within a generous reduction bound.
     fn assert_within_reduction_bound_f64(actual: f64, expected: f64, len: usize, op: &str) {
         let bound = reduction_bound_f64(expected, len);
         assert!(
@@ -495,6 +523,7 @@ mod tests {
         );
     }
 
+    /// Asserts f32 is within a generous reduction bound.
     fn assert_within_reduction_bound_f32(actual: f32, expected: f32, len: usize, op: &str) {
         let bound = reduction_bound_f32(expected, len);
         assert!(
@@ -503,6 +532,7 @@ mod tests {
         );
     }
 
+    /// Randomised f64 sum within tolerance check.
     fn prop_sum_tolerance_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -515,6 +545,7 @@ mod tests {
         }
     }
 
+    /// Randomised f32 sum within tolerance check.
     fn prop_sum_tolerance_f32(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -527,6 +558,7 @@ mod tests {
         }
     }
 
+    /// Randomised complex f64 sum within tolerance check.
     fn prop_sum_complex_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -545,6 +577,7 @@ mod tests {
         }
     }
 
+    /// Aggregate: runs f64 sum, f32 sum, and complex sum property tests.
     #[test]
     fn prop_sum_tolerance() {
         prop_sum_tolerance_f64(0x2001);
@@ -554,10 +587,12 @@ mod tests {
 
     // ---- integer stub ----
 
+    /// Generates a random i32 that won't overflow during widening.
     fn gen_i32_no_overflow(state: &mut u64) -> i32 {
         ((splitmix64(state) % 2001) as i32) - 1000
     }
 
+    /// Verifies the i32 sum stub never panics across random sizes.
     fn prop_integer_no_panic_i32(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -571,6 +606,7 @@ mod tests {
         }
     }
 
+    /// Verifies the i32 sum stub never panics and always returns None.
     #[test]
     fn prop_integer_no_panic() {
         prop_integer_no_panic_i32(0x4001);
