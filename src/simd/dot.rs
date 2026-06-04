@@ -338,7 +338,7 @@ mod tests {
 
     // ---- int stub admission ----
 
-    ///
+    /// Verifies the i32 dot stub returns `None` (no SIMD widening available).
     #[test]
     fn test_dot_dispatch_simd_int_admission() {
         let lhs: Vec<i32> = (0..512).collect();

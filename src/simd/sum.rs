@@ -435,7 +435,7 @@ mod tests {
 
     // ---- edge cases (NaN / Inf / threshold) ----
 
-    ///
+    /// Verifies the i32 sum stub returns `None` (no SIMD widening available).
     #[test]
     fn test_sum_dispatch_simd_int_admission() {
         let data: Vec<i32> = (0..1024).collect();
