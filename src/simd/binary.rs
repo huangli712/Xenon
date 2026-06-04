@@ -72,6 +72,7 @@ pub(crate) struct SubF32Kernel<'a> {
 impl WithSimd for SubF32Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD sub over the body, scalar sub over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);

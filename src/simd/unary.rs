@@ -8,77 +8,6 @@ use crate::simd::{UnaryOp, get_arch};
 use crate::complex::Complex;
 
 // ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
-// ---------------------------------------------------------------------------
-
-/// Dispatches f32 unary Neg to the kernel.
-pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> bool {
-    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => {
-            arch.dispatch(NegKernel {
-                src,
-                dst,
-                _marker: std::marker::PhantomData,
-            });
-        },
-    }
-    true
-}
-
-/// Dispatches f64 unary Neg to the kernel.
-pub(crate) fn dispatch_unary_f64(op: UnaryOp, src: &[f64], dst: &mut [f64]) -> bool {
-    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => {
-            arch.dispatch(NegKernel {
-                src,
-                dst,
-                _marker: std::marker::PhantomData,
-            });
-        },
-    }
-    true
-}
-
-/// Dispatches Complex<f32> unary op to the kernel.
-pub(crate) fn dispatch_unary_complex_f32(
-    op: UnaryOp,
-    src: &[Complex<f32>],
-    dst: &mut [Complex<f32>],
-) -> bool {
-    if src.len() < super::binary::COMPLEX_ELEMENTWISE_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => arch.dispatch(ComplexNegF32Kernel { src, dst }),
-    }
-    true
-}
-
-pub(crate) fn dispatch_unary_complex_f64(
-    op: UnaryOp,
-    src: &[Complex<f64>],
-    dst: &mut [Complex<f64>],
-) -> bool {
-    if src.len() < super::binary::COMPLEX_ELEMENTWISE_THRESHOLD {
-        return false;
-    }
-    let arch = get_arch();
-    match op {
-        UnaryOp::Neg => arch.dispatch(ComplexNegF64Kernel { src, dst }),
-    }
-    true
-}
-
-// ---------------------------------------------------------------------------
 // Neg kernel
 // ---------------------------------------------------------------------------
 
@@ -94,6 +23,7 @@ pub(crate) struct NegKernel<'a, T> {
 impl WithSimd for NegKernel<'_, f32> {
     type Output = ();
 
+    /// Applies SIMD neg over the body, scalar neg over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (src_body, src_tail) = S::as_simd_f32s(self.src);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(self.dst);
@@ -110,6 +40,7 @@ impl WithSimd for NegKernel<'_, f32> {
 impl WithSimd for NegKernel<'_, f64> {
     type Output = ();
 
+    /// Applies SIMD neg over the body, scalar neg over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (src_body, src_tail) = S::as_simd_f64s(self.src);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(self.dst);
@@ -185,6 +116,77 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
             dst_tail[i] = -src_tail[i];
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch helpers (called from mod.rs facade)
+// ---------------------------------------------------------------------------
+
+/// Dispatches f32 unary Neg to the kernel.
+pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> bool {
+    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        UnaryOp::Neg => {
+            arch.dispatch(NegKernel {
+                src,
+                dst,
+                _marker: std::marker::PhantomData,
+            });
+        },
+    }
+    true
+}
+
+/// Dispatches f64 unary Neg to the kernel.
+pub(crate) fn dispatch_unary_f64(op: UnaryOp, src: &[f64], dst: &mut [f64]) -> bool {
+    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        UnaryOp::Neg => {
+            arch.dispatch(NegKernel {
+                src,
+                dst,
+                _marker: std::marker::PhantomData,
+            });
+        },
+    }
+    true
+}
+
+/// Dispatches Complex<f32> unary op to the kernel.
+pub(crate) fn dispatch_unary_complex_f32(
+    op: UnaryOp,
+    src: &[Complex<f32>],
+    dst: &mut [Complex<f32>],
+) -> bool {
+    if src.len() < super::binary::COMPLEX_ELEMENTWISE_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        UnaryOp::Neg => arch.dispatch(ComplexNegF32Kernel { src, dst }),
+    }
+    true
+}
+
+pub(crate) fn dispatch_unary_complex_f64(
+    op: UnaryOp,
+    src: &[Complex<f64>],
+    dst: &mut [Complex<f64>],
+) -> bool {
+    if src.len() < super::binary::COMPLEX_ELEMENTWISE_THRESHOLD {
+        return false;
+    }
+    let arch = get_arch();
+    match op {
+        UnaryOp::Neg => arch.dispatch(ComplexNegF64Kernel { src, dst }),
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------

@@ -123,6 +123,7 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
 }
 
 impl ComplexSumF32Kernel<'_> {
+    /// Deinterleaves accumulated SIMD vector into real and imag sums.
     fn deinterleave_and_accumulate<S: Simd>(
         &self,
         simd: S,
