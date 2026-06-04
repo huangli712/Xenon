@@ -32,17 +32,21 @@ impl SimdElement for Complex<f64> {}
 /// Binary element-wise operation selector.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum BinaryOp {
+    /// Element-wise addition.
     Add,
+    /// Element-wise subtraction.
     Sub,
+    /// Element-wise multiplication.
     Mul,
+    /// Element-wise division.
     Div,
 }
 
 /// Unary element-wise operation selector.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum UnaryOp {
+    /// Element-wise negation.
     Neg,
-    // Future: Abs, Square.
 }
 
 // ---------------------------------------------------------------------------

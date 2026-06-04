@@ -57,6 +57,7 @@ pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<
 // ---------------------------------------------------------------------------
 
 pub(crate) struct SumF32Kernel<'a> {
+    /// Slice of f32 values to sum.
     pub(crate) data: &'a [f32],
 }
 
@@ -89,6 +90,7 @@ impl WithSimd for SumF32Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct SumF64Kernel<'a> {
+    /// Slice of f64 values to sum.
     pub(crate) data: &'a [f64],
 }
 
@@ -118,6 +120,7 @@ impl WithSimd for SumF64Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct ComplexSumF32Kernel<'a> {
+    /// Slice of `Complex<f32>` values to sum (interleaved real/imag).
     pub(crate) data: &'a [Complex<f32>],
 }
 
@@ -192,6 +195,7 @@ impl ComplexSumF32Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct ComplexSumF64Kernel<'a> {
+    /// Slice of `Complex<f64>` values to sum (interleaved real/imag).
     pub(crate) data: &'a [Complex<f64>],
 }
 

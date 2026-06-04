@@ -83,9 +83,11 @@ pub(crate) fn dispatch_unary_complex_f64(
 // ---------------------------------------------------------------------------
 
 pub(crate) struct NegKernel<'a, T> {
+    /// Source slice.
     pub(crate) src: &'a [T],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [T],
-    /// Implementation token for monomorphization.
+    /// Phantom token to lock monomorphisation to `f32` / `f64`.
     pub(crate) _marker: std::marker::PhantomData<T>,
 }
 
@@ -126,7 +128,9 @@ impl WithSimd for NegKernel<'_, f64> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct ComplexNegF32Kernel<'a> {
+    /// Source slice (interleaved real/imag).
     pub(crate) src: &'a [Complex<f32>],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [Complex<f32>],
 }
 
@@ -155,7 +159,9 @@ impl WithSimd for ComplexNegF32Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct ComplexNegF64Kernel<'a> {
+    /// Source slice (interleaved real/imag).
     pub(crate) src: &'a [Complex<f64>],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [Complex<f64>],
 }
 

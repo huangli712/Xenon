@@ -100,8 +100,11 @@ pub(crate) fn dispatch_binary_complex_f64(
 
 /// Element-wise f32 addition: `dst[i] = lhs[i] + rhs[i]`.
 pub(crate) struct AddF32Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
 
@@ -129,8 +132,11 @@ impl WithSimd for AddF32Kernel<'_> {
 
 /// Element-wise f32 subtraction: `dst[i] = lhs[i] - rhs[i]`.
 pub(crate) struct SubF32Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
 
@@ -158,8 +164,11 @@ impl WithSimd for SubF32Kernel<'_> {
 /// Element-wise f32 multiplication: `dst[i] = lhs[i] * rhs[i]`.
 /// Uses separate mul lane ops (not FMA) to stay bit-identical with scalar.
 pub(crate) struct MulF32Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
 
@@ -188,8 +197,11 @@ impl WithSimd for MulF32Kernel<'_> {
 
 /// Element-wise f32 division: `dst[i] = lhs[i] / rhs[i]`.
 pub(crate) struct DivF32Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
 
@@ -216,8 +228,11 @@ impl WithSimd for DivF32Kernel<'_> {
 
 /// Element-wise f64 addition: `dst[i] = lhs[i] + rhs[i]`.
 pub(crate) struct AddF64Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
 
@@ -244,8 +259,11 @@ impl WithSimd for AddF64Kernel<'_> {
 
 /// Element-wise f64 subtraction: `dst[i] = lhs[i] - rhs[i]`.
 pub(crate) struct SubF64Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
 
@@ -273,8 +291,11 @@ impl WithSimd for SubF64Kernel<'_> {
 /// Element-wise f64 multiplication: `dst[i] = lhs[i] * rhs[i]`.
 /// Uses separate mul lane ops (not FMA) to stay bit-identical with scalar.
 pub(crate) struct MulF64Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
 
@@ -303,8 +324,11 @@ impl WithSimd for MulF64Kernel<'_> {
 
 /// Element-wise f64 division: `dst[i] = lhs[i] / rhs[i]`.
 pub(crate) struct DivF64Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
 
@@ -332,8 +356,11 @@ impl WithSimd for DivF64Kernel<'_> {
 /// Element-wise `Complex<f32>` addition.
 /// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
 pub(crate) struct ComplexAddF32Kernel<'a> {
+    /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
 }
 
@@ -361,8 +388,11 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
 
 /// Element-wise `Complex<f32>` subtraction.
 pub(crate) struct ComplexSubF32Kernel<'a> {
+    /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
 }
 
@@ -395,8 +425,11 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
 /// Element-wise `Complex<f32>` multiplication.
 /// Falls back to scalar; full SIMD vectorisation is pending.
 pub(crate) struct ComplexMulF32Kernel<'a> {
+    /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
 }
 
@@ -437,8 +470,11 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
 /// Element-wise `Complex<f64>` addition.
 /// Sub and Mul are not implemented for f64 complex; only Add is supported.
 pub(crate) struct ComplexAddF64Kernel<'a> {
+    /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [crate::complex::Complex<f64>],
+    /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [crate::complex::Complex<f64>],
+    /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [crate::complex::Complex<f64>],
 }
 

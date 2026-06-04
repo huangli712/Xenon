@@ -65,7 +65,9 @@ pub(crate) fn try_dot_complex_f64_impl(
 // ---------------------------------------------------------------------------
 
 pub(crate) struct DotF32Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f32],
 }
 
@@ -101,7 +103,9 @@ impl WithSimd for DotF32Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct DotF64Kernel<'a> {
+    /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+    /// Right operand slice.
     pub(crate) rhs: &'a [f64],
 }
 
@@ -134,7 +138,9 @@ impl WithSimd for DotF64Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct ComplexDotF32Kernel<'a> {
+    /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f32>],
+    /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [Complex<f32>],
 }
 
@@ -163,7 +169,9 @@ impl WithSimd for ComplexDotF32Kernel<'_> {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct ComplexDotF64Kernel<'a> {
+    /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f64>],
+    /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [Complex<f64>],
 }
 
