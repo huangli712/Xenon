@@ -221,24 +221,24 @@ pub(crate) fn try_dot_complex_f64_impl(
     Some(arch.dispatch(ComplexDotF64Kernel { lhs, rhs }))
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    // Tests verify that the SIMD dot-product matches scalar within
-    // documented floating-point tolerance bounds.
-
     use crate::complex::Complex;
-    use crate::simd::{try_dot_f32, try_dot_f64, try_dot_complex_f32, try_dot_complex_f64, try_dot_i32};
+    use crate::simd::try_dot_i32;
+    use crate::simd::{try_dot_f32, try_dot_f64};
+    use crate::simd::{try_dot_complex_f32, try_dot_complex_f64};
 
     /// Number of random cases per property test.
     const CASES: usize = 32;
+
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- tolerance ----------------------------------------------------------
+    // ---- tolerance ---------------------------------------------------------
 
     /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
