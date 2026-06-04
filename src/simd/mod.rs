@@ -24,8 +24,6 @@ mod driver;
 mod types;
 #[cfg(feature = "simd")]
 mod unary;
-#[cfg(feature = "simd")]
-mod vector;
 
 // ---------------------------------------------------------------------------
 // Re-exports so existing imports still resolve

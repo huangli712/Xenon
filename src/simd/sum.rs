@@ -537,4 +537,29 @@ mod tests {
         prop_sum_tolerance_f32(0x2002);
         prop_sum_complex_f64(0x2003);
     }
+
+    // ---- integer stub ----
+
+    fn gen_i32_no_overflow(state: &mut u64) -> i32 {
+        ((splitmix64(state) % 2001) as i32) - 1000
+    }
+
+    fn prop_integer_no_panic_i32(seed: u64) {
+        let mut rng = seed;
+        for _case in 0..CASES {
+            let len = gen_len(&mut rng, MAX_LEN);
+            let data: Vec<i32> = (0..len).map(|_| gen_i32_no_overflow(&mut rng)).collect();
+            // i32 SIMD is currently not available (per W14T0 spike),
+            // so try_sum_i32 should always return None.
+            assert!(
+                simd::try_sum_i32(&data).is_none(),
+                "i32 SIMD sum should not be available (widening unavailable)"
+            );
+        }
+    }
+
+    #[test]
+    fn prop_integer_no_panic() {
+        prop_integer_no_panic_i32(0x4001);
+    }
 }

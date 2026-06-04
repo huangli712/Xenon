@@ -256,6 +256,40 @@ pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize> {
 mod tests {
     use super::*;
 
+    // ---- threshold rejection ----
+
+    #[test]
+    fn test_vector_sub_mul_div_below_threshold_rejects() {
+        let lhs: Vec<f32> = (0..32).map(|v| v as f32).collect();
+        let rhs: Vec<f32> = (0..32).map(|v| v as f32).collect();
+        let mut dst = vec![99.0f32; lhs.len()];
+
+        // len=32 < threshold 64 — must reject
+        assert!(!dispatch_vector_binary_op(
+            BinaryOp::Add,
+            &lhs,
+            &rhs,
+            &mut dst
+        ));
+        assert!(!dispatch_vector_binary_op(
+            BinaryOp::Mul,
+            &lhs,
+            &rhs,
+            &mut dst
+        ));
+        assert!(!dispatch_vector_unary_op(
+            UnaryOp::Neg,
+            &lhs,
+            &mut dst
+        ));
+        // dst should remain unchanged on rejection
+        for &v in &dst {
+            assert_eq!(v, 99.0_f32, "dst must be untouched on SIMD rejection");
+        }
+    }
+
+    // ---- facade admission ----
+
     #[test]
     fn test_empty_array() {
         let lhs: [f32; 0] = [];
