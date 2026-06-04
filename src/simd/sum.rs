@@ -462,11 +462,15 @@ mod tests {
                 scalar.re,
                 tolerance_f32(&real)
             );
-            assert_within_tolerance_f32(simd.im, scalar.im, tolerance_f32(&imag));
+            assert_within_tolerance_f32(
+                simd.im,
+                scalar.im,
+                tolerance_f32(&imag)
+            );
         }
     }
 
-    // ---- edge cases (NaN / Inf / threshold) ---------------------------------
+    // ---- edge cases (NaN / Inf / threshold) --------------------------------
 
     /// Verifies the i32 sum stub returns `None` (no SIMD widening available).
     #[test]
@@ -474,8 +478,8 @@ mod tests {
         let data: Vec<i32> = (0..1024).collect();
         if let Some(simd) = try_sum_i32(&data) {
             let scalar_i64: i64 = data.iter().map(|&v| v as i64).sum();
-            let scalar_i32 =
-                i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
+            let scalar_i32 = i32::try_from(scalar_i64)
+                .expect("test fixture stays within i32 range");
             assert_eq!(simd, scalar_i32);
         }
     }
