@@ -303,16 +303,15 @@ where
 {
     /// Export tensor data as a C-compatible raw structure.
     ///
-    /// The returned `TensorExportRaw` borrows the tensor's data and
-    /// metadata. The consumer must ensure the tensor outlives the export.
-    /// This method does not fail; it always returns a valid export.
+    /// The returned `TensorExportRaw` borrows the tensor's data and metadata.
+    /// The consumer must ensure the tensor outlives the export. This method
+    /// does not fail; it always returns a valid export.
     ///
-    /// `data` always carries the **storage base pointer**; the logical
-    /// first element address is derived from `data.add(offset)` for
-    /// non-empty tensors. Empty tensors (`len() == 0`) get a valid
-    /// aligned `dangling` pointer that must not be dereferenced;
-    /// `shape`, `strides`, and `offset` still describe the empty
-    /// tensor metadata.
+    /// `data` always carries the **storage base pointer**; the logical first
+    /// element address is derived from `data.add(offset)` for non-empty
+    /// tensors. Empty tensors (`len() == 0`) get a valid aligned `dangling`
+    /// pointer that must not be dereferenced; `shape`, `strides`, and `offset`
+    /// still describe the empty tensor metadata.
     ///
     /// **Return type**: this is the public FFI entry returning
     /// `TensorExportRaw`, the C-visible non-generic raw descriptor, built
