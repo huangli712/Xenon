@@ -148,7 +148,11 @@ where
 /// # Panics
 ///
 /// Panics if `src.len() != dst.len()`.
-pub(crate) fn dispatch_vector_unary_op<A>(op: UnaryOp, src: &[A], dst: &mut [A]) -> bool
+pub(crate) fn dispatch_vector_unary_op<A>(
+    op: UnaryOp,
+    src: &[A],
+    dst: &mut [A]
+) -> bool
 where
     A: SimdElement,
 {
@@ -158,23 +162,20 @@ where
     if tid == TypeId::of::<f32>() {
         // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
         let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const f32, src.len()) };
-        let dst =
-            // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
-            unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
+        // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
+        let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
         return unary::dispatch_unary_f32(op, src, dst);
     }
     if tid == TypeId::of::<f64>() {
         // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
         let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const f64, src.len()) };
-        let dst =
-            // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
-            unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
+        // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
+        let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
         return unary::dispatch_unary_f64(op, src, dst);
     }
     if tid == TypeId::of::<Complex<f32>>() {
-        let src =
-            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
-            unsafe { slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len()) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len()) };
         // SAFETY: dst has the same layout guarantee as lhs/rhs — Complex<T> is repr(C) with two T fields.
         let dst = unsafe {
             slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut Complex<f32>, dst.len())
