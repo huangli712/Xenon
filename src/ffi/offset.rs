@@ -86,13 +86,7 @@ where
         }
         Ok(offset)
     }
-}
 
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A> + StorageSemantics,
-    D: Dimension,
-{
     /// Converts a multi-dimensional index to a raw pointer to the
     /// corresponding element.
     ///
