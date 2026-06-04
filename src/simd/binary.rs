@@ -686,7 +686,11 @@ mod tests {
 
     /// Asserts SIMD and scalar subtraction produce identical results.
     fn assert_sub_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
-        let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l - r).collect();
+        let expected: Vec<f32> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l - r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
