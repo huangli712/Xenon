@@ -240,7 +240,9 @@ pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
 }
 
 /// Admission helper for `Complex<f32>` sum.
-pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<f32>> {
+pub(crate) fn try_sum_complex_f32_impl(
+    data: &[Complex<f32>]
+) -> Option<Complex<f32>> {
     if data.len() < COMPLEX_SUM_THRESHOLD {
         return None;
     }
@@ -249,7 +251,9 @@ pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<
 }
 
 /// Admission helper for `Complex<f64>` sum.
-pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<f64>> {
+pub(crate) fn try_sum_complex_f64_impl(
+    data: &[Complex<f64>]
+) -> Option<Complex<f64>> {
     if data.len() < COMPLEX_SUM_THRESHOLD {
         return None;
     }
@@ -257,17 +261,20 @@ pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<
     Some(arch.dispatch(ComplexSumF64Kernel { data }))
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::{try_sum_f32, try_sum_f64, try_sum_complex_f32, try_sum_complex_f64, try_sum_i32};
+    use crate::simd::try_sum_i32;
+    use crate::simd::{try_sum_f32, try_sum_f64};
+    use crate::simd::{try_sum_complex_f32, try_sum_complex_f64};
 
     /// Number of random cases per property test.
     const CASES: usize = 32;
+
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
