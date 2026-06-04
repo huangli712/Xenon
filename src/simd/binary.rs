@@ -673,7 +673,12 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Add,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         // len=128 > threshold 64, SIMD admission must succeed.
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_add_f32(&lhs, &rhs, &dst);
