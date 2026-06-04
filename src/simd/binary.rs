@@ -521,7 +521,7 @@ pub(crate) fn dispatch_binary_complex_f64(
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::simd::BinaryOp;
+    use crate::simd::{dispatch_vector_binary_op, BinaryOp};
 
     // ---- f32 admission ----
 
@@ -537,7 +537,7 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
         // len=128 > threshold 64, SIMD admission must succeed.
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_add_f32(&lhs, &rhs, &dst);
@@ -555,7 +555,7 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_sub_f32(&lhs, &rhs, &dst);
     }
@@ -572,7 +572,7 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_mul_f32(&lhs, &rhs, &dst);
     }
@@ -590,7 +590,7 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32 + 1.0).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5 + 1.0).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Div, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Div, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_div_f32(&lhs, &rhs, &dst);
     }
@@ -609,7 +609,7 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_add_f64(&lhs, &rhs, &dst);
     }
@@ -626,7 +626,7 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_sub_f64(&lhs, &rhs, &dst);
     }
@@ -643,7 +643,7 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_mul_f64(&lhs, &rhs, &dst);
     }
@@ -661,7 +661,7 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64 + 1.0).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25 + 1.0).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Div, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Div, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_div_f64(&lhs, &rhs, &dst);
     }
@@ -766,7 +766,7 @@ mod tests {
     /// Runs SIMD vs scalar comparison for f64, checking bitwise equivalence.
     fn simd_vs_serial_bitwise_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64]) {
         let mut dst = vec![0.0_f64; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
         if handled {
             let serial: Vec<f64> = lhs
                 .iter()
@@ -780,7 +780,7 @@ mod tests {
     /// Runs SIMD vs scalar comparison for f32, checking bitwise equivalence.
     fn simd_vs_serial_bitwise_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32]) {
         let mut dst = vec![0.0_f32; lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
         if handled {
             let serial: Vec<f32> = lhs
                 .iter()
@@ -833,7 +833,7 @@ mod tests {
     fn test_elementwise_below_threshold() {
         let (lhs, rhs) = fixture_f64(32);
         let mut dst = vec![0.0_f64; lhs.len()];
-        assert!(!crate::simd::dispatch_vector_binary_op(
+        assert!(!dispatch_vector_binary_op(
             BinaryOp::Add,
             &lhs,
             &rhs,
@@ -906,7 +906,7 @@ mod tests {
             let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             for op in [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div] {
                 let mut dst = vec![0.0_f64; len];
-                let handled = crate::simd::dispatch_vector_binary_op(op, &lhs, &rhs, &mut dst);
+                let handled = dispatch_vector_binary_op(op, &lhs, &rhs, &mut dst);
                 if handled {
                     let serial: Vec<f64> = lhs
                         .iter()
@@ -942,7 +942,7 @@ mod tests {
                 .map(|_| Complex::new(gen_f32(&mut rng), gen_f32(&mut rng)))
                 .collect();
             let mut dst = vec![Complex::new(0.0, 0.0); len];
-            let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+            let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
             if handled {
                 for (i, (a, (l, r))) in dst.iter().zip(lhs.iter().zip(rhs.iter())).enumerate() {
                     let e = *l + *r;
@@ -974,7 +974,7 @@ mod tests {
                 let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
                 let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
                 let mut dst = vec![0.0_f64; len];
-                let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+                let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
                 if handled {
                     for i in 0..len {
                         let expected = lhs[i] + rhs[i];
@@ -1016,7 +1016,7 @@ mod tests {
             .map(|v| Complex::new((v as f32) * 0.5, v as f32))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
             let e = l - r;
@@ -1035,7 +1035,7 @@ mod tests {
             .map(|v| Complex::new((v as f64) * 0.5 - 32.0, v as f64))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
-        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
             let e = l + r;

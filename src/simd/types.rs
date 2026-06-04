@@ -64,11 +64,11 @@ mod tests {
     /// supported element type (ISA lane widths not yet wired).
     #[test]
     fn test_simd_vector_width_skeleton_returns_none() {
-        assert_eq!(crate::simd::simd_vector_width::<f32>(), None);
-        assert_eq!(crate::simd::simd_vector_width::<f64>(), None);
-        assert_eq!(crate::simd::simd_vector_width::<i32>(), None);
-        assert_eq!(crate::simd::simd_vector_width::<i64>(), None);
-        assert_eq!(crate::simd::simd_vector_width::<Complex<f32>>(), None);
-        assert_eq!(crate::simd::simd_vector_width::<Complex<f64>>(), None);
+        assert_eq!(simd_vector_width::<f32>(), None);
+        assert_eq!(simd_vector_width::<f64>(), None);
+        assert_eq!(simd_vector_width::<i32>(), None);
+        assert_eq!(simd_vector_width::<i64>(), None);
+        assert_eq!(simd_vector_width::<Complex<f32>>(), None);
+        assert_eq!(simd_vector_width::<Complex<f64>>(), None);
     }
 }

@@ -197,7 +197,7 @@ pub(crate) fn dispatch_unary_complex_f64(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::UnaryOp;
+    use crate::simd::{dispatch_vector_unary_op, UnaryOp};
 
     // ---- basic correctness ----
 
@@ -218,7 +218,7 @@ mod tests {
     fn test_vector_neg_f32() {
         let src: Vec<f32> = (0..128).map(|v| v as f32 - 64.0).collect();
         let mut dst = vec![0.0f32; src.len()];
-        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_neg_f32(&src, &dst);
     }
@@ -228,7 +228,7 @@ mod tests {
     fn test_vector_neg_f64() {
         let src: Vec<f64> = (0..128).map(|v| v as f64 - 64.0).collect();
         let mut dst = vec![0.0f64; src.len()];
-        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_neg_f64(&src, &dst);
     }
@@ -296,7 +296,7 @@ mod tests {
     fn test_simd_neg_f64_matches_serial() {
         let (src, _) = fixture_f64(256);
         let mut dst = vec![0.0_f64; src.len()];
-        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         if handled {
             let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
             for (&a, &e) in dst.iter().zip(serial.iter()) {
@@ -311,7 +311,7 @@ mod tests {
     fn test_simd_neg_f32_matches_serial() {
         let (src, _) = fixture_f32(256);
         let mut dst = vec![0.0_f32; src.len()];
-        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         if handled {
             let serial: Vec<f32> = src.iter().map(|&v| -v).collect();
             for (&a, &e) in dst.iter().zip(serial.iter()) {
@@ -358,7 +358,7 @@ mod tests {
             let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let src: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let mut dst = vec![0.0_f64; len];
-            let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+            let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
             if handled {
                 let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
                 for (&a, &e) in dst.iter().zip(serial.iter()) {
@@ -387,7 +387,7 @@ mod tests {
             .map(|v| Complex::new(v as f32 - 64.0, (v as f32) * 0.5 - 32.0))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); src.len()];
-        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (&a, s) in dst.iter().zip(src.iter()) {
             assert_eq!(a.re, -s.re);
@@ -402,7 +402,7 @@ mod tests {
             .map(|v| Complex::new(v as f64 - 64.0, (v as f64) * 0.25 - 32.0))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); src.len()];
-        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (&a, s) in dst.iter().zip(src.iter()) {
             assert_eq!(a.re, -s.re);
