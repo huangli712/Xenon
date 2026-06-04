@@ -167,9 +167,9 @@ mod tests {
     fn test_raw_descriptors_repr_c_layout() {
         // Size lower bound check
         assert!(
-            size_of::<TensorExportRaw>() >=
-                size_of::<*const c_void>() +
-                size_of::<u8>() + 5 * size_of::<usize>()
+            size_of::<TensorExportRaw>()
+                >= size_of::<*const c_void>()
+                    + size_of::<u8>() + 5 * size_of::<usize>()
         );
 
         // Alignment checks
@@ -191,12 +191,14 @@ mod tests {
             offset_of!(TensorExportRaw, element_type),
             size_of::<*const c_void>()
         );
+
         // ndim follows element_type;
         // exact offset depends on u8 + alignment padding
         assert!(
             offset_of!(TensorExportRaw, ndim)
                 >= offset_of!(TensorExportRaw, element_type) + size_of::<u8>()
         );
+
         // Remaining fields follow in order: shape, strides, storage_len, offset
         assert!(offset_of!(TensorExportRaw, shape) > offset_of!(TensorExportRaw, ndim));
         assert!(offset_of!(TensorExportRaw, strides) > offset_of!(TensorExportRaw, shape));
