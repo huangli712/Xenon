@@ -200,9 +200,21 @@ mod tests {
         );
 
         // Remaining fields follow in order: shape, strides, storage_len, offset
-        assert!(offset_of!(TensorExportRaw, shape) > offset_of!(TensorExportRaw, ndim));
-        assert!(offset_of!(TensorExportRaw, strides) > offset_of!(TensorExportRaw, shape));
-        assert!(offset_of!(TensorExportRaw, storage_len) > offset_of!(TensorExportRaw, strides));
-        assert!(offset_of!(TensorExportRaw, offset) > offset_of!(TensorExportRaw, storage_len));
+        assert!(
+            offset_of!(TensorExportRaw, shape)
+                > offset_of!(TensorExportRaw, ndim)
+        );
+        assert!(
+            offset_of!(TensorExportRaw, strides)
+                > offset_of!(TensorExportRaw, shape)
+        );
+        assert!(
+            offset_of!(TensorExportRaw, storage_len)
+                > offset_of!(TensorExportRaw, strides)
+        );
+        assert!(
+            offset_of!(TensorExportRaw, offset)
+                > offset_of!(TensorExportRaw, storage_len)
+        );
     }
 }
