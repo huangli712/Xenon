@@ -140,7 +140,10 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
         // (S::f32s: Pod); reading it as lane_count f32 values stays in bounds.
         let lane_count = size_of::<S::f32s>() / size_of::<f32>();
         let lanes: &[f32] = unsafe {
-            slice::from_raw_parts(&acc as *const S::f32s as *const f32, lane_count)
+            slice::from_raw_parts(
+                &acc as *const S::f32s as *const f32,
+                lane_count
+            )
         };
         for i in 0..lane_count / 2 {
             re_sum += lanes[2 * i];
@@ -200,7 +203,10 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
         // (S::f64s: Pod); reading it as lane_count f64 values stays in bounds.
         let lane_count = size_of::<S::f64s>() / size_of::<f64>();
         let lanes: &[f64] = unsafe {
-            slice::from_raw_parts(&acc as *const S::f64s as *const f64, lane_count)
+            slice::from_raw_parts(
+                &acc as *const S::f64s as *const f64,
+                lane_count
+            )
         };
         for i in 0..lane_count / 2 {
             re_sum += lanes[2 * i];
