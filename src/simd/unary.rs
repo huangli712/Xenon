@@ -321,8 +321,10 @@ mod tests {
 
     /// Number of random cases per property test.
     const CASES: usize = 32;
+
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
+    
     /// Element-wise threshold used by property tests.
     const ELEMENTWISE_THRESHOLD: usize = 64;
 
