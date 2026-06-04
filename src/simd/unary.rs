@@ -196,6 +196,7 @@ pub(crate) fn dispatch_unary_complex_f64(
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
+    use crate::complex::Complex;
     use crate::simd::UnaryOp;
 
     // ---- basic correctness ----
@@ -373,5 +374,37 @@ mod tests {
     #[test]
     fn prop_neg_consistency() {
         prop_elementwise_neg_f64(0x1002);
+    }
+
+    // ---- complex neg admission ----
+
+    /// 128-element `Complex<f32>` negation goes through SIMD and matches scalar.
+    #[test]
+    fn test_vector_complex_neg_f32() {
+        let src: Vec<Complex<f32>> = (0..128)
+            .map(|v| Complex::new(v as f32 - 64.0, (v as f32) * 0.5 - 32.0))
+            .collect();
+        let mut dst = vec![Complex::new(0.0, 0.0); src.len()];
+        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        assert!(handled, "len=128 above threshold must admit SIMD");
+        for (&a, s) in dst.iter().zip(src.iter()) {
+            assert_eq!(a.re, -s.re);
+            assert_eq!(a.im, -s.im);
+        }
+    }
+
+    /// 128-element `Complex<f64>` negation goes through SIMD and matches scalar.
+    #[test]
+    fn test_vector_complex_neg_f64() {
+        let src: Vec<Complex<f64>> = (0..128)
+            .map(|v| Complex::new(v as f64 - 64.0, (v as f64) * 0.25 - 32.0))
+            .collect();
+        let mut dst = vec![Complex::new(0.0, 0.0); src.len()];
+        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        assert!(handled, "len=128 above threshold must admit SIMD");
+        for (&a, s) in dst.iter().zip(src.iter()) {
+            assert_eq!(a.re, -s.re);
+            assert_eq!(a.im, -s.im);
+        }
     }
 }

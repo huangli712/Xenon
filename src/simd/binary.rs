@@ -1001,4 +1001,44 @@ mod tests {
     fn prop_tail_and_fallback() {
         prop_tail_handling_f64(0x5001);
     }
+
+    // ---- complex sub / add f64 admission ----
+
+    /// 128-element `Complex<f32>` subtraction goes through SIMD and matches scalar.
+    #[test]
+    fn test_vector_complex_sub_f32() {
+        let lhs: Vec<Complex<f32>> = (0..128)
+            .map(|v| Complex::new(v as f32 + 1.0, (v as f32) * 0.5))
+            .collect();
+        let rhs: Vec<Complex<f32>> = (0..128)
+            .map(|v| Complex::new((v as f32) * 0.5, v as f32))
+            .collect();
+        let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
+        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        assert!(handled, "len=128 above threshold must admit SIMD");
+        for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
+            let e = l - r;
+            assert_eq!(a.re, e.re, "real mismatch at i={i}");
+            assert_eq!(a.im, e.im, "imag mismatch at i={i}");
+        }
+    }
+
+    /// 128-element `Complex<f64>` addition goes through SIMD and matches scalar.
+    #[test]
+    fn test_vector_complex_add_f64() {
+        let lhs: Vec<Complex<f64>> = (0..128)
+            .map(|v| Complex::new(v as f64 - 64.0, (v as f64) * 0.25))
+            .collect();
+        let rhs: Vec<Complex<f64>> = (0..128)
+            .map(|v| Complex::new((v as f64) * 0.5 - 32.0, v as f64))
+            .collect();
+        let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
+        let handled = crate::simd::dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        assert!(handled, "len=128 above threshold must admit SIMD");
+        for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
+            let e = l + r;
+            assert_eq!(a.re, e.re, "real mismatch at i={i}");
+            assert_eq!(a.im, e.im, "imag mismatch at i={i}");
+        }
+    }
 }
