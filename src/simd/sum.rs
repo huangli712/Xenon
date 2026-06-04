@@ -233,6 +233,7 @@ pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
     Some(arch.dispatch(SumF64Kernel { data }))
 }
 
+/// Admission helper for `Complex<f32>` sum.
 pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<f32>> {
     if data.len() < COMPLEX_SUM_THRESHOLD {
         return None;
@@ -241,6 +242,7 @@ pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<
     Some(arch.dispatch(ComplexSumF32Kernel { data }))
 }
 
+/// Admission helper for `Complex<f64>` sum.
 pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<f64>> {
     if data.len() < COMPLEX_SUM_THRESHOLD {
         return None;

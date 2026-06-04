@@ -174,6 +174,7 @@ pub(crate) fn dispatch_unary_complex_f32(
     true
 }
 
+/// Dispatches Complex<f64> unary op to the kernel.
 pub(crate) fn dispatch_unary_complex_f64(
     op: UnaryOp,
     src: &[Complex<f64>],

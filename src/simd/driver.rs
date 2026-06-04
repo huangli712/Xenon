@@ -146,18 +146,22 @@ pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
     None
 }
 
+/// Dispatches to SIMD f32 sum; returns `None` if below threshold.
 pub(crate) fn try_sum_f32(data: &[f32]) -> Option<f32> {
     sum::try_sum_f32_impl(data)
 }
 
+/// Dispatches to SIMD f64 sum; returns `None` if below threshold.
 pub(crate) fn try_sum_f64(data: &[f64]) -> Option<f64> {
     sum::try_sum_f64_impl(data)
 }
 
+/// Dispatches to SIMD `Complex<f32>` sum; returns `None` if below threshold.
 pub(crate) fn try_sum_complex_f32(data: &[Complex<f32>]) -> Option<Complex<f32>> {
     sum::try_sum_complex_f32_impl(data)
 }
 
+/// Dispatches to SIMD `Complex<f64>` sum; returns `None` if below threshold.
 pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>> {
     sum::try_sum_complex_f64_impl(data)
 }
@@ -166,16 +170,19 @@ pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>>
 // Facade entry points — dot (inner product)
 // ---------------------------------------------------------------------------
 
+/// Dispatches to SIMD f32 dot product; panics if lengths differ.
 pub(crate) fn try_dot_f32(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
     assert_eq!(lhs.len(), rhs.len());
     dot::try_dot_f32_impl(lhs, rhs)
 }
 
+/// Dispatches to SIMD f64 dot product; panics if lengths differ.
 pub(crate) fn try_dot_f64(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
     assert_eq!(lhs.len(), rhs.len());
     dot::try_dot_f64_impl(lhs, rhs)
 }
 
+/// Dispatches to SIMD `Complex<f32>` dot product (BLAS xdotc).
 pub(crate) fn try_dot_complex_f32(
     lhs: &[Complex<f32>],
     rhs: &[Complex<f32>],
@@ -184,6 +191,7 @@ pub(crate) fn try_dot_complex_f32(
     dot::try_dot_complex_f32_impl(lhs, rhs)
 }
 
+/// Dispatches to SIMD `Complex<f64>` dot product (BLAS xdotc).
 pub(crate) fn try_dot_complex_f64(
     lhs: &[Complex<f64>],
     rhs: &[Complex<f64>],
