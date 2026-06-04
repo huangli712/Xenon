@@ -20,20 +20,13 @@ use crate::error::{
 use crate::storage::{Storage, StorageMut};
 use crate::tensor::{StorageKind, StorageSemantics};
 
-/// Re-exports for FFI consumers to access raw-parts metadata and the
-/// tensor type via the stable `crate::ffi::*` path.
-///
-/// `OwnedRawParts` is defined in `crate::tensor` (see `07-tensor.md`
-/// §5.7). The inherent methods `from_raw_parts` / `from_raw_parts_mut`
-/// / `into_raw_parts` / `from_raw_parts_owned` are defined on
-/// `TensorBase` and ride on the type itself — they become callable as
-/// soon as `TensorBase` is in scope, with no extra `pub use` required
-/// (inherent methods have no free-function path symbol).
-///
-/// Note: a single `pub use` brings `TensorBase` into the current scope
-/// (so that `impl TensorBase { ... }` below works) **and** simultaneously
-/// re-exports it from `crate::ffi::impls`.
-pub use crate::tensor::{OwnedRawParts, TensorBase};
+// `TensorBase` is imported so the `impl TensorBase { ... }` blocks below
+// resolve. The public FFI re-export of `TensorBase` / `OwnedRawParts`
+// (stable `crate::ffi::*` path) lives in `mod.rs`, sourced directly from
+// `crate::tensor`. The raw-parts constructors (`from_raw_parts` /
+// `from_raw_parts_mut` / `into_raw_parts` / `from_raw_parts_owned`) are
+// inherent methods on `TensorBase` and need no separate import here.
+use crate::tensor::TensorBase;
 
 // ── Index → offset / pointer ─────────────────────────────────
 
