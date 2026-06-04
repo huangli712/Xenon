@@ -10,7 +10,7 @@
 use pulp::{Simd, WithSimd};
 
 use std::slice;
-use crate::complex::Complex;
+use Complex;
 use crate::simd::{BinaryOp, get_arch};
 
 // ----------------------------------------------------------------------------
@@ -309,13 +309,13 @@ impl WithSimd for DivF64Kernel<'_> {
 /// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
 pub(crate) struct ComplexAddF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
-    pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) lhs: &'a [Complex<f32>],
 
     /// Right operand slice (interleaved real/imag).
-    pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) rhs: &'a [Complex<f32>],
     
     /// Destination slice (overwritten).
-    pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
+    pub(crate) dst: &'a mut [Complex<f32>],
 }
 
 impl WithSimd for ComplexAddF32Kernel<'_> {
@@ -351,11 +351,11 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
 /// Element-wise `Complex<f32>` subtraction.
 pub(crate) struct ComplexSubF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
-    pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) lhs: &'a [Complex<f32>],
     /// Right operand slice (interleaved real/imag).
-    pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) rhs: &'a [Complex<f32>],
     /// Destination slice (overwritten).
-    pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
+    pub(crate) dst: &'a mut [Complex<f32>],
 }
 
 impl WithSimd for ComplexSubF32Kernel<'_> {
@@ -392,11 +392,11 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
 /// Falls back to scalar; full SIMD vectorisation is pending.
 pub(crate) struct ComplexMulF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
-    pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) lhs: &'a [Complex<f32>],
     /// Right operand slice (interleaved real/imag).
-    pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    pub(crate) rhs: &'a [Complex<f32>],
     /// Destination slice (overwritten).
-    pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
+    pub(crate) dst: &'a mut [Complex<f32>],
 }
 
 impl WithSimd for ComplexMulF32Kernel<'_> {
@@ -441,11 +441,11 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
 /// Sub and Mul are not implemented for f64 complex; only Add is supported.
 pub(crate) struct ComplexAddF64Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
-    pub(crate) lhs: &'a [crate::complex::Complex<f64>],
+    pub(crate) lhs: &'a [Complex<f64>],
     /// Right operand slice (interleaved real/imag).
-    pub(crate) rhs: &'a [crate::complex::Complex<f64>],
+    pub(crate) rhs: &'a [Complex<f64>],
     /// Destination slice (overwritten).
-    pub(crate) dst: &'a mut [crate::complex::Complex<f64>],
+    pub(crate) dst: &'a mut [Complex<f64>],
 }
 
 impl WithSimd for ComplexAddF64Kernel<'_> {
@@ -555,7 +555,7 @@ pub(crate) fn dispatch_binary_complex_f64(
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::complex::Complex;
+    use Complex;
     use crate::simd::{dispatch_vector_binary_op, BinaryOp};
 
     /// Width used for boundary / tail coverage tests.
