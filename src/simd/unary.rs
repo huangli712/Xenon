@@ -339,8 +339,7 @@ mod tests {
     fn test_simd_neg_f64_matches_serial() {
         let (src, _) = fixture_f64(256);
         let mut dst = vec![0.0_f64; src.len()];
-        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
-        if handled {
+        if dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst) {
             let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
             for (&a, &e) in dst.iter().zip(serial.iter()) {
                 assert_same_bits_or_nan_f64(a, e);
@@ -354,8 +353,7 @@ mod tests {
     fn test_simd_neg_f32_matches_serial() {
         let (src, _) = fixture_f32(256);
         let mut dst = vec![0.0_f32; src.len()];
-        let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
-        if handled {
+        if dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst) {
             let serial: Vec<f32> = src.iter().map(|&v| -v).collect();
             for (&a, &e) in dst.iter().zip(serial.iter()) {
                 assert_same_bits_or_nan_f32(a, e);
@@ -392,8 +390,7 @@ mod tests {
             let len = crate::simd::binary::ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let src: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let mut dst = vec![0.0_f64; len];
-            let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
-            if handled {
+            if dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst) {
                 let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
                 for (&a, &e) in dst.iter().zip(serial.iter()) {
                     if a.is_nan() || e.is_nan() {
