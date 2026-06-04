@@ -183,9 +183,8 @@ where
         return unary::dispatch_unary_complex_f32(op, src, dst);
     }
     if tid == TypeId::of::<Complex<f64>>() {
-        let src =
-            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
-            unsafe { slice::from_raw_parts(src.as_ptr() as *const Complex<f64>, src.len()) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const Complex<f64>, src.len()) };
         // SAFETY: dst has the same layout guarantee as lhs/rhs — Complex<T> is repr(C) with two T fields.
         let dst = unsafe {
             slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut Complex<f64>, dst.len())
