@@ -6,31 +6,35 @@
 use core::ffi::c_void;
 use std::borrow::Cow;
 
-use crate::error::{FfiBackend, FfiErrorCategory};
-
-use crate::error::XenonError;
+use crate::error::{FfiBackend, FfiErrorCategory, XenonError};
 
 /// C-visible read-only tensor descriptor.
 ///
 /// This is the cbindgen-emitted concrete schema. `export()` builds it
-/// directly from the source tensor, erasing the typed `*const A`
-/// storage pointer to `*const c_void`. C consumers cast `data` to the
-/// matching pointer type using `element_type` as the discriminator.
+/// directly from the source tensor, erasing the typed `*const A` storage
+/// pointer to `*const c_void`. C consumers cast `data` to the matching
+/// pointer type using `element_type` as the discriminator.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct TensorExportRaw {
     /// Storage base pointer, type-erased to `*const c_void`.
     pub data: *const c_void,
+   
     /// Element type discriminator for C-side pointer cast.
     pub element_type: u8,
+    
     /// Number of dimensions.
     pub ndim: usize,
+    
     /// Shape array (length = `ndim`).
     pub shape: *const usize,
+    
     /// Stride array (length = `ndim`), element units.
     pub strides: *const usize,
+    
     /// Storage length in elements.
     pub storage_len: usize,
+    
     /// Logical offset in element units.
     pub offset: usize,
 }
@@ -41,16 +45,22 @@ pub struct TensorExportRaw {
 pub struct TensorExportMutRaw {
     /// Writable storage base pointer, type-erased to `*mut c_void`.
     pub data: *mut c_void,
+    
     /// Element type discriminator for C-side pointer cast.
     pub element_type: u8,
+    
     /// Number of dimensions.
     pub ndim: usize,
+    
     /// Shape array (length = `ndim`).
     pub shape: *const usize,
+    
     /// Stride array (length = `ndim`), element units.
     pub strides: *const usize,
+    
     /// Storage length in elements.
     pub storage_len: usize,
+    
     /// Logical offset in element units.
     pub offset: usize,
 }
@@ -64,10 +74,13 @@ pub struct TensorExportMutRaw {
 pub struct BlasInfo<A> {
     /// Data pointer to the logical first element.
     pub data_ptr: *const A,
+    
     /// Leading dimension (element units, raw `usize`).
     pub leading_dim: usize,
+    
     /// Number of rows.
     pub rows: usize,
+    
     /// Number of columns.
     pub cols: usize,
 }
@@ -101,7 +114,6 @@ impl<A> BlasInfo<A> {
                 target_width_bits: (core::mem::size_of::<I>() * 8) as u8,
             },
             backend: FfiBackend::Blas,
-            
         })
     }
 }
