@@ -433,7 +433,7 @@ mod tests {
 
     /// Aggregate: runs f64 dot and complex f64 conjugate dot property tests.
     #[test]
-    fn prop_dot_conjugate_contract() {
+    fn test_prop_dot_conjugate_contract() {
         prop_dot_tolerance_f64(0x3001);
         prop_dot_conjugate_complex_f64(0x3002);
     }

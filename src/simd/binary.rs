@@ -990,7 +990,7 @@ mod tests {
     /// Randomised element-wise comparison between SIMD and scalar
     /// for all four binary operations against Complex<f32> add.
     #[test]
-    fn prop_elementwise_consistency() {
+    fn test_prop_elementwise_consistency() {
         prop_elementwise_binary_f64(0x1001);
         prop_elementwise_complex_add_f32(0x1003);
     }
@@ -998,7 +998,7 @@ mod tests {
     /// Randomised tail-handling test across multiple SIMD widths
     /// and tail sizes verifying correct fallback.
     #[test]
-    fn prop_tail_and_fallback() {
+    fn test_prop_tail_and_fallback() {
         prop_tail_handling_f64(0x5001);
     }
 

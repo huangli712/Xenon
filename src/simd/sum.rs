@@ -588,7 +588,7 @@ mod tests {
 
     /// Aggregate: runs f64 sum, f32 sum, and complex sum property tests.
     #[test]
-    fn prop_sum_tolerance() {
+    fn test_prop_sum_tolerance() {
         prop_sum_tolerance_f64(0x2001);
         prop_sum_tolerance_f32(0x2002);
         prop_sum_complex_f64(0x2003);
@@ -617,7 +617,7 @@ mod tests {
 
     /// Verifies the i32 sum stub never panics and always returns None.
     #[test]
-    fn prop_integer_no_panic() {
+    fn test_prop_integer_no_panic() {
         prop_integer_no_panic_i32(0x4001);
     }
 }

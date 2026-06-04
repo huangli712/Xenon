@@ -372,7 +372,7 @@ mod tests {
 
     /// Aggregates the neg property sub-tests.
     #[test]
-    fn prop_neg_consistency() {
+    fn test_prop_neg_consistency() {
         prop_elementwise_neg_f64(0x1002);
     }
 
