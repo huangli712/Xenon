@@ -1,11 +1,11 @@
 //! SIMD type definitions: SimdElement trait, operation enums.
 
-use crate::complex::Complex;
 use crate::private::Sealed;
+use crate::complex::Complex;
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // SimdElement — sealed marker trait
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Sealed marker trait for types that support SIMD lane operations.
 ///
@@ -25,9 +25,9 @@ impl SimdElement for i64 {}
 impl SimdElement for Complex<f32> {}
 impl SimdElement for Complex<f64> {}
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Operation enums
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Binary element-wise operation selector.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -52,14 +52,14 @@ pub(crate) enum UnaryOp {
     Neg,
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::simd::simd_vector_width;
     use super::*;
+    use crate::simd::simd_vector_width;
 
     /// Verifies that the capability query returns `None` for every
     /// supported element type (ISA lane widths not yet wired).
