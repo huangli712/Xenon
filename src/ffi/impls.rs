@@ -105,8 +105,6 @@ where
     /// - `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }` if
     ///   `strides[i] * index[i]` or the accumulator overflows `usize`.
     ///
-    /// [`try_offset_of`]: Self::try_offset_of
-    ///
     /// # Safety
     ///
     /// Returns a raw pointer; the caller is responsible for ensuring the
@@ -148,10 +146,10 @@ where
     /// `false` if a copy is needed first.
     ///
     /// This method **checks layout only**. Callers must still verify
-    /// `ndim() == 2` and convert `rows`, `cols`, and `lda` to the
-    /// BLAS/LAPACK backend integer type expected by the target
-    /// implementation, typically by calling `blas_info()` and then
-    /// `BlasInfo::as_blas_int()` on the exported metadata.
+    /// `ndim() == 2` and convert `rows`, `cols`, and `lda` to the BLAS/LAPACK
+    /// backend integer type expected by the target implementation, typically
+    /// by calling `blas_info()` and then `BlasInfo::as_blas_int()` on the
+    /// exported metadata.
     pub fn is_blas_layout_compatible(&self) -> bool {
         self.is_f_contiguous() && !self.has_zero_stride()
     }
@@ -190,6 +188,7 @@ where
                 
             });
         }
+        
         // Gate 2: layout must be F-contiguous without zero strides.
         if !self.is_blas_layout_compatible() {
             return Err(XenonError::Ffi {
@@ -202,8 +201,7 @@ where
                 
             });
         }
-        let rows = self.shape()[0];
-        let cols = self.shape()[1];
+        
         // Gate 3: BLAS requires `lda >= max(1, rows)`. For F-order shape
         // [0, n] (zero-row matrix), `product(shape) == 0`, so the layout
         // is still classified F-contiguous and `is_blas_layout_compatible`
@@ -211,6 +209,8 @@ where
         // `rows == 0`, which violates BLAS's `lda >= 1`. Reject zero-row
         // matrices here as a separate gate so the exported `leading_dim`
         // is always `>= max(1, rows)`.
+        let rows = self.shape()[0];
+        let cols = self.shape()[1];
         if rows == 0 {
             return Err(XenonError::Ffi {
                 operation: Cow::Borrowed("ffi::blas_info"),
@@ -222,6 +222,7 @@ where
                 
             });
         }
+
         // Post `rows > 0` gate: F-order `strides[1] == rows >= 1`, so
         // `leading_dim` always satisfies BLAS's `lda >= max(1, rows)`.
         Ok(BlasInfo {
