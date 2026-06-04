@@ -13,17 +13,22 @@
 //! - `get_arch()` caches a `pulp::Arch` singleton via `OnceLock`.
 
 #[cfg(feature = "simd")]
-mod binary;
-#[cfg(feature = "simd")]
-mod dot;
-#[cfg(feature = "simd")]
-mod sum;
-#[cfg(feature = "simd")]
-mod driver;
-#[cfg(feature = "simd")]
 mod types;
+
+#[cfg(feature = "simd")]
+mod binary;
+
 #[cfg(feature = "simd")]
 mod unary;
+
+#[cfg(feature = "simd")]
+mod dot;
+
+#[cfg(feature = "simd")]
+mod sum;
+
+#[cfg(feature = "simd")]
+mod driver;
 
 // ---------------------------------------------------------------------------
 // Re-exports so existing imports still resolve
