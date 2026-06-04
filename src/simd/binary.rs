@@ -10,7 +10,7 @@
 use pulp::{Simd, WithSimd};
 
 use std::slice;
-use Complex;
+use crate::complex::Complex;
 use crate::simd::{BinaryOp, get_arch};
 
 // ----------------------------------------------------------------------------
@@ -324,12 +324,20 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
     /// Reinterprets complex slices as f32 and applies SIMD add.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
-        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
-        let lhs_f32 = unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
-        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
+        // identical to [T; 2]. The cast through raw pointers preserves
+        // provenance and the length 2*n is correct.
+        let lhs_f32 = unsafe {
+            slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2)
+        };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
+        // identical to [T; 2]. The cast through raw pointers preserves
+        // provenance and the length 2*n is correct.
         let rhs_f32 = unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
         let dst_f32 =
-            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
+            // identical to [T; 2]. The cast through raw pointers preserves
+            // provenance and the length 2*n is correct.
             unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
@@ -555,7 +563,7 @@ pub(crate) fn dispatch_binary_complex_f64(
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use Complex;
+    use crate::complex::Complex;
     use crate::simd::{dispatch_vector_binary_op, BinaryOp};
 
     /// Width used for boundary / tail coverage tests.
