@@ -1,7 +1,7 @@
 //! C-visible FFI descriptors and BLAS metadata helpers.
 //!
-//! See `docs/design/23-ffi.md` §5.3, §5.3.1, §5.11 for the
-//! authoritative definitions and ABI rationale.
+//! The `#[repr(C)]` raw descriptors are the stable ABI surface that C
+//! consumers bind to; `BlasInfo` carries BLAS/LAPACK matrix metadata.
 
 use core::ffi::c_void;
 use std::borrow::Cow;
@@ -60,8 +60,6 @@ pub struct TensorExportMutRaw {
 /// BLAS/LAPACK backends may use different integer widths. Xenon keeps the
 /// raw dimensions in `usize` and lets callers convert them to the backend's
 /// integer type (`i32` or `i64`) at the FFI boundary via `as_blas_int()`.
-///
-/// Field order matches `23-ffi.md` §5.11 line 859-868 exactly.
 #[derive(Debug, Clone, Copy)]
 pub struct BlasInfo<A> {
     /// Data pointer to the logical first element.
@@ -112,8 +110,7 @@ impl<A> BlasInfo<A> {
 mod tests {
     use super::*;
 
-    /// Mirrors design §8.2: test_blas_info_f_order — success path of
-    /// `as_blas_int` returning the backend integer for valid BLAS sizes.
+    /// `as_blas_int` returns the backend integer for BLAS sizes that fit.
     #[test]
     fn test_blas_info_as_blas_int_success() {
         let r: i32 = BlasInfo::<f64>::as_blas_int(3).expect("3 fits in i32");
@@ -122,7 +119,6 @@ mod tests {
         assert_eq!((r, c, l), (3, 4, 3));
     }
 
-    /// Mirrors design §8.2: test_blas_info_as_blas_int_overflow.
     /// `usize::MAX` cannot fit in `i32`; conversion must return
     /// `FfiErrorCategory::IntegerOverflow` with the right `target_width_bits`.
     #[test]
@@ -150,10 +146,9 @@ mod tests {
         }
     }
 
-    /// Validate the C ABI layout: raw descriptors are `#[repr(C)]` with the
-    /// field order defined by §5.3.1. We verify field offsets match the
-    /// design spec (§5.4 line 508-521 uses offset_of! for this purpose).
-    /// MSRV 1.85 supports offset_of! (stabilized in Rust 1.77).
+    /// Validate the C ABI layout: raw descriptors are `#[repr(C)]` with
+    /// `data` at offset 0, followed by `element_type`, `ndim`, `shape`,
+    /// `strides`, `storage_len`, `offset`. Field offsets verified via `offset_of!`.
     #[test]
     fn test_raw_descriptors_repr_c_layout() {
         use core::mem::{align_of, offset_of, size_of};
@@ -168,13 +163,13 @@ mod tests {
         assert_eq!(align_of::<TensorExportRaw>(), align_of::<*const c_void>());
         assert_eq!(align_of::<TensorExportMutRaw>(), align_of::<*mut c_void>());
 
-        // Field offset checks (§5.3.1 line 285-314 field order)
+        // Field offset checks (declaration order).
         assert_eq!(offset_of!(TensorExportRaw, data), 0);
         assert_eq!(
             offset_of!(TensorExportRaw, element_type),
             size_of::<*const c_void>()
         );
-        // ndim follows element_type; exact offset depends on ElementType size + padding
+        // ndim follows element_type; exact offset depends on u8 + alignment padding
         assert!(
             offset_of!(TensorExportRaw, ndim)
                 >= offset_of!(TensorExportRaw, element_type) + size_of::<u8>()

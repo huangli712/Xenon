@@ -1,12 +1,10 @@
-//! FFI pointer-export API, raw-parts re-exports, multi-dimensional
-//! index → element offset / pointer helpers, and BLAS layout
-//! compatibility queries.
+//! FFI pointer-export API, multi-dimensional index → element offset /
+//! pointer helpers, and BLAS layout compatibility queries.
 //!
-//! See `docs/design/23-ffi.md` §5.4 (`export` / `export_mut`),
-//! §5.7-§5.8 (raw-parts ownership semantics), §5.10–§5.12 (BLAS),
-//! §5.13 (`try_offset_of` / `try_ptr_at`), and §6.2 (overflow-safety
-//! contract) for the authoritative semantics; `26-error.md` §5.1 defines
-//! the structured error payloads.
+//! All entry points are inherent methods on `TensorBase`: `export` /
+//! `export_mut` (raw descriptor export), `try_offset_of` / `try_ptr_at`
+//! (index → offset / pointer), and `is_blas_layout_compatible` /
+//! `blas_info` / `lda` (BLAS layout queries).
 
 use core::ptr::NonNull;
 use std::borrow::Cow;
@@ -42,7 +40,7 @@ where
     ///
     /// Both multiplication and accumulation use checked arithmetic, and
     /// any overflow is reported as a recoverable error rather than panic
-    /// or wraparound (`23-ffi.md` §6.2).
+    /// or wraparound.
     ///
     /// # Errors
     ///
@@ -125,8 +123,7 @@ where
     /// offset is validated to be within the tensor's metadata range
     /// (no zero-stride / no overflow / no out-of-bounds index), but
     /// pointer dereference safety remains the caller's responsibility
-    /// at the FFI boundary (`23-ffi.md` §5.13 / §1.2 minimum-constraint
-    /// principle).
+    /// at the FFI boundary.
     pub fn try_ptr_at(&self, index: &[usize]) -> Result<*const A, XenonError> {
         let offset = self.try_offset_of(index)?;
         // SAFETY: `try_offset_of` validates `index < shape` per axis;
@@ -217,10 +214,9 @@ where
         let rows = self.shape()[0];
         let cols = self.shape()[1];
         // Gate 3: BLAS requires `lda >= max(1, rows)`. For F-order shape
-        // [0, n] (zero-row matrix), `product(shape) == 0` ⇒ the layout
-        // is still classified F_CONTIGUOUS by `06-layout.md` §5.11's
-        // HAS_ZERO_STRIDE rule, and `is_blas_layout_compatible` returns
-        // true. The naturally computed F-order `strides[1]` equals
+        // [0, n] (zero-row matrix), `product(shape) == 0`, so the layout
+        // is still classified F-contiguous and `is_blas_layout_compatible`
+        // returns true. The naturally computed F-order `strides[1]` equals
         // `rows == 0`, which violates BLAS's `lda >= 1`. Reject zero-row
         // matrices here as a separate gate so the exported `leading_dim`
         // is always `>= max(1, rows)`.
@@ -326,9 +322,9 @@ where
     /// `shape`, `strides`, and `offset` still describe the empty
     /// tensor metadata.
     ///
-    /// **Return type** (`23-ffi.md` §5.4 line 547-555): this is the
-    /// public FFI entry returning `TensorExportRaw`, the C-visible
-    /// non-generic raw descriptor, built directly from the source tensor.
+    /// **Return type**: this is the public FFI entry returning
+    /// `TensorExportRaw`, the C-visible non-generic raw descriptor, built
+    /// directly from the source tensor.
     pub fn export(&self) -> TensorExportRaw {
         let data = if self.is_empty() {
             // Empty tensor: a valid aligned non-dereferenceable pointer.
@@ -414,7 +410,7 @@ mod tests {
 
     // ── Helpers ─────────────────────────────────────────────────
 
-    /// Helper: build a TensorView<Ix2> on top of a Vec via W8T7 `from_raw_parts`.
+    /// Helper: build a `TensorView<Ix2>` over a slice via `from_raw_parts`.
     fn make_view_ix2<'a>(
         data: &'a [i32],
         shape: [usize; 2],
@@ -433,9 +429,8 @@ mod tests {
         .expect("valid F-order layout")
     }
 
-    /// Helper: build a TensorView<Ix2> via W8T7 `from_raw_parts`. Reusable
-    /// in-test constructor that avoids depending on W22 (`Tensor::zeros` /
-    /// `Tensor::from_shape_vec`); shape + canonical F-order strides only.
+    /// Helper: build a `TensorView<Ix2>` via `from_raw_parts` from a shape
+    /// plus canonical F-order strides (no owning-constructor dependency).
     fn make_view_f64_ix2<'a>(data: &'a [f64], shape: [usize; 2]) -> TensorView<'a, f64, Ix2> {
         // Canonical F-order strides for shape [m, n] are [1, m].
         let strides = [1_usize, shape[0]];
@@ -452,6 +447,7 @@ mod tests {
         .expect("valid F-order layout")
     }
 
+    /// Helper: build a 1-D `TensorView<f64, Ix1>` over a slice with unit stride.
     fn make_view_f64_ix1<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
         // SAFETY: F-order 1-D over data.
         unsafe {
@@ -468,7 +464,7 @@ mod tests {
 
     // ── BLAS tests ──────────────────────────────────────────────
 
-    /// §8.2 test_is_blas_layout_compatible — F-order 2D tensor passes.
+    /// F-order 2D tensor passes the BLAS layout check.
     #[test]
     fn test_is_blas_layout_compatible_f_order_passes() {
         let data = [0.0_f64; 12]; // 3 * 4 = 12
@@ -486,8 +482,7 @@ mod tests {
         assert!(t1.is_blas_layout_compatible());
     }
 
-    /// §8.2 test_blas_info_f_order — successful path returns correct
-    /// rows/cols/leading_dim.
+    /// Success path returns correct rows / cols / leading_dim.
     #[test]
     fn test_blas_info_f_order_returns_correct_metadata() {
         let data = [0.0_f64; 12];
@@ -555,7 +550,7 @@ mod tests {
         }
     }
 
-    /// §8.2 test_lda_f_order — F-order [3, 4] returns 3.
+    /// F-order [3, 4] returns lda 3.
     #[test]
     fn test_lda_f_order() {
         let data = [0.0_f64; 12];
@@ -563,10 +558,8 @@ mod tests {
         assert_eq!(t.lda().expect("F-order BLAS-compatible"), 3);
     }
 
-    /// Gate 2 placeholder: non-F-contiguous 2D should trigger
-    /// `BlasIncompatibleLayout`. Constructed manually via `from_raw_parts`
-    /// with C-order strides instead of relying on `transpose()` (W20T3) or
-    /// `slice()` (W21T6).
+    /// Gate 2: non-F-contiguous 2D triggers `BlasIncompatibleLayout`.
+    /// Constructed manually via `from_raw_parts` with C-order strides.
     #[test]
     fn test_lda_non_f_contiguous_returns_incompatible() {
         let data = [0.0_f64; 12];
@@ -624,8 +617,8 @@ mod tests {
 
     // ── Offset/pointer tests ────────────────────────────────────
 
-    /// §8.2 test_try_offset_of_various — F-order [2, 3] tensor,
-    /// shape=[2,3], strides=[1,2]; index [1, 2] → 1*1 + 2*2 = 5.
+    /// F-order [2, 3] tensor, strides=[1,2]; index [1, 2] yields
+    /// 1*1 + 2*2 = 5.
     #[test]
     fn test_try_offset_of_various() {
         let data = vec![1_i32, 2, 3, 4, 5, 6];
@@ -670,28 +663,18 @@ mod tests {
         }
     }
 
-    /// §8.2 test_try_offset_of_checked_overflow — checked arithmetic on
-    /// `strides * index` overflow must yield `InvalidLayout { reason:
-    /// AccessRangeExceedsStorage }`, never panic.
+    /// Checked arithmetic on `strides * index` overflow must yield
+    /// `InvalidLayout { reason: AccessRangeExceedsStorage }`, never panic.
     ///
-    /// **Construction path analysis**:
-    ///   - `validate_access_range` structure (W8T7 Step 2 / 07-tensor.md §6.2):
-    ///     Step 1: shape.checked_size() → len
-    ///     Step 2: if len == 0: early-return Ok(())  ← this test relies on this path
-    ///     Step 3: stride > isize::MAX  → StrideExceedsIsizeMax
-    ///     Step 4-5: span/max_offset computation
-    ///   - shape=[3, 0] → len=0 → Step 2 early-returns, **bypassing Step 3's
-    ///     isize::MAX check**. This lets the carrier tensor carry
-    ///     `stride[0] = usize::MAX` through construction-time validation.
-    ///   - try_offset_of(&[2, 0]): axis 0 computes `2 < 3 ✓ → term = usize::MAX * 2`,
-    ///     **checked_mul overflows** → InvalidLayout { reason: AccessRangeExceedsStorage }.
-    ///   - axis 1 (index=0) does not participate in the overflow, not affecting
-    ///     the test semantics.
+    /// Construction relies on `validate_access_range` early-returning for
+    /// an empty tensor (`shape=[3, 0]`, len 0), which lets the view carry
+    /// `stride[0] = usize::MAX` past construction. `try_offset_of(&[2, 0])`
+    /// then computes `usize::MAX * 2` on axis 0, overflowing `checked_mul`.
     #[test]
     fn test_try_offset_of_checked_overflow() {
         let data = Vec::<i32>::new(); // empty storage
         // SAFETY: shape=[3,0] has product 0 → validate_access_range early-returns
-        // at the len==0 gate (W8T7 Step 2), bypassing the stride>isize::MAX check.
+        // at the len==0 gate, bypassing the stride>isize::MAX check.
         // The huge stride[0] propagates into the constructed view, where
         // try_offset_of will hit the checked_mul overflow path.
         let t = unsafe {
@@ -725,8 +708,7 @@ mod tests {
         }
     }
 
-    /// §8.2 test_try_ptr_at_various — pointer dereference yields the
-    /// element at the indexed position.
+    /// Pointer dereference yields the element at the indexed position.
     #[test]
     fn test_try_ptr_at_various() {
         let data = [10_i32, 20, 30];
@@ -759,9 +741,8 @@ mod tests {
 
     // ── Export tests ────────────────────────────────────────────
 
-    /// §8.2 test_export_contract — exports match source metadata, and
-    /// crucially `data == as_storage_ptr()` (NOT `as_ptr()`).
-    /// Constructed via W8T7 `TensorView::from_raw_parts` to avoid W22.
+    /// Exports match source metadata, and crucially `data ==
+    /// as_storage_ptr()` (NOT `as_ptr()`).
     #[test]
     fn test_export_contract_data_is_storage_base() {
         let data = [10_i32, 20, 30];
@@ -780,7 +761,7 @@ mod tests {
         assert_eq!(raw.ndim, 1);
         assert_eq!(raw.storage_len, 3);
         assert_eq!(raw.element_type, ElementType::I32 as u8);
-        // The critical contract: §5.4 mandates `data` carries the storage
+        // The critical contract: `data` carries the storage
         // base pointer, not the logical first. For offset = 0 views the two
         // are equal; the offset != 0 case is tested in
         // `test_export_contract_data_storage_base_with_nonzero_offset`.
@@ -843,9 +824,9 @@ mod tests {
         assert_eq!((raw.data as usize) % core::mem::align_of::<f64>(), 0);
     }
 
-    /// §8.2 test_export_mut_contract — `data` writable; only callable
-    /// on `StorageMut`. We verify writability by storing through the raw
-    /// pointer and reading back via the original tensor.
+    /// `data` is writable; only callable on `StorageMut`. We verify
+    /// writability by storing through the raw pointer and reading back
+    /// via the original tensor.
     #[test]
     fn test_export_mut_contract_writable() {
         let mut data = vec![1_i32, 2];
