@@ -7,6 +7,7 @@
 use pulp::{Simd, WithSimd};
 
 use crate::complex::Complex;
+use std::slice;
 
 /// Minimum slice length for f32/f64 sum SIMD admission.
 const SUM_THRESHOLD: usize = 1024;
@@ -96,7 +97,7 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
         // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...] f32 slice.
         // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields.
         let f32_data: &[f32] = unsafe {
-            std::slice::from_raw_parts(self.data.as_ptr() as *const f32, self.data.len() * 2)
+            slice::from_raw_parts(self.data.as_ptr() as *const f32, self.data.len() * 2)
         };
         let (body, tail) = S::as_simd_f32s(f32_data);
 
@@ -132,8 +133,9 @@ impl ComplexSumF32Kernel<'_> {
         im_sum: &mut f32,
     ) -> Complex<f32> {
         let lane_count = core::mem::size_of::<S::f32s>() / core::mem::size_of::<f32>();
+        // SAFETY: the SIMD register has size lane_count * 4 bytes; reading it as a byte slice for deinterleaving accesses only within bounds.
         let bytes: &[u8] = unsafe {
-            std::slice::from_raw_parts(acc as *const S::f32s as *const u8, lane_count * 4)
+            slice::from_raw_parts(acc as *const S::f32s as *const u8, lane_count * 4)
         };
         for i in 0..lane_count / 2 {
             let re = f32::from_ne_bytes([
@@ -170,8 +172,9 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
 
     /// Same as ComplexSumF32Kernel, using f64 lanes.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
+        // SAFETY: Complex<f64> is #[repr(C)] with two f64 fields; same reasoning as f32 variant.
         let f64_data: &[f64] = unsafe {
-            std::slice::from_raw_parts(self.data.as_ptr() as *const f64, self.data.len() * 2)
+            slice::from_raw_parts(self.data.as_ptr() as *const f64, self.data.len() * 2)
         };
         let (body, tail) = S::as_simd_f64s(f64_data);
 
@@ -195,8 +198,9 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
         // scalar = sum of all re + sum of all im. We need to split them.
         // Use bytemuck to manually extract lanes.
         let lane_count = core::mem::size_of::<S::f64s>() / core::mem::size_of::<f64>();
+        // SAFETY: the SIMD register has size lane_count * 8 bytes; same reasoning as f32 variant.
         let bytes: &[u8] = unsafe {
-            std::slice::from_raw_parts(&acc as *const S::f64s as *const u8, lane_count * 8)
+            slice::from_raw_parts(&acc as *const S::f64s as *const u8, lane_count * 8)
         };
         for i in 0..lane_count / 2 {
             let mut re_bytes = [0u8; 8];

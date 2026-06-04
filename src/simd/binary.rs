@@ -11,6 +11,7 @@ use pulp::{Simd, WithSimd};
 
 use crate::simd::{BinaryOp, get_arch};
 use crate::complex::Complex;
+use std::slice;
 
 // ---------------------------------------------------------------------------
 // Thresholds
@@ -306,10 +307,13 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
     /// Reinterprets complex slices as f32 and applies SIMD add.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
-        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
-        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let lhs_f32 = unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let rhs_f32 = unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
         let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
@@ -339,10 +343,13 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
     /// Reinterprets complex slices as f32 and applies SIMD sub.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
-        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
-        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let lhs_f32 = unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let rhs_f32 = unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
         let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
@@ -377,10 +384,13 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
     /// Falls back to scalar for complex multiply.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
-        let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
-        let rhs_f32 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let lhs_f32 = unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let rhs_f32 = unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
         let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
@@ -423,10 +433,13 @@ impl WithSimd for ComplexAddF64Kernel<'_> {
     /// Reinterprets complex slices as f64 and applies SIMD add.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
-        let lhs_f64 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f64, n * 2) };
-        let rhs_f64 = unsafe { std::slice::from_raw_parts(self.rhs.as_ptr() as *const f64, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let lhs_f64 = unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f64, n * 2) };
+        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+        let rhs_f64 = unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f64, n * 2) };
         let dst_f64 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+            // SAFETY: Complex<T> is repr(C) with two T fields; the layout is identical to [T; 2]. The cast through raw pointers preserves provenance and the length 2*n is correct.
+            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
         let (lhs_body, lhs_tail) = S::as_simd_f64s(lhs_f64);
         let (rhs_body, rhs_tail) = S::as_simd_f64s(rhs_f64);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);

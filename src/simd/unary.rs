@@ -4,18 +4,23 @@
 
 use pulp::{Simd, WithSimd};
 
-use crate::simd::{UnaryOp, get_arch};
+use std::slice;
 use crate::complex::Complex;
+use crate::simd::{UnaryOp, get_arch};
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Neg kernel
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
+/// Element-wise negation: `dst[i] = -src[i]`.
+/// Generic over `T`; only `f32` and `f64` monomorphisations are implemented.
 pub(crate) struct NegKernel<'a, T> {
     /// Source slice.
     pub(crate) src: &'a [T],
+
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [T],
+
     /// Phantom token to lock monomorphisation to `f32` / `f64`.
     pub(crate) _marker: std::marker::PhantomData<T>,
 }
@@ -54,13 +59,16 @@ impl WithSimd for NegKernel<'_, f64> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Complex<f32> Neg kernel
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
+/// Element-wise `Complex<f32>` negation.
+/// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
 pub(crate) struct ComplexNegF32Kernel<'a> {
     /// Source slice (interleaved real/imag).
     pub(crate) src: &'a [Complex<f32>],
+
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [Complex<f32>],
 }
@@ -71,9 +79,17 @@ impl WithSimd for ComplexNegF32Kernel<'_> {
     /// Reinterprets complex slices as f32 and applies SIMD neg.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.src.len();
-        let src_f32 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f32, n * 2) };
-        let dst_f32 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        // SAFETY: Complex<f32> is repr(C) with two f32 fields, so the layout
+        // is identical to [f32; 2]. Casting through raw pointers preserves
+        // provenance and the resulting slice has length 2*n which is exactly
+        // the f32 footprint.
+        let src_f32 = unsafe {
+            slice::from_raw_parts(self.src.as_ptr() as *const f32, n * 2)
+        };
+        // SAFETY: destination has the same layout as source.
+        let dst_f32 = unsafe {
+            slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2)
+        };
         let (src_body, src_tail) = S::as_simd_f32s(src_f32);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
 
@@ -86,13 +102,16 @@ impl WithSimd for ComplexNegF32Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Complex<f64> Neg kernel
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
+/// Element-wise `Complex<f64>` negation.
+/// Reinterprets the interleaved real/imag layout as `[f64]` for SIMD.
 pub(crate) struct ComplexNegF64Kernel<'a> {
     /// Source slice (interleaved real/imag).
     pub(crate) src: &'a [Complex<f64>],
+
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [Complex<f64>],
 }
@@ -103,9 +122,12 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
     /// Reinterprets complex slices as f64 and applies SIMD neg.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.src.len();
-        let src_f64 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
+        // SAFETY: Complex<f64> is repr(C) with two f64 fields;
+        // same reasoning as the f32 variant.
+        let src_f64 = unsafe { slice::from_raw_parts(self.src.as_ptr() as *const f64, n * 2) };
+        // SAFETY: destination has the same layout as source.
         let dst_f64 =
-            unsafe { std::slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
+            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f64, n * 2) };
         let (src_body, src_tail) = S::as_simd_f64s(src_f64);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(dst_f64);
 
