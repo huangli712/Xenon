@@ -36,11 +36,10 @@ where
     ///
     /// # Errors
     ///
-    /// | Failure | Variant |
-    /// |---------|---------|
-    /// | `index.len() != self.ndim()` | `XenonError::DimensionMismatch` |
-    /// | `index[i] >= shape[i]` | `XenonError::IndexOutOfBounds` |
-    /// | `strides[i] * index[i]` or accumulator overflows `usize` | `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }` |
+    /// - `XenonError::DimensionMismatch` if `index.len() != self.ndim()`.
+    /// - `XenonError::IndexOutOfBounds` if `index[i] >= shape[i]` for any axis.
+    /// - `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }` if
+    ///   `strides[i] * index[i]` or the accumulator overflows `usize`.
     pub fn try_offset_of(&self, index: &[usize]) -> Result<usize, XenonError> {
         if index.len() != self.ndim() {
             return Err(XenonError::DimensionMismatch {
