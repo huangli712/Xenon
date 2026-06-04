@@ -753,12 +753,17 @@ mod tests {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32 + 1.0).collect();
         let rhs: Vec<f32> = (0..128).map(|v| (v as f32) * 0.5 + 1.0).collect();
         let mut dst = vec![0.0f32; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Div, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Div,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_div_f32(&lhs, &rhs, &dst);
     }
 
-    // ---- f64 admission ------------------------------------------------------
+    // ---- f64 admission -----------------------------------------------------
 
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
