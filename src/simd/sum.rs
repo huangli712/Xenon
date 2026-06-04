@@ -511,12 +511,17 @@ mod tests {
         let below = vec![1.0_f64; 1023];
         assert!(try_sum_f64(&below).is_none());
         let at_threshold = vec![1.0_f64; 1024];
-        let simd = try_sum_f64(&at_threshold).expect("len=1024 must enter f64 sum SIMD");
-        assert_within_tolerance_f64(simd, 1024.0, tolerance_f64(&at_threshold));
+        let simd = try_sum_f64(&at_threshold)
+            .expect("len=1024 must enter f64 sum SIMD");
+        assert_within_tolerance_f64(
+            simd,
+            1024.0,
+            tolerance_f64(&at_threshold)
+        );
     }
 
-    // ---- sum property tests -------------------------------------------------
-    //
+    // ---- sum property tests ------------------------------------------------
+
     // Randomized property-based tests that compare SIMD sum against
     // scalar across many seed-driven random inputs.
 
