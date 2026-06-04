@@ -7,6 +7,7 @@
 use pulp::{Simd, WithSimd};
 
 use std::slice;
+use std::mem::size_of;
 
 use crate::complex::Complex;
 
@@ -106,7 +107,8 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
 
     /// Accumulates interleaved real/imag lanes, deinterleaves, sums scalar tail.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f32> {
-        // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...] f32 slice.
+        // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...]
+        // f32 slice.
         // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields.
         let f32_data: &[f32] = unsafe {
             slice::from_raw_parts(
@@ -132,8 +134,9 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
             }
         }
 
-        // deinterleave accumulated SIMD vector into real-only and imag-only parts.
-        // acc contains [re0, im0, re1, im1, ...]; deinterleave splits into SoA.
+        // deinterleave accumulated SIMD vector into real-only and imag-only
+        // parts. acc contains [re0, im0, re1, im1, ...]; deinterleave splits
+        // into SoA.
         self.deinterleave_and_accumulate::<S>(simd, &acc, &mut re_sum, &mut im_sum)
     }
 }
@@ -147,10 +150,14 @@ impl ComplexSumF32Kernel<'_> {
         re_sum: &mut f32,
         im_sum: &mut f32,
     ) -> Complex<f32> {
-        let lane_count = core::mem::size_of::<S::f32s>() / core::mem::size_of::<f32>();
-        // SAFETY: the SIMD register has size lane_count * 4 bytes; reading it as a byte slice for deinterleaving accesses only within bounds.
+        let lane_count = size_of::<S::f32s>() / size_of::<f32>();
+        // SAFETY: the SIMD register has size lane_count * 4 bytes; reading
+        // it as a byte slice for deinterleaving accesses only within bounds.
         let bytes: &[u8] = unsafe {
-            slice::from_raw_parts(acc as *const S::f32s as *const u8, lane_count * 4)
+            slice::from_raw_parts(
+                acc as *const S::f32s as *const u8,
+                lane_count * 4
+            )
         };
         for i in 0..lane_count / 2 {
             let re = f32::from_ne_bytes([
@@ -189,9 +196,13 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
 
     /// Same as ComplexSumF32Kernel, using f64 lanes.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
-        // SAFETY: Complex<f64> is #[repr(C)] with two f64 fields; same reasoning as f32 variant.
+        // SAFETY: Complex<f64> is #[repr(C)] with two f64 fields; same
+        // reasoning as f32 variant.
         let f64_data: &[f64] = unsafe {
-            slice::from_raw_parts(self.data.as_ptr() as *const f64, self.data.len() * 2)
+            slice::from_raw_parts(
+                self.data.as_ptr() as *const f64,
+                self.data.len() * 2
+            )
         };
         let (body, tail) = S::as_simd_f64s(f64_data);
 
@@ -214,10 +225,14 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
         // Since we summed [re0, im0, re1, im1, ...] all together,
         // scalar = sum of all re + sum of all im. We need to split them.
         // Use bytemuck to manually extract lanes.
-        let lane_count = core::mem::size_of::<S::f64s>() / core::mem::size_of::<f64>();
-        // SAFETY: the SIMD register has size lane_count * 8 bytes; same reasoning as f32 variant.
+        let lane_count = size_of::<S::f64s>() / size_of::<f64>();
+        // SAFETY: the SIMD register has size lane_count * 8 bytes; same
+        // reasoning as f32 variant.
         let bytes: &[u8] = unsafe {
-            slice::from_raw_parts(&acc as *const S::f64s as *const u8, lane_count * 8)
+            slice::from_raw_parts(
+                &acc as *const S::f64s as *const u8,
+                lane_count * 8
+            )
         };
         for i in 0..lane_count / 2 {
             let mut re_bytes = [0u8; 8];
@@ -232,9 +247,9 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Dispatch helpers (called from driver.rs facade)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Dispatches f32 sum to the SIMD kernel if the threshold is met.
 pub(crate) fn try_sum_f32_impl(data: &[f32]) -> Option<f32> {
