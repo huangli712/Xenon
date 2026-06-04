@@ -210,6 +210,8 @@ mod tests {
     // Tests verify that the SIMD dot-product matches scalar within
     // documented floating-point tolerance bounds.
 
+    // ---- tolerance ----
+
     use crate::complex::Complex;
     use crate::simd;
 
@@ -325,7 +327,9 @@ mod tests {
         }
     }
 
-    /// Asserts i32 dot (stub) returns None so caller falls back to scalar.
+    // ---- int stub admission ----
+
+    ///
     #[test]
     fn test_dot_dispatch_simd_int_admission() {
         let lhs: Vec<i32> = (0..512).collect();

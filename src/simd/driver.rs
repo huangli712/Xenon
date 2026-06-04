@@ -231,6 +231,8 @@ pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize> {
 mod tests {
     use super::*;
 
+    // ---- dispatch threshold rejection ----
+
     /// Verifies that slices below the element-wise threshold are
     /// rejected by both binary and unary dispatch, leaving `dst` untouched.
     #[test]
@@ -262,6 +264,8 @@ mod tests {
             assert_eq!(v, 99.0_f32, "dst must be untouched on SIMD rejection");
         }
     }
+
+    // ---- empty / single element edge case ----
 
     /// Empty slices must be rejected by element-wise dispatch and
     /// return `None` from sum/dot.

@@ -233,6 +233,8 @@ mod tests {
         assert_neg_f64(&src, &dst);
     }
 
+    // ---- consistency vs serial ----
+    //
     // Verifies SIMD neg matches scalar bit-for-bit (or NaN-for-NaN)
     // against a fixture containing extreme float values.
 

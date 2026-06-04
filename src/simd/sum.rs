@@ -424,7 +424,9 @@ mod tests {
         }
     }
 
-    /// Asserts i32 sum (stub) returns None so caller falls back to scalar.
+    // ---- edge cases (NaN / Inf / threshold) ----
+
+    ///
     #[test]
     fn test_sum_dispatch_simd_int_admission() {
         let data: Vec<i32> = (0..1024).collect();

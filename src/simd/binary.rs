@@ -523,6 +523,8 @@ pub(crate) fn dispatch_binary_complex_f64(
 mod tests {
     use crate::simd::BinaryOp;
 
+    // ---- f32 admission ----
+
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l + r).collect();
@@ -593,7 +595,7 @@ mod tests {
         assert_div_f32(&lhs, &rhs, &dst);
     }
 
-    // ---- f64 ----
+    // ---- f64 admission ----
 
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
@@ -1002,7 +1004,7 @@ mod tests {
         prop_tail_handling_f64(0x5001);
     }
 
-    // ---- complex sub / add f64 admission ----
+    // ---- complex binary admission ----
 
     /// 128-element `Complex<f32>` subtraction goes through SIMD and matches scalar.
     #[test]
