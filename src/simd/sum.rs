@@ -265,7 +265,7 @@ mod tests {
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- admission / basic correctness ----
+    // ---- admission / basic correctness --------------------------------------
 
     /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
     /// for floating-point SIMD sum accumulation.
@@ -337,7 +337,7 @@ mod tests {
         );
     }
 
-    // ---- tolerance bounds ----
+    // ---- tolerance bounds ---------------------------------------------------
 
     /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
@@ -429,7 +429,7 @@ mod tests {
         }
     }
 
-    // ---- edge cases (NaN / Inf / threshold) ----
+    // ---- edge cases (NaN / Inf / threshold) ---------------------------------
 
     /// Verifies the i32 sum stub returns `None` (no SIMD widening available).
     #[test]
@@ -474,7 +474,7 @@ mod tests {
         assert_within_tolerance_f64(simd, 1024.0, tolerance_f64(&at_threshold));
     }
 
-    // ---- sum property tests ----
+    // ---- sum property tests -------------------------------------------------
     //
     // Randomized property-based tests that compare SIMD sum against
     // scalar across many seed-driven random inputs.
@@ -590,7 +590,7 @@ mod tests {
         prop_sum_complex_f64(0x2003);
     }
 
-    // ---- integer stub ----
+    // ---- integer stub -------------------------------------------------------
 
     /// Generates a random i32 that won't overflow during widening.
     fn gen_i32_no_overflow(state: &mut u64) -> i32 {

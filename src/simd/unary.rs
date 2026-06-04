@@ -204,7 +204,7 @@ mod tests {
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- basic correctness ----
+    // ---- basic correctness --------------------------------------------------
 
     /// Asserts SIMD and scalar negation produce identical results.
     fn assert_neg_f32(src: &[f32], actual: &[f32]) {
@@ -238,7 +238,7 @@ mod tests {
         assert_neg_f64(&src, &dst);
     }
 
-    // ---- consistency vs serial ----
+    // ---- consistency vs serial ----------------------------------------------
     //
     // Verifies SIMD neg matches scalar bit-for-bit (or NaN-for-NaN)
     // against a fixture containing extreme float values.
@@ -325,7 +325,7 @@ mod tests {
         }
     }
 
-    // ---- neg property tests ----
+    // ---- neg property tests -------------------------------------------------
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
@@ -374,7 +374,7 @@ mod tests {
         prop_elementwise_neg_f64(0x1002);
     }
 
-    // ---- complex neg admission ----
+    // ---- complex neg admission ----------------------------------------------
 
     /// 128-element `Complex<f32>` negation goes through SIMD and matches scalar.
     #[test]

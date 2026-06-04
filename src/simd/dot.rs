@@ -218,7 +218,7 @@ mod tests {
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- tolerance ----
+    // ---- tolerance ----------------------------------------------------------
 
     /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
@@ -332,7 +332,7 @@ mod tests {
         }
     }
 
-    // ---- int stub admission ----
+    // ---- int stub admission -------------------------------------------------
 
     /// Verifies the i32 dot stub returns `None` (no SIMD widening available).
     #[test]
@@ -351,7 +351,7 @@ mod tests {
         }
     }
 
-    // ---- dot property tests ----
+    // ---- dot property tests -------------------------------------------------
     // Randomized property-based tests for SIMD dot-product.
 
     /// splitmix64 PRNG for deterministic property-based tests.

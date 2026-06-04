@@ -531,7 +531,7 @@ mod tests {
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- f32 admission ----
+    // ---- f32 admission ------------------------------------------------------
 
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
@@ -603,7 +603,7 @@ mod tests {
         assert_div_f32(&lhs, &rhs, &dst);
     }
 
-    // ---- f64 admission ----
+    // ---- f64 admission ------------------------------------------------------
 
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
@@ -674,7 +674,7 @@ mod tests {
         assert_div_f64(&lhs, &rhs, &dst);
     }
 
-    // ---- consistency vs serial ----
+    // ---- consistency vs serial ----------------------------------------------
     //
     // These tests verify that SIMD output matches the scalar equivalent
     // bit-for-bit (or NaN-for-NaN) across varied inputs including
@@ -863,7 +863,7 @@ mod tests {
         simd_vs_serial_bitwise_f64(BinaryOp::Mul, lhs, rhs);
     }
 
-    // ---- binary property tests ----
+    // ---- binary property tests ----------------------------------------------
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
@@ -998,7 +998,7 @@ mod tests {
         prop_tail_handling_f64(0x5001);
     }
 
-    // ---- complex binary admission ----
+    // ---- complex binary admission -------------------------------------------
 
     /// 128-element `Complex<f32>` subtraction goes through SIMD and matches scalar.
     #[test]
