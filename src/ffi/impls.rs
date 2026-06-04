@@ -510,6 +510,30 @@ mod tests {
         }
     }
 
+    /// Gate 1: non-2D input to `lda()` triggers `InvalidRank` (mirrors
+    /// `test_blas_info_invalid_rank_for_1d`).
+    #[test]
+    fn test_lda_non_2d_returns_invalid_rank() {
+        let data = vec![0.0_f64; 5];
+        let t = make_view_f64_ix1(&data);
+        let Err(err) = t.lda() else {
+            panic!("expected InvalidRank error, got Ok");
+        };
+        match err {
+            XenonError::Ffi {
+                category:
+                    FfiErrorCategory::InvalidRank {
+                        expected, actual, ..
+                    },
+                ..
+            } => {
+                assert_eq!(expected, 2);
+                assert_eq!(actual, 1);
+            },
+            other => panic!("expected InvalidRank, got {other:?}"),
+        }
+    }
+
     /// Gate 2: non-F-contiguous 2D triggers `BlasIncompatibleLayout`.
     /// Constructed manually via `from_raw_parts` with C-order strides.
     #[test]
@@ -579,30 +603,6 @@ mod tests {
         let data = [0.0_f64; 12];
         let t = make_view_f64_ix2(&data, [3, 4]);
         assert_eq!(t.lda().expect("F-order BLAS-compatible"), 3);
-    }
-
-    /// Gate 1: non-2D input to `lda()` triggers `InvalidRank` (mirrors
-    /// `test_blas_info_invalid_rank_for_1d`).
-    #[test]
-    fn test_lda_non_2d_returns_invalid_rank() {
-        let data = vec![0.0_f64; 5];
-        let t = make_view_f64_ix1(&data);
-        let Err(err) = t.lda() else {
-            panic!("expected InvalidRank error, got Ok");
-        };
-        match err {
-            XenonError::Ffi {
-                category:
-                    FfiErrorCategory::InvalidRank {
-                        expected, actual, ..
-                    },
-                ..
-            } => {
-                assert_eq!(expected, 2);
-                assert_eq!(actual, 1);
-            },
-            other => panic!("expected InvalidRank, got {other:?}"),
-        }
     }
 
     // -- Offset/pointer tests ------------------------------------------------
