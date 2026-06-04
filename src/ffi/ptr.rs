@@ -6,7 +6,7 @@
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
-use super::private::{TensorExport, TensorExportMut};
+use super::types::{TensorExport, TensorExportMut};
 use super::types::{TensorExportMutRaw, TensorExportRaw};
 use crate::dimension::Dimension;
 use crate::element::{Element, element_type_of};

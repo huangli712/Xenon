@@ -61,7 +61,6 @@
 
 mod blas;
 mod offset;
-mod private;
 mod ptr;
 mod types;
 
@@ -86,8 +85,8 @@ mod tests {
     fn test_ffi_submodules_declared() {
         // types.rs: verify `mod types;` → TensorExportRaw exists
         let _ = std::any::type_name::<crate::ffi::types::TensorExportRaw>();
-        // private.rs: verify `mod private;` → TensorExport exists
-        let _ = std::any::type_name::<crate::ffi::private::TensorExport<'static, f64>>();
+        // types.rs: verify `mod types;` → TensorExport exists
+        let _ = std::any::type_name::<crate::ffi::types::TensorExport<'static, f64>>();
         // ptr.rs: verify `mod ptr;` → OwnedRawParts exists
         let _ = std::any::type_name::<crate::ffi::ptr::OwnedRawParts<f64, crate::dimension::Ix0>>();
         // blas.rs / offset.rs: verified by their own unit tests;
