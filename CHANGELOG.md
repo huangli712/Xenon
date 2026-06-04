@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.25] — 2026-06-04
+
+### Added
+
+- SIMD `Complex<f32>` multiplication via `deinterleave_shfl` (SoA multiply, re-interleave).
+- SIMD `Complex<f32>` and `Complex<f64>` conjugate dot product via `deinterleave_shfl` (SoA multiply-accumulate, horizontal reduction).
+- Property-based tests for ComplexMulF32 tail/leftover-register coverage.
+- Property-based tests for ComplexDotF32/ComplexDotF64 tail/leftover-register coverage.
+- Complex admission tests (sub f32, add f64, neg f32/f64) in `binary.rs` and `unary.rs`.
+- `use std::sync::OnceLock`, `use std::mem::size_of`, `use std::any::TypeId` imports across SIMD modules.
+- `///` doc comments to all kernel structs (`DotF32Kernel`, `SumF32Kernel`, etc.) and dispatch helper functions.
+
+### Changed
+
+- Replaced `std::any::TypeId::of::<T>()` with imported `TypeId::of::<T>()`; `core::mem::size_of::<T>()` with `size_of::<T>()`; `std::sync::OnceLock` with `OnceLock`.
+- Replaced `crate::simd::`/`simd::` path prefix with direct imported names in all SIMD test modules.
+- Simplified `ComplexSumF32Kernel`/`ComplexSumF64Kernel` deinterleave: byte-level extraction replaced with direct `&[f32]`/`&[f64]` slice cast.
+- Normalized `ELEMENTWISE_F32_F64_THRESHOLD` → `ELEMENTWISE_THRESHOLD`; removed duplicate test-local threshold constants.
+- Reordered all kernel modules to `thresholds → kernel structs → dispatch helpers → tests`.
+- Standardized section separator comments to fixed-width 80-column format across all SIMD modules.
+- Unified `unsafe { slice::from_raw_parts }` block formatting and `// SAFETY:` comment placement.
+- Consolidated `let handled = dispatch(...); if handled {` into `if dispatch(...) {`.
+- Replaced `std::slice::` with `use std::slice;` throughout SIMD modules.
+- Reordered imports (stdlib before crate, public before test).
+- Added blank-line separators between struct field doc comments and constant declarations.
+- Reordered `mod.rs` declarations (types → binary → unary → dot → sum → driver) and re-exports.
+
 ## [v0.0.24] — 2026-06-03
 
 ### Added
