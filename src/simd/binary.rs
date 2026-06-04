@@ -11,6 +11,7 @@ use pulp::{Simd, WithSimd};
 
 use std::slice;
 use std::mem::size_of;
+
 use crate::complex::Complex;
 use crate::simd::{BinaryOp, get_arch};
 
@@ -414,9 +415,6 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
 // ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f32>` multiplication.
-/// Deinterleaves each register pair into real/imag halves for a
-/// structure-of-arrays SIMD multiply, then re-interleaves; the odd
-/// leftover register and tail fall back to scalar.
 pub(crate) struct ComplexMulF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f32>],
@@ -442,20 +440,23 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
         // Reinterpret the interleaved [re, im, ...] complex slices as flat f32.
         // SAFETY: Complex<f32> is repr(C) with two f32 fields, so the layout is
         // identical to [f32; 2]; the length 2*n is exact and provenance is kept.
-        let lhs_f32: &[f32] =
-            unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        let lhs_f32: &[f32] = unsafe {
+            slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2)
+        };
         // SAFETY: same layout reasoning as lhs.
-        let rhs_f32: &[f32] =
-            unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        let rhs_f32: &[f32] = unsafe {
+            slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2)
+        };
         // SAFETY: same layout; this is the sole mutable view of dst (no aliasing).
-        let dst_f32: &mut [f32] =
-            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+        let dst_f32: &mut [f32] = unsafe {
+            slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2)
+        };
 
         let (lhs_body, _) = S::as_simd_f32s(lhs_f32);
         let (rhs_body, _) = S::as_simd_f32s(rhs_f32);
 
-        // Complex multiply needs operands deinterleaved, which works on register
-        // PAIRS; each pair covers `lane` complex numbers.
+        // Complex multiply needs operands deinterleaved, which works on
+        // register PAIRS; each pair covers `lane` complex numbers.
         let num_pairs = lhs_body.len() / 2;
         let covered = num_pairs * lane;
 
@@ -467,13 +468,17 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
             // Deinterleave each operand pair into [re, im] (structure-of-arrays).
             // The within-register lane permutation is irrelevant: every step is
             // lane-local and interleave is the exact inverse of deinterleave.
-            let a = simd.deinterleave_shfl_f32s([lhs_body[2 * p], lhs_body[2 * p + 1]]);
-            let b = simd.deinterleave_shfl_f32s([rhs_body[2 * p], rhs_body[2 * p + 1]]);
+            let a = simd
+                .deinterleave_shfl_f32s([lhs_body[2 * p], lhs_body[2 * p + 1]]);
+            let b = simd
+                .deinterleave_shfl_f32s([rhs_body[2 * p], rhs_body[2 * p + 1]]);
 
             // re = a.re*b.re - a.im*b.im ; im = a.re*b.im + a.im*b.re.
             // Separate mul + sub/add (no FMA) to stay bit-identical with scalar.
-            let re = simd.sub_f32s(simd.mul_f32s(a[0], b[0]), simd.mul_f32s(a[1], b[1]));
-            let im = simd.add_f32s(simd.mul_f32s(a[0], b[1]), simd.mul_f32s(a[1], b[0]));
+            let re = simd
+                .sub_f32s(simd.mul_f32s(a[0], b[0]), simd.mul_f32s(a[1], b[1]));
+            let im = simd
+                .add_f32s(simd.mul_f32s(a[0], b[1]), simd.mul_f32s(a[1], b[0]));
 
             let out = simd.interleave_shfl_f32s([re, im]);
             dst_body[2 * p] = out[0];
@@ -493,17 +498,18 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Complex<f64> binary kernel (Add)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f64>` addition.
-/// Sub and Mul are not implemented for f64 complex; only Add is supported.
 pub(crate) struct ComplexAddF64Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f64>],
+
     /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [Complex<f64>],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [Complex<f64>],
 }
