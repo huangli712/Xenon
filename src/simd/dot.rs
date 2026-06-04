@@ -471,7 +471,11 @@ mod tests {
             let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             if let Some(simd) = try_dot_f64(&lhs, &rhs) {
-                let scalar: f64 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
+                let scalar: f64 = lhs
+                    .iter()
+                    .zip(rhs.iter())
+                    .map(|(&l, &r)| l * r)
+                    .sum();
                 assert_within_reduction_bound_f64(simd, scalar, len, "dot f64");
             }
         }
@@ -494,8 +498,18 @@ mod tests {
                     .zip(rhs.iter())
                     .map(|(l, r)| l.conj() * *r)
                     .fold(Complex::new(0.0, 0.0), |a, b| a + b);
-                assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex dot f64 re");
-                assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex dot f64 im");
+                assert_within_reduction_bound_f64(
+                    simd.re,
+                    scalar.re,
+                    len,
+                    "complex dot f64 re"
+                );
+                assert_within_reduction_bound_f64(
+                    simd.im,
+                    scalar.im,
+                    len,
+                    "complex dot f64 im"
+                );
             }
         }
     }
