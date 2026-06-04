@@ -411,13 +411,14 @@ mod tests {
                 .zip(rhs.iter())
                 .map(|(&l, &r)| (l as i64) * (r as i64))
                 .sum();
-            let scalar_i32 =
-                i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
+            let scalar_i32 = i32::try_from(scalar_i64)
+                .expect("test fixture stays within i32 range");
             assert_eq!(simd, scalar_i32);
         }
     }
 
-    // ---- dot property tests -------------------------------------------------
+    // ---- dot property tests ------------------------------------------------
+
     // Randomized property-based tests for SIMD dot-product.
 
     /// splitmix64 PRNG for deterministic property-based tests.
@@ -448,11 +449,17 @@ mod tests {
     }
 
     /// Asserts f64 is within a generous reduction bound.
-    fn assert_within_reduction_bound_f64(actual: f64, expected: f64, len: usize, op: &str) {
+    fn assert_within_reduction_bound_f64(
+        actual: f64,
+        expected: f64,
+        len: usize,
+        op: &str
+    ) {
         let bound = reduction_bound_f64(expected, len);
         assert!(
             (actual - expected).abs() <= bound,
-            "{op} outside bound at len={len}: actual={actual}, expected={expected}, bound={bound}"
+            "{op} outside bound at len={len}: \
+            actual={actual}, expected={expected}, bound={bound}"
         );
     }
 
