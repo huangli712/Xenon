@@ -99,7 +99,7 @@ where
     ///
     /// # Errors
     ///
-    /// Propagates every error returned by [`try_offset_of`]:
+    /// Propagates every error returned by `try_offset_of`:
     /// - `XenonError::DimensionMismatch` if `index.len() != self.ndim()`.
     /// - `XenonError::IndexOutOfBounds` if `index[i] >= shape[i]` for any axis.
     /// - `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage }` if
