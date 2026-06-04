@@ -429,44 +429,12 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
     type Output = ();
 
     /// Falls back to scalar for complex multiply.
-    fn with_simd<S: Simd>(self, simd: S) {
-        let n = self.lhs.len();
-        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
-        // identical to [T; 2]. The cast through raw pointers preserves
-        // provenance and the length 2*n is correct.
-        let lhs_f32 = unsafe {
-            slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2)
-        };
-        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
-        // identical to [T; 2]. The cast through raw pointers preserves
-        // provenance and the length 2*n is correct.
-        let rhs_f32 = unsafe {
-            slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2)
-        };
-        // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
-        // identical to [T; 2]. The cast through raw pointers preserves
-        // provenance and the length 2*n is correct.
-        let dst_f32 = unsafe {
-            slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2)
-        };
-        let (lhs_body, lhs_tail) = S::as_simd_f32s(lhs_f32);
-        let (rhs_body, rhs_tail) = S::as_simd_f32s(rhs_f32);
-        let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
-
+    /// SIMD vectorisation requires deinterleaving and is not yet implemented.
+    fn with_simd<S: Simd>(self, _simd: S) {
         // (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
-        for i in 0..lhs_body.len() {
-            let ac = simd.mul_f32s(lhs_body[i], rhs_body[i]); // this multiplies all lanes, not correct
-            let _ = ac;
-            // For now, use scalar tail approach for complex mul
-            // (SIMD vectorization of complex mul requires deinterleave which is TBD)
-        }
-        // Fall back to scalar for all elements (complex mul not vectorized in this iteration)
         for i in 0..self.lhs.len() {
-            let l = self.lhs[i];
-            let r = self.rhs[i];
-            self.dst[i] = l * r;
+            self.dst[i] = self.lhs[i] * self.rhs[i];
         }
-        let _ = (lhs_tail, rhs_tail, dst_body, dst_tail, simd);
     }
 }
 

@@ -4,16 +4,16 @@
 //! to signal acceptance. The caller **must** run its own scalar fallback
 //! on rejection.
 
-use crate::complex::Complex;
-use crate::simd::{BinaryOp, SimdElement, UnaryOp};
-use std::slice;
 use pulp::Arch;
+use std::slice;
 
 use super::{binary, dot, sum, unary};
+use crate::complex::Complex;
+use crate::simd::{BinaryOp, SimdElement, UnaryOp};
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Arch cache
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Returns a reference to the lazily-initialized static `pulp::Arch`.
 ///
