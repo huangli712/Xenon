@@ -204,8 +204,10 @@ impl WithSimd for AddF64Kernel<'_> {
 pub(crate) struct SubF64Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+
     /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
@@ -228,17 +230,19 @@ impl WithSimd for SubF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f64 binary kernel (Mul)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise f64 multiplication: `dst[i] = lhs[i] * rhs[i]`.
 /// Uses separate mul lane ops (not FMA) to stay bit-identical with scalar.
 pub(crate) struct MulF64Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+
     /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
@@ -263,16 +267,18 @@ impl WithSimd for MulF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f64 binary kernel (Div)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise f64 division: `dst[i] = lhs[i] / rhs[i]`.
 pub(crate) struct DivF64Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+
     /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
