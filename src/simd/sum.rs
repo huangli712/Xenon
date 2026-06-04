@@ -634,8 +634,18 @@ mod tests {
                     .iter()
                     .copied()
                     .fold(Complex::new(0.0, 0.0), |a, b| a + b);
-                assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex sum f64 re");
-                assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex sum f64 im");
+                assert_within_reduction_bound_f64(
+                    simd.re,
+                    scalar.re,
+                    len,
+                    "complex sum f64 re"
+                );
+                assert_within_reduction_bound_f64(
+                    simd.im,
+                    scalar.im,
+                    len,
+                    "complex sum f64 im"
+                );
             }
         }
     }
@@ -648,7 +658,7 @@ mod tests {
         prop_sum_complex_f64(0x2003);
     }
 
-    // ---- integer stub -------------------------------------------------------
+    // ---- integer stub ------------------------------------------------------
 
     /// Generates a random i32 that won't overflow during widening.
     fn gen_i32_no_overflow(state: &mut u64) -> i32 {
