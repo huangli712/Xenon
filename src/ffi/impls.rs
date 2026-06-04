@@ -35,7 +35,7 @@ use crate::tensor::{StorageKind, StorageSemantics};
 ///
 /// Note: a single `pub use` brings `TensorBase` into the current scope
 /// (so that `impl TensorBase { ... }` below works) **and** simultaneously
-/// re-exports it from `crate::ffi::ptr`.
+/// re-exports it from `crate::ffi::impls`.
 pub use crate::tensor::{OwnedRawParts, TensorBase};
 
 // ── Index → offset / pointer ─────────────────────────────────

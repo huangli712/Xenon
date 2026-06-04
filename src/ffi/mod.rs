@@ -59,14 +59,14 @@
 //! undefined behavior. Wrappers must capture the panic and convert it to
 //! an upstream ABI error code (or use `panic = "abort"`).
 
-mod ptr;
+mod impls;
 mod types;
 
 // Public re-exports are intentionally absent at W13T1.
 // Each downstream task (W13T2 / W13T4) adds the `pub use` lines for the
 // items it introduces, following the module-declaration-evolution
 // protocol defined by W1T3.
-pub use ptr::{OwnedRawParts, TensorBase};
+pub use impls::{OwnedRawParts, TensorBase};
 pub use types::{
     BlasInfo, FfiBackend, FfiErrorCategory, TensorExportMutRaw, TensorExportRaw,
 };
@@ -85,8 +85,8 @@ mod tests {
         let _ = std::any::type_name::<crate::ffi::types::TensorExportRaw>();
         // types.rs: verify `mod types;` → TensorExport exists
         let _ = std::any::type_name::<crate::ffi::types::TensorExport<'static, f64>>();
-        // ptr.rs: verify `mod ptr;` → OwnedRawParts exists
-        let _ = std::any::type_name::<crate::ffi::ptr::OwnedRawParts<f64, crate::dimension::Ix0>>();
+        // impls.rs: verify `mod impls;` → OwnedRawParts exists
+        let _ = std::any::type_name::<crate::ffi::impls::OwnedRawParts<f64, crate::dimension::Ix0>>();
         // offset.rs: verified by its own unit tests;
         // the `mod offset;` declaration is validated
     }
