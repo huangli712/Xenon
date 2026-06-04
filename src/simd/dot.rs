@@ -383,8 +383,14 @@ mod tests {
             .map(|(l, r)| l.conj() * *r)
             .fold(Complex::new(0.0, 0.0), |a, b| a + b);
         if let Some(simd) = try_dot_complex_f32(&lhs, &rhs) {
-            let max_abs_a = lhs.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
-            let max_abs_b = rhs.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
+            let max_abs_a = lhs
+                .iter()
+                .map(|c| c.norm())
+                .fold(0.0_f32, f32::max);
+            let max_abs_b = rhs
+                .iter()
+                .map(|c| c.norm())
+                .fold(0.0_f32, f32::max);
             let tol = (16.0 * f32::EPSILON * (lhs.len() as f32) * max_abs_a * max_abs_b)
                 .max(4.0 * f32::MIN_POSITIVE);
             assert_within_tolerance_f32(simd.re, scalar.re, tol);
@@ -392,7 +398,7 @@ mod tests {
         }
     }
 
-    // ---- int stub admission -------------------------------------------------
+    // ---- int stub admission ------------------------------------------------
 
     /// Verifies the i32 dot stub returns `None` (no SIMD widening available).
     #[test]
