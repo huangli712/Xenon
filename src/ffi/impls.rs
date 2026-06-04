@@ -510,6 +510,39 @@ mod tests {
         }
     }
 
+    /// Gate 2: non-F-contiguous 2D triggers `BlasIncompatibleLayout`.
+    /// Constructed manually via `from_raw_parts` with C-order strides.
+    #[test]
+    fn test_lda_non_f_contiguous_returns_incompatible() {
+        let data = [0.0_f64; 12];
+        // shape [3, 4] with C-order strides [4, 1] — NOT F-order.
+        let strides = [4_usize, 1_usize];
+        // SAFETY: shape product 12 == data.len(); strides cover [0, 11].
+        let t = unsafe {
+            TensorView::<f64, Ix2>::from_raw_parts(
+                data.as_ptr(),
+                data.len(),
+                Ix2(3, 4),
+                Strides::from_slice(&strides).expect("valid strides"),
+                0,
+            )
+        }.expect("valid layout (just non-F-order)");
+        // is_blas_layout_compatible returns false because is_f_contiguous()
+        // is false.
+        assert!(!t.is_blas_layout_compatible());
+        // lda() must return BlasIncompatibleLayout (Gate 2).
+        let Err(err) = t.lda() else {
+            panic!("expected BlasIncompatibleLayout error, got Ok");
+        };
+        match err {
+            XenonError::Ffi {
+                category: FfiErrorCategory::BlasIncompatibleLayout { .. },
+                ..
+            } => {},
+            other => panic!("expected BlasIncompatibleLayout, got {other:?}"),
+        }
+    }
+
     /// Gate 3: zero-row matrix ⇒ `BlasIncompatibleLayout`.
     /// Empty storage + shape [0, 4] is a valid empty F-order layout that
     /// passes `validate_access_range` (len=0 early-return) but fails the
@@ -546,39 +579,6 @@ mod tests {
         let data = [0.0_f64; 12];
         let t = make_view_f64_ix2(&data, [3, 4]);
         assert_eq!(t.lda().expect("F-order BLAS-compatible"), 3);
-    }
-
-    /// Gate 2: non-F-contiguous 2D triggers `BlasIncompatibleLayout`.
-    /// Constructed manually via `from_raw_parts` with C-order strides.
-    #[test]
-    fn test_lda_non_f_contiguous_returns_incompatible() {
-        let data = [0.0_f64; 12];
-        // shape [3, 4] with C-order strides [4, 1] — NOT F-order.
-        let strides = [4_usize, 1_usize];
-        // SAFETY: shape product 12 == data.len(); strides cover [0, 11].
-        let t = unsafe {
-            TensorView::<f64, Ix2>::from_raw_parts(
-                data.as_ptr(),
-                data.len(),
-                Ix2(3, 4),
-                Strides::from_slice(&strides).expect("valid strides"),
-                0,
-            )
-        }
-        .expect("valid layout (just non-F-order)");
-        // is_blas_layout_compatible returns false because is_f_contiguous() is false.
-        assert!(!t.is_blas_layout_compatible());
-        // lda() must return BlasIncompatibleLayout (Gate 2).
-        let Err(err) = t.lda() else {
-            panic!("expected BlasIncompatibleLayout error, got Ok");
-        };
-        match err {
-            XenonError::Ffi {
-                category: FfiErrorCategory::BlasIncompatibleLayout { .. },
-                ..
-            } => {},
-            other => panic!("expected BlasIncompatibleLayout, got {other:?}"),
-        }
     }
 
     /// Gate 1: non-2D input to `lda()` triggers `InvalidRank` (mirrors
