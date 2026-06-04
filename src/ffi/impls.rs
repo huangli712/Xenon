@@ -663,20 +663,19 @@ mod tests {
     #[test]
     fn test_try_offset_of_checked_overflow() {
         let data = Vec::<i32>::new(); // empty storage
-        // SAFETY: shape=[3,0] has product 0 → validate_access_range early-returns
-        // at the len==0 gate, bypassing the stride>isize::MAX check.
+        // SAFETY: shape=[3,0] has product 0 → validate_access_range early
+        // returns at the len==0 gate, bypassing the stride>isize::MAX check.
         // The huge stride[0] propagates into the constructed view, where
         // try_offset_of will hit the checked_mul overflow path.
         let t = unsafe {
             TensorView::<i32, Ix2>::from_raw_parts(
-                data.as_ptr(),                                                 // ptr: *const i32
-                data.len(), // storage_len: usize = 0
-                Ix2(3, 0),  // shape: Ix2
-                Strides::from_slice(&[usize::MAX, 1]).expect("valid strides"), // strides: Strides<Ix2>
-                0,                                                             // offset: usize
+                data.as_ptr(),
+                data.len(),
+                Ix2(3, 0),
+                Strides::from_slice(&[usize::MAX, 1]).expect("valid strides"),
+                0,
             )
-        }
-        .expect(
+        }.expect(
             "shape=[3, 0] with size=0 should pass \
              validate_access_range's empty-tensor early-return path",
         );
@@ -711,8 +710,7 @@ mod tests {
                 Strides::from_slice(&[1]).expect("valid strides"),
                 0,
             )
-        }
-        .expect("valid F-order [3]");
+        }.expect("valid F-order [3]");
         let ptr0 = t.try_ptr_at(&[0]).expect("valid index");
         let ptr1 = t.try_ptr_at(&[1]).expect("valid index");
         let ptr2 = t.try_ptr_at(&[2]).expect("valid index");
