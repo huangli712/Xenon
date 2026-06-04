@@ -9,14 +9,14 @@
 use core::ptr::NonNull;
 use std::borrow::Cow;
 
-use super::types::{BlasInfo, TensorExportMutRaw, TensorExportRaw};
+use crate::error::{FfiBackend, FfiErrorCategory};
+use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
 use crate::dimension::Dimension;
 use crate::element::{Element, element_type_of};
-use crate::error::{
-    FfiBackend, FfiErrorCategory, InvalidLayoutReason, StorageKindTag, XenonError,
-};
 use crate::storage::{Storage, StorageMut};
 use crate::tensor::{StorageKind, StorageSemantics};
+
+use super::types::{BlasInfo, TensorExportMutRaw, TensorExportRaw};
 
 // `TensorBase` is imported so the `impl TensorBase { ... }` blocks below
 // resolve. The public FFI re-export of `TensorBase` / `OwnedRawParts`
