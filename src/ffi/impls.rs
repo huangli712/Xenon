@@ -743,8 +743,7 @@ mod tests {
                 Strides::from_slice(&[1_usize]).expect("valid strides"),
                 0,
             )
-        }
-        .expect("valid F-order [3] view");
+        }.expect("valid F-order [3] view");
         let raw = tensor.export();
         assert_eq!(raw.ndim, 1);
         assert_eq!(raw.storage_len, 3);
@@ -767,14 +766,13 @@ mod tests {
         // storage_base = data.as_ptr(); logical_first = data.as_ptr() + 2.
         let tensor = unsafe {
             TensorView::<i32, Ix1>::from_raw_parts(
-                data.as_ptr(), // ptr = storage base
-                data.len(),    // storage_len = 5
-                Ix1(2),        // shape
+                data.as_ptr(),
+                data.len(),
+                Ix1(2),
                 Strides::from_slice(&[1_usize]).expect("valid strides"),
-                2, // offset ≠ 0
+                2,
             )
-        }
-        .expect("F-order [2] view starting at offset 2");
+        }.expect("F-order [2] view starting at offset 2");
         let raw = tensor.export();
         // Storage-base contract: `data` field equals storage base.
         assert_eq!(raw.data as *const i32, tensor.as_storage_ptr());
@@ -782,7 +780,9 @@ mod tests {
         assert_eq!(raw.offset, 2);
         // The logical first pointer is `data + offset` (NOT just `data`).
         // SAFETY: offset < storage_len ensures pointer stays within object.
-        let logical_first = unsafe { (raw.data as *const i32).add(raw.offset) };
+        let logical_first = unsafe {
+            (raw.data as *const i32).add(raw.offset)
+        };
         assert_eq!(logical_first, tensor.as_ptr());
         // And it differs from `data` because offset ≠ 0.
         assert_ne!(raw.data as *const i32, tensor.as_ptr());
@@ -802,8 +802,7 @@ mod tests {
                 Strides::from_slice(&[1_usize]).expect("valid strides"),
                 0,
             )
-        }
-        .expect("empty F-order [0] view");
+        }.expect("empty F-order [0] view");
         let raw = tensor.export();
         assert_eq!(raw.ndim, 1);
         assert_eq!(raw.storage_len, 0);
@@ -827,8 +826,7 @@ mod tests {
                 Strides::from_slice(&[1_usize]).expect("valid strides"),
                 0,
             )
-        }
-        .expect("valid F-order [2] mutable view");
+        }.expect("valid F-order [2] mutable view");
         let storage_base_before = tensor.as_storage_ptr() as usize;
         let raw = tensor.export_mut();
         assert_eq!(raw.ndim, 1);
