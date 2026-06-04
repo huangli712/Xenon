@@ -313,18 +313,18 @@ pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize> {
     None
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use super::*;
 
-    // ---- dispatch threshold rejection ---------------------------------------
+    // ---- dispatch threshold rejection --------------------------------------
 
-    /// Verifies that slices below the element-wise threshold are
-    /// rejected by both binary and unary dispatch, leaving `dst` untouched.
+    /// Verifies that slices below the element-wise threshold are rejected by
+    /// both binary and unary dispatch, leaving `dst` untouched.
     #[test]
     fn test_vector_sub_mul_div_below_threshold_rejects() {
         let lhs: Vec<f32> = (0..32).map(|v| v as f32).collect();
@@ -355,7 +355,7 @@ mod tests {
         }
     }
 
-    // ---- empty / single element edge case -----------------------------------
+    // ---- empty / single element edge case ----------------------------------
 
     /// Empty slices must be rejected by element-wise dispatch and
     /// return `None` from sum/dot.
