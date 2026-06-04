@@ -178,3 +178,143 @@ impl WithSimd for ComplexDotF64Kernel<'_> {
         Complex::new(re_acc, im_acc)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "simd"))]
+mod tests {
+    use crate::complex::Complex;
+    use crate::simd;
+
+    fn tolerance_f64(data: &[f64]) -> f64 {
+        let n = data.len();
+        let max_abs_input = data.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
+        (4.0 * f64::EPSILON * (n as f64) * max_abs_input).max(4.0 * f64::MIN_POSITIVE)
+    }
+
+    fn tolerance_f32(data: &[f32]) -> f32 {
+        let n = data.len();
+        let max_abs_input = data.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
+        (4.0 * f32::EPSILON * (n as f32) * max_abs_input).max(4.0 * f32::MIN_POSITIVE)
+    }
+
+    fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
+        if expected.is_nan() || actual.is_nan() {
+            assert!(actual.is_nan() && expected.is_nan());
+        } else if expected.is_infinite() || actual.is_infinite() {
+            assert_eq!(actual, expected);
+        } else {
+            assert!((actual - expected).abs() <= tol.max(4.0 * f64::MIN_POSITIVE));
+        }
+    }
+
+    fn assert_within_tolerance_f32(actual: f32, expected: f32, tol: f32) {
+        if expected.is_nan() || actual.is_nan() {
+            assert!(actual.is_nan() && expected.is_nan());
+        } else if expected.is_infinite() || actual.is_infinite() {
+            assert_eq!(actual, expected);
+        } else {
+            assert!((actual - expected).abs() <= tol.max(4.0 * f32::MIN_POSITIVE));
+        }
+    }
+
+    fn data_f64(len: usize) -> Vec<f64> {
+        (0..len).map(|i| ((i as f64) * 0.25).sin()).collect()
+    }
+
+    fn data_f32(len: usize) -> Vec<f32> {
+        (0..len).map(|i| ((i as f32) * 0.25).sin()).collect()
+    }
+
+    #[test]
+    fn test_dot_tolerance_f64_within_documented_bounds() {
+        let lhs = data_f64(1024);
+        let rhs: Vec<f64> = data_f64(1024).into_iter().map(|v| v * -0.5).collect();
+        let scalar: f64 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
+        if let Some(simd) = simd::try_dot_f64(&lhs, &rhs) {
+            let max_abs_a = lhs.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
+            let max_abs_b = rhs.iter().copied().map(f64::abs).fold(0.0_f64, f64::max);
+            let tol = (8.0 * f64::EPSILON * (lhs.len() as f64) * max_abs_a * max_abs_b)
+                .max(4.0 * f64::MIN_POSITIVE);
+            assert_within_tolerance_f64(simd, scalar, tol);
+        }
+    }
+
+    #[test]
+    fn test_dot_tolerance_f32_within_documented_bounds() {
+        let lhs = data_f32(1024);
+        let rhs: Vec<f32> = data_f32(1024).into_iter().map(|v| v * -0.5).collect();
+        let scalar: f32 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
+        if let Some(simd) = simd::try_dot_f32(&lhs, &rhs) {
+            let max_abs_a = lhs.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
+            let max_abs_b = rhs.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
+            let tol = (8.0 * f32::EPSILON * (lhs.len() as f32) * max_abs_a * max_abs_b)
+                .max(4.0 * f32::MIN_POSITIVE);
+            assert_within_tolerance_f32(simd, scalar, tol);
+        }
+    }
+
+    #[test]
+    fn test_complex_dot_tolerance_real_imag_components() {
+        let lhs: Vec<Complex<f64>> = (0..1024)
+            .map(|i| Complex::new(i as f64 * 0.25, i as f64 * -0.5))
+            .collect();
+        let rhs: Vec<Complex<f64>> = (0..1024)
+            .map(|i| Complex::new((i as f64).cos(), (i as f64).sin()))
+            .collect();
+        let scalar: Complex<f64> = lhs
+            .iter()
+            .zip(rhs.iter())
+            .map(|(l, r)| l.conj() * *r)
+            .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+        if let Some(simd) = simd::try_dot_complex_f64(&lhs, &rhs) {
+            let max_abs_a = lhs.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+            let max_abs_b = rhs.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+            let tol = (16.0 * f64::EPSILON * (lhs.len() as f64) * max_abs_a * max_abs_b)
+                .max(4.0 * f64::MIN_POSITIVE);
+            assert_within_tolerance_f64(simd.re, scalar.re, tol);
+            assert_within_tolerance_f64(simd.im, scalar.im, tol);
+        }
+    }
+
+    #[test]
+    fn test_complex_dot_tolerance_f32_real_imag_components() {
+        let lhs: Vec<Complex<f32>> = (0..1024)
+            .map(|i| Complex::new(i as f32 * 0.25, i as f32 * -0.5))
+            .collect();
+        let rhs: Vec<Complex<f32>> = (0..1024)
+            .map(|i| Complex::new((i as f32).cos(), (i as f32).sin()))
+            .collect();
+        let scalar: Complex<f32> = lhs
+            .iter()
+            .zip(rhs.iter())
+            .map(|(l, r)| l.conj() * *r)
+            .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+        if let Some(simd) = simd::try_dot_complex_f32(&lhs, &rhs) {
+            let max_abs_a = lhs.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
+            let max_abs_b = rhs.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
+            let tol = (16.0 * f32::EPSILON * (lhs.len() as f32) * max_abs_a * max_abs_b)
+                .max(4.0 * f32::MIN_POSITIVE);
+            assert_within_tolerance_f32(simd.re, scalar.re, tol);
+            assert_within_tolerance_f32(simd.im, scalar.im, tol);
+        }
+    }
+
+    #[test]
+    fn test_dot_dispatch_simd_int_admission() {
+        let lhs: Vec<i32> = (0..512).collect();
+        let rhs: Vec<i32> = (0..512).map(|v| v - 128).collect();
+        if let Some(simd) = simd::try_dot_i32(&lhs, &rhs) {
+            let scalar_i64: i64 = lhs
+                .iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| (l as i64) * (r as i64))
+                .sum();
+            let scalar_i32 =
+                i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
+            assert_eq!(simd, scalar_i32);
+        }
+    }
+}

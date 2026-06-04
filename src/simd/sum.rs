@@ -245,7 +245,10 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
+    use crate::complex::Complex;
     use crate::simd;
+
+    // ---- admission / basic correctness ----
 
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len() as f64;
@@ -307,5 +310,125 @@ mod tests {
             simd::try_sum_f32(&at_threshold).is_some(),
             "len=1024 must be admitted when supported"
         );
+    }
+
+    // ---- tolerance bounds (W14T9) ----
+
+    fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
+        if expected.is_nan() || actual.is_nan() {
+            assert!(actual.is_nan() && expected.is_nan());
+        } else if expected.is_infinite() || actual.is_infinite() {
+            assert_eq!(actual, expected);
+        } else {
+            assert!((actual - expected).abs() <= tol.max(4.0 * f64::MIN_POSITIVE));
+        }
+    }
+
+    fn assert_within_tolerance_f32(actual: f32, expected: f32, tol: f32) {
+        if expected.is_nan() || actual.is_nan() {
+            assert!(actual.is_nan() && expected.is_nan());
+        } else if expected.is_infinite() || actual.is_infinite() {
+            assert_eq!(actual, expected);
+        } else {
+            assert!((actual - expected).abs() <= tol.max(4.0 * f32::MIN_POSITIVE));
+        }
+    }
+
+    fn data_f64(len: usize) -> Vec<f64> {
+        (0..len).map(|i| ((i as f64) * 0.25).sin()).collect()
+    }
+
+    fn data_f32(len: usize) -> Vec<f32> {
+        (0..len).map(|i| ((i as f32) * 0.25).sin()).collect()
+    }
+
+    #[test]
+    fn test_sum_tolerance_f64_within_documented_bounds() {
+        let data = data_f64(2048);
+        let scalar: f64 = data.iter().sum();
+        if let Some(simd) = simd::try_sum_f64(&data) {
+            assert_within_tolerance_f64(simd, scalar, tolerance_f64(&data));
+        }
+    }
+
+    #[test]
+    fn test_sum_tolerance_f32_within_documented_bounds() {
+        let data = data_f32(2048);
+        let scalar: f32 = data.iter().sum();
+        if let Some(simd) = simd::try_sum_f32(&data) {
+            assert_within_tolerance_f32(simd, scalar, tolerance_f32(&data));
+        }
+    }
+
+    #[test]
+    fn test_complex_sum_tolerance_real_imag_components() {
+        let data: Vec<Complex<f64>> = (0..2048)
+            .map(|i| Complex::new((i as f64).sin(), (i as f64 * 0.5).cos()))
+            .collect();
+        let scalar: Complex<f64> = data
+            .iter()
+            .copied()
+            .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+        if let Some(simd) = simd::try_sum_complex_f64(&data) {
+            let real: Vec<f64> = data.iter().map(|v| v.re).collect();
+            let imag: Vec<f64> = data.iter().map(|v| v.im).collect();
+            assert_within_tolerance_f64(simd.re, scalar.re, tolerance_f64(&real));
+            assert_within_tolerance_f64(simd.im, scalar.im, tolerance_f64(&imag));
+        }
+    }
+
+    #[test]
+    fn test_complex_sum_tolerance_f32_real_imag_components() {
+        let data: Vec<Complex<f32>> = (0..2048)
+            .map(|i| Complex::new((i as f32).sin(), (i as f32 * 0.5).cos()))
+            .collect();
+        let scalar: Complex<f32> = data
+            .iter()
+            .copied()
+            .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+        if let Some(simd) = simd::try_sum_complex_f32(&data) {
+            let real: Vec<f32> = data.iter().map(|v| v.re).collect();
+            let imag: Vec<f32> = data.iter().map(|v| v.im).collect();
+            assert_within_tolerance_f32(simd.re, scalar.re, tolerance_f32(&real));
+            assert_within_tolerance_f32(simd.im, scalar.im, tolerance_f32(&imag));
+        }
+    }
+
+    #[test]
+    fn test_sum_dispatch_simd_int_admission() {
+        let data: Vec<i32> = (0..1024).collect();
+        if let Some(simd) = simd::try_sum_i32(&data) {
+            let scalar_i64: i64 = data.iter().map(|&v| v as i64).sum();
+            let scalar_i32 =
+                i32::try_from(scalar_i64).expect("test fixture stays within i32 range");
+            assert_eq!(simd, scalar_i32);
+        }
+    }
+
+    #[test]
+    fn test_sum_nan_propagation() {
+        let mut data = vec![1.0_f64; 2048];
+        data[1024] = f64::NAN;
+        if let Some(simd) = simd::try_sum_f64(&data) {
+            assert!(simd.is_nan());
+        }
+    }
+
+    #[test]
+    fn test_sum_inf_sign_consistency() {
+        let mut positive = vec![1.0_f64; 2048];
+        positive[7] = f64::INFINITY;
+        if let Some(simd) = simd::try_sum_f64(&positive) {
+            assert_eq!(simd, f64::INFINITY);
+        }
+    }
+
+    #[test]
+    fn test_entry_threshold_boundary() {
+        let below = vec![1.0_f64; 1023];
+        assert!(simd::try_sum_f64(&below).is_none());
+        let at_threshold = vec![1.0_f64; 1024];
+        let simd = simd::try_sum_f64(&at_threshold).expect("len=1024 must enter f64 sum SIMD");
+        assert_within_tolerance_f64(simd, 1024.0, tolerance_f64(&at_threshold));
     }
 }
