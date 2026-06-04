@@ -40,13 +40,7 @@ where
     pub fn is_blas_layout_compatible(&self) -> bool {
         self.is_f_contiguous() && !self.has_zero_stride()
     }
-}
 
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
     /// Returns BLAS layout identifier and parameter information.
     ///
     /// # Returns
@@ -123,13 +117,7 @@ where
             cols,
         })
     }
-}
 
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
     /// Returns the leading dimension (only meaningful for 2D arrays).
     ///
     /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
