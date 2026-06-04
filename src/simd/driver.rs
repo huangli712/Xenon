@@ -50,7 +50,6 @@ where
     assert_eq!(lhs.len(), dst.len());
 
     let tid = std::any::TypeId::of::<A>();
-    // W14T2: f32/f64 element-wise dispatch via concrete kernels.
     if tid == std::any::TypeId::of::<f32>() {
         let lhs = unsafe { std::slice::from_raw_parts(lhs.as_ptr() as *const f32, lhs.len()) };
         let rhs = unsafe { std::slice::from_raw_parts(rhs.as_ptr() as *const f32, rhs.len()) };
@@ -65,7 +64,6 @@ where
             unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
         return binary::dispatch_binary_f64(op, lhs, rhs, dst);
     }
-    // Complex<f32>/Complex<f64> element-wise handled by W14T11.
     if tid == std::any::TypeId::of::<Complex<f32>>() {
         let lhs =
             unsafe { std::slice::from_raw_parts(lhs.as_ptr() as *const Complex<f32>, lhs.len()) };
@@ -105,7 +103,6 @@ where
     assert_eq!(src.len(), dst.len());
 
     let tid = std::any::TypeId::of::<A>();
-    // W14T2: f32/f64 element-wise Neg dispatch.
     if tid == std::any::TypeId::of::<f32>() {
         let src = unsafe { std::slice::from_raw_parts(src.as_ptr() as *const f32, src.len()) };
         let dst =
@@ -118,7 +115,6 @@ where
             unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
         return unary::dispatch_unary_f64(op, src, dst);
     }
-    // Complex element-wise Neg handled by W14T11.
     if tid == std::any::TypeId::of::<Complex<f32>>() {
         let src =
             unsafe { std::slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len()) };
@@ -158,21 +154,10 @@ pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>>
     sum::try_sum_complex_f64_impl(data)
 }
 
-#[allow(
-    dead_code,
-    reason = "08-simd §6.6 (W14T4) capability stub paired with try_dot_i32 — \
-              i32 sum via SIMD is unavailable in pulp 0.22 (no i32->i64 \
-              widening). Always returns None so callers fall back to scalar \
-              checked_add. Test in vector.rs verifies the contract \
-              (admission path is prepared even though no production caller \
-              wires through yet). (`allow` rather than `expect` because \
-              dead_code only fires without `--tests`; test-mode use \
-              suppresses the lint.)"
-)]
+/// Stub: i32 sum has no SIMD path (i32 widening unavailable).
+/// Always returns `None` so callers fall back to scalar.
+#[allow(dead_code, reason = "i32 sum stub — no SIMD widening available")]
 pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
-    // W14T0 spike: i32->i64 widening is unavailable in pulp 0.22.
-    // No SIMD path exists; always returns None so caller uses
-    // scalar checked_add path (08-simd §6.6, W14T4).
     let _ = data;
     None
 }
@@ -207,16 +192,9 @@ pub(crate) fn try_dot_complex_f64(
     dot::try_dot_complex_f64_impl(lhs, rhs)
 }
 
-#[allow(
-    dead_code,
-    reason = "08-simd capability stub paired with try_sum_i32 — i32 dot via \
-              SIMD is unavailable in pulp 0.22 (no i32->i64 widening). \
-              Always returns None so callers fall back to scalar checked_mul. \
-              Test in vector.rs verifies the contract (admission path is \
-              prepared even though no production caller wires through yet). \
-              (`allow` rather than `expect` because dead_code only fires \
-              without `--tests`; test-mode use suppresses the lint.)"
-)]
+/// Stub: i32 dot has no SIMD path (i32 widening unavailable).
+/// Always returns `None` so callers fall back to scalar.
+#[allow(dead_code, reason = "i32 dot stub — no SIMD widening available")]
 pub(crate) fn try_dot_i32(lhs: &[i32], rhs: &[i32]) -> Option<i32> {
     assert_eq!(lhs.len(), rhs.len());
     None
@@ -232,19 +210,8 @@ pub(crate) fn try_dot_i32(lhs: &[i32], rhs: &[i32]) -> Option<i32> {
 /// `None` means the feature is disabled, the type is unsupported, or no
 /// suitable ISA is available.
 ///
-/// Per [`08-simd §5.12`], callers use this to decide whether to attempt
-/// SIMD dispatch at all.
-#[allow(
-    dead_code,
-    reason = "08-simd §5.12 capability-query skeleton — returns None until \
-              ISA-specific implementations are wired in by later W14 tasks. \
-              Test in this module verifies the skeleton contract. \
-              (`allow` rather than `expect` because dead_code only fires \
-              without `--tests`; test-mode use suppresses the lint.)"
-)]
+#[allow(dead_code, reason = "returns None until ISA dispatch is wired")]
 pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize> {
-    // Skeleton: returns None until ISA-specific implementations are filled in
-    // by later W14 tasks. See 08-simd §5.12 for the capability-query contract.
     None
 }
 
@@ -256,8 +223,8 @@ pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize> {
 mod tests {
     use super::*;
 
-    // ---- threshold rejection ----
-
+    /// Verifies that slices below the element-wise threshold are
+    /// rejected by both binary and unary dispatch, leaving `dst` untouched.
     #[test]
     fn test_vector_sub_mul_div_below_threshold_rejects() {
         let lhs: Vec<f32> = (0..32).map(|v| v as f32).collect();
@@ -288,8 +255,8 @@ mod tests {
         }
     }
 
-    // ---- facade admission ----
-
+    /// Empty slices must be rejected by element-wise dispatch and
+    /// return `None` from sum/dot.
     #[test]
     fn test_empty_array() {
         let lhs: [f32; 0] = [];
@@ -307,6 +274,8 @@ mod tests {
         assert_eq!(try_dot_f32(&lhs, &rhs), None);
     }
 
+    /// Single-element slices are below threshold and must be rejected.
+    /// `dst` must remain untouched on rejection.
     #[test]
     fn test_single_element() {
         let lhs = [2.0_f32];

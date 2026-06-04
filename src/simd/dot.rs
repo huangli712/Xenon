@@ -1,4 +1,8 @@
-//! f32/f64 dot-product SIMD reduction kernels.
+//! SIMD reduction kernels for dot-product (inner product).
+//!
+//! Computes `sum(lhs_i * rhs_i)` using parallel SIMD lanes.
+//! Complex variant follows BLAS xdotc: `sum(conj(lhs_i) * rhs_i)`.
+//! Supported types: `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
 
 use pulp::{Simd, WithSimd};
 
@@ -8,7 +12,7 @@ use crate::complex::Complex;
 // Dispatch helpers (called from mod.rs facade)
 // ---------------------------------------------------------------------------
 
-/// Dot threshold for f32/f64 (08-simd §5.8 L456).
+/// Minimum slice length for f32/f64 dot-product SIMD admission.
 const DOT_THRESHOLD: usize = 512;
 
 pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
@@ -29,7 +33,7 @@ pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
     Some(arch.dispatch(DotF64Kernel { lhs, rhs }))
 }
 
-/// Dot threshold for Complex (PLAN.md W14, derived from f32/f64 dot=512).
+/// Minimum slice length for complex dot-product SIMD admission.
 const COMPLEX_DOT_THRESHOLD: usize = 512;
 
 pub(crate) fn try_dot_complex_f32_impl(
@@ -72,14 +76,15 @@ impl WithSimd for DotF32Kernel<'_> {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, _rhs_tail) = S::as_simd_f32s(self.rhs);
 
-        // FMA forbidden in per-element multiply+accumulate (08-simd §6.6).
+        // Separate mul + add to keep element-wise semantics
+        // bit-identical with scalar.
         let mut acc = simd.splat_f32s(0.0);
         for i in 0..lhs_body.len() {
             let prod = simd.mul_f32s(lhs_body[i], rhs_body[i]);
             acc = simd.add_f32s(acc, prod);
         }
 
-        // Horizontal reduction merge (FMA allowed, tolerance documented).
+        // Horizontal reduction merge across lanes.
         let mut scalar = simd.reduce_sum_f32s(acc);
 
         // Tail
@@ -185,6 +190,9 @@ impl WithSimd for ComplexDotF64Kernel<'_> {
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
+    // Tests verify that the SIMD dot-product matches scalar within
+    // documented floating-point tolerance bounds.
+
     use crate::complex::Complex;
     use crate::simd;
 
@@ -216,6 +224,7 @@ mod tests {
         (0..len).map(|i| ((i as f32) * 0.25).sin()).collect()
     }
 
+    /// Asserts f32 dot-product is within documented tolerance.
     #[test]
     fn test_dot_tolerance_f64_within_documented_bounds() {
         let lhs = data_f64(1024);
@@ -244,6 +253,8 @@ mod tests {
         }
     }
 
+    /// Asserts complex f64 dot product (BLAS xdotc: conj(lhs) · rhs)
+    /// is within documented tolerance on both real and imaginary components.
     #[test]
     fn test_complex_dot_tolerance_real_imag_components() {
         let lhs: Vec<Complex<f64>> = (0..1024)
@@ -306,7 +317,8 @@ mod tests {
         }
     }
 
-    // ---- dot property tests (W14T10) ----
+    // ---- dot property tests ----
+    // Randomized property-based tests for SIMD dot-product.
 
     const CASES: usize = 32;
     const MAX_LEN: usize = 4096;

@@ -1,4 +1,8 @@
-//! f32/f64 sum SIMD reduction kernels.
+//! SIMD reduction kernels for element-wise sum.
+//!
+//! Accumulates elements in parallel SIMD lanes then reduces
+//! horizontally to a single scalar. Supported types: `f32`, `f64`,
+//! `Complex<f32>`, `Complex<f64>`.
 
 use pulp::{Simd, WithSimd};
 
@@ -8,7 +12,7 @@ use crate::complex::Complex;
 // Dispatch helpers (called from mod.rs facade)
 // ---------------------------------------------------------------------------
 
-/// Sum threshold per 08-simd §5.8 L457.
+/// Minimum slice length for f32/f64 sum SIMD admission.
 const SUM_THRESHOLD: usize = 1024;
 
 /// Dispatches f32 sum to the SIMD kernel if the threshold is met.
@@ -29,7 +33,7 @@ pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
     Some(arch.dispatch(SumF64Kernel { data }))
 }
 
-/// Complex sum threshold per PLAN.md W14 补充决策.
+/// Minimum slice length for complex sum SIMD admission.
 const COMPLEX_SUM_THRESHOLD: usize = 1024;
 
 pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<f32>> {
@@ -69,7 +73,6 @@ impl WithSimd for SumF32Kernel<'_> {
         }
 
         // Horizontal reduction merge: sum across lanes.
-        // FMA is allowed in this phase per 08-simd §6.6 (tolerance is documented).
         let mut scalar = simd.reduce_sum_f32s(acc);
 
         // Scalar tail: remaining elements after the vector-aligned prefix.
@@ -215,9 +218,7 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
             }
         }
 
-        // Deinterleave accumulated f64s.
-        // For simplicity, reduce interleaved acc directly.
-        // FMA is allowed in horizontal reduction merge (08-simd §6.6).
+        // Horizontal reduction merge across lanes.
         let scalar = simd.reduce_sum_f64s(acc);
         // Since we summed [re0, im0, re1, im1, ...] all together,
         // scalar = sum of all re + sum of all im. We need to split them.
@@ -250,6 +251,8 @@ mod tests {
 
     // ---- admission / basic correctness ----
 
+    /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
+    /// for floating-point SIMD sum accumulation.
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len() as f64;
         let max_abs = data.iter().map(|v| v.abs() as f64).fold(0.0f64, f64::max);
@@ -257,6 +260,7 @@ mod tests {
         ((4.0 * f32::EPSILON as f64 * n * max_abs) as f32).max(4.0 * f32::MIN_POSITIVE)
     }
 
+    /// Asserts 2048-element f32 sum enters SIMD and stays within tolerance.
     #[test]
     fn test_sum_dispatch_simd_float_f32() {
         let data: Vec<f32> = (0..2048).map(|v| v as f32 * 0.25 - 64.0).collect();
@@ -297,6 +301,7 @@ mod tests {
         );
     }
 
+    /// Asserts f32 lengths below threshold are rejected, at threshold admitted.
     #[test]
     fn test_simd_sum_threshold_boundary() {
         let below: Vec<f32> = (0..1023).map(|v| v as f32).collect();
@@ -312,7 +317,7 @@ mod tests {
         );
     }
 
-    // ---- tolerance bounds (W14T9) ----
+    // ---- tolerance bounds ----
 
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
         if expected.is_nan() || actual.is_nan() {
@@ -405,6 +410,7 @@ mod tests {
         }
     }
 
+    /// Checks that NaN in the input propagates through the SIMD sum path.
     #[test]
     fn test_sum_nan_propagation() {
         let mut data = vec![1.0_f64; 2048];
@@ -414,6 +420,7 @@ mod tests {
         }
     }
 
+    /// Checks that `+∞` in the input yields `+∞` from SIMD sum.
     #[test]
     fn test_sum_inf_sign_consistency() {
         let mut positive = vec![1.0_f64; 2048];
@@ -432,7 +439,10 @@ mod tests {
         assert_within_tolerance_f64(simd, 1024.0, tolerance_f64(&at_threshold));
     }
 
-    // ---- sum property tests (W14T10) ----
+    // ---- sum property tests ----
+    //
+    // Randomized property-based tests that compare SIMD sum against
+    // scalar across many seed-driven random inputs.
 
     const CASES: usize = 32;
     const MAX_LEN: usize = 4096;
@@ -549,8 +559,7 @@ mod tests {
         for _case in 0..CASES {
             let len = gen_len(&mut rng, MAX_LEN);
             let data: Vec<i32> = (0..len).map(|_| gen_i32_no_overflow(&mut rng)).collect();
-            // i32 SIMD is currently not available (per W14T0 spike),
-            // so try_sum_i32 should always return None.
+            // i32 SIMD widening is unavailable; stub always returns None.
             assert!(
                 simd::try_sum_i32(&data).is_none(),
                 "i32 SIMD sum should not be available (widening unavailable)"

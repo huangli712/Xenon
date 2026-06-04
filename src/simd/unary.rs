@@ -1,4 +1,6 @@
-//! f32/f64 unary element-wise SIMD kernels.
+//! Unary element-wise SIMD kernels (negation).
+//!
+//! Supported types: `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
 
 use pulp::{Simd, WithSimd};
 

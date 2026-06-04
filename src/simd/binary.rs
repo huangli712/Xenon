@@ -1,4 +1,11 @@
-//! f32/f64 binary element-wise SIMD kernels.
+//! Binary element-wise SIMD kernels (add, sub, mul, div).
+//!
+//! Each kernel holds slice references and implements [`pulp::WithSimd`]
+//! so the `pulp` architecture can dispatch to the right ISA at runtime.
+//! Dispatch helpers perform threshold admission before routing to a
+//! concrete kernel.
+//!
+//! Supported types: `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
 
 use pulp::{Simd, WithSimd};
 
@@ -6,11 +13,12 @@ use crate::simd::{BinaryOp, get_arch};
 use crate::complex::Complex;
 
 // ---------------------------------------------------------------------------
-// Thresholds (per 08-simd §5.8)
+// Thresholds
 // ---------------------------------------------------------------------------
 
+/// Minimum slice length for f32/f64 element-wise SIMD admission.
 pub(crate) const ELEMENTWISE_F32_F64_THRESHOLD: usize = 64;
-/// Complex element-wise threshold (08-simd §5.8 L451).
+/// Minimum slice length for complex element-wise SIMD admission.
 pub(crate) const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
 // ---------------------------------------------------------------------------
@@ -90,6 +98,7 @@ pub(crate) fn dispatch_binary_complex_f64(
 // f32 binary kernel (Add)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f32 addition: `dst[i] = lhs[i] + rhs[i]`.
 pub(crate) struct AddF32Kernel<'a> {
     pub(crate) lhs: &'a [f32],
     pub(crate) rhs: &'a [f32],
@@ -99,6 +108,7 @@ pub(crate) struct AddF32Kernel<'a> {
 impl WithSimd for AddF32Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD add over the body, scalar add over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
@@ -117,6 +127,7 @@ impl WithSimd for AddF32Kernel<'_> {
 // f32 binary kernel (Sub)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f32 subtraction: `dst[i] = lhs[i] - rhs[i]`.
 pub(crate) struct SubF32Kernel<'a> {
     pub(crate) lhs: &'a [f32],
     pub(crate) rhs: &'a [f32],
@@ -144,6 +155,8 @@ impl WithSimd for SubF32Kernel<'_> {
 // f32 binary kernel (Mul)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f32 multiplication: `dst[i] = lhs[i] * rhs[i]`.
+/// Uses separate mul lane ops (not FMA) to stay bit-identical with scalar.
 pub(crate) struct MulF32Kernel<'a> {
     pub(crate) lhs: &'a [f32],
     pub(crate) rhs: &'a [f32],
@@ -158,8 +171,8 @@ impl WithSimd for MulF32Kernel<'_> {
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(self.dst);
 
-        // FMA is forbidden in element-wise main loop (08-simd §6.6).
-        // Use separate mul lane ops, not mul_add.
+        // Use separate mul lane ops, not FMA, to keep element-wise
+        // semantics bit-identical with scalar.
         for i in 0..lhs_body.len() {
             dst_body[i] = simd.mul_f32s(lhs_body[i], rhs_body[i]);
         }
@@ -173,6 +186,7 @@ impl WithSimd for MulF32Kernel<'_> {
 // f32 binary kernel (Div)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f32 division: `dst[i] = lhs[i] / rhs[i]`.
 pub(crate) struct DivF32Kernel<'a> {
     pub(crate) lhs: &'a [f32],
     pub(crate) rhs: &'a [f32],
@@ -200,6 +214,7 @@ impl WithSimd for DivF32Kernel<'_> {
 // f64 binary kernel (Add)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f64 addition: `dst[i] = lhs[i] + rhs[i]`.
 pub(crate) struct AddF64Kernel<'a> {
     pub(crate) lhs: &'a [f64],
     pub(crate) rhs: &'a [f64],
@@ -227,6 +242,7 @@ impl WithSimd for AddF64Kernel<'_> {
 // f64 binary kernel (Sub)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f64 subtraction: `dst[i] = lhs[i] - rhs[i]`.
 pub(crate) struct SubF64Kernel<'a> {
     pub(crate) lhs: &'a [f64],
     pub(crate) rhs: &'a [f64],
@@ -254,6 +270,8 @@ impl WithSimd for SubF64Kernel<'_> {
 // f64 binary kernel (Mul)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f64 multiplication: `dst[i] = lhs[i] * rhs[i]`.
+/// Uses separate mul lane ops (not FMA) to stay bit-identical with scalar.
 pub(crate) struct MulF64Kernel<'a> {
     pub(crate) lhs: &'a [f64],
     pub(crate) rhs: &'a [f64],
@@ -268,7 +286,8 @@ impl WithSimd for MulF64Kernel<'_> {
         let (rhs_body, rhs_tail) = S::as_simd_f64s(self.rhs);
         let (dst_body, dst_tail) = S::as_mut_simd_f64s(self.dst);
 
-        // FMA is forbidden in element-wise main loop (08-simd §6.6).
+        // Use separate mul lane ops, not FMA, to keep element-wise
+        // semantics bit-identical with scalar.
         for i in 0..lhs_body.len() {
             dst_body[i] = simd.mul_f64s(lhs_body[i], rhs_body[i]);
         }
@@ -282,6 +301,7 @@ impl WithSimd for MulF64Kernel<'_> {
 // f64 binary kernel (Div)
 // ---------------------------------------------------------------------------
 
+/// Element-wise f64 division: `dst[i] = lhs[i] / rhs[i]`.
 pub(crate) struct DivF64Kernel<'a> {
     pub(crate) lhs: &'a [f64],
     pub(crate) rhs: &'a [f64],
@@ -309,6 +329,8 @@ impl WithSimd for DivF64Kernel<'_> {
 // Complex<f32> binary kernels (Add, Sub)
 // ---------------------------------------------------------------------------
 
+/// Element-wise `Complex<f32>` addition.
+/// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
 pub(crate) struct ComplexAddF32Kernel<'a> {
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
@@ -337,6 +359,7 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
     }
 }
 
+/// Element-wise `Complex<f32>` subtraction.
 pub(crate) struct ComplexSubF32Kernel<'a> {
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
@@ -369,6 +392,8 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
 // Complex<f32> binary kernel (Mul)
 // ---------------------------------------------------------------------------
 
+/// Element-wise `Complex<f32>` multiplication.
+/// Falls back to scalar; full SIMD vectorisation is pending.
 pub(crate) struct ComplexMulF32Kernel<'a> {
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
@@ -389,9 +414,7 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
         let (dst_body, dst_tail) = S::as_mut_simd_f32s(dst_f32);
 
         // (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
-        // FMA forbidden in element-wise main loop (08-simd §6.6).
         for i in 0..lhs_body.len() {
-            // Re = a*c - b*d
             let ac = simd.mul_f32s(lhs_body[i], rhs_body[i]); // this multiplies all lanes, not correct
             let _ = ac;
             // For now, use scalar tail approach for complex mul
@@ -411,6 +434,8 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
 // Complex<f64> binary kernel (Add)
 // ---------------------------------------------------------------------------
 
+/// Element-wise `Complex<f64>` addition.
+/// Sub and Mul are not implemented for f64 complex; only Add is supported.
 pub(crate) struct ComplexAddF64Kernel<'a> {
     pub(crate) lhs: &'a [crate::complex::Complex<f64>],
     pub(crate) rhs: &'a [crate::complex::Complex<f64>],
@@ -447,11 +472,13 @@ impl WithSimd for ComplexAddF64Kernel<'_> {
 mod tests {
     use crate::simd::BinaryOp;
 
+    /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l + r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f32 addition goes through SIMD and matches scalar.
     #[test]
     fn test_vector_add_f32() {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
@@ -463,11 +490,13 @@ mod tests {
         assert_add_f32(&lhs, &rhs, &dst);
     }
 
+    /// Asserts SIMD and scalar subtraction produce identical results.
     fn assert_sub_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l - r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f32 subtraction goes through SIMD and matches scalar.
     #[test]
     fn test_vector_sub_f32() {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
@@ -478,11 +507,13 @@ mod tests {
         assert_sub_f32(&lhs, &rhs, &dst);
     }
 
+    /// Asserts SIMD and scalar multiplication produce identical results.
     fn assert_mul_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l * r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f32 multiplication goes through SIMD and matches scalar.
     #[test]
     fn test_vector_mul_f32() {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32).collect();
@@ -493,11 +524,14 @@ mod tests {
         assert_mul_f32(&lhs, &rhs, &dst);
     }
 
+    /// Asserts SIMD and scalar division produce identical results.
     fn assert_div_f32(lhs: &[f32], rhs: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = lhs.iter().zip(rhs).map(|(&l, &r)| l / r).collect();
         assert_eq!(actual, expected.as_slice());
     }
 
+    /// Asserts 128-element f32 division goes through SIMD and matches scalar.
+    /// Offsets inputs by +1.0 to avoid division by zero.
     #[test]
     fn test_vector_div_f32() {
         let lhs: Vec<f32> = (0..128).map(|v| v as f32 + 1.0).collect();
@@ -570,8 +604,13 @@ mod tests {
         assert_div_f64(&lhs, &rhs, &dst);
     }
 
-    // ---- consistency vs serial (W14T8) ----
+    // ---- consistency vs serial ----
+    //
+    // These tests verify that SIMD output matches the scalar equivalent
+    // bit-for-bit (or NaN-for-NaN) across varied inputs including
+    // extreme values, NaNs, infinities, and subnormals.
 
+    /// Width used for boundary / tail coverage tests.
     const SIMD_WIDTH: usize = 64;
 
     fn assert_same_bits_or_nan_f64(actual: f64, expected: f64) {
@@ -680,6 +719,8 @@ mod tests {
         }
     }
 
+    /// Compares SIMD vs scalar for each binary operation over a
+    /// 256-element synthetic fixture containing extreme values.
     #[test]
     fn test_simd_vector_consistency_elementwise() {
         let (lhs_f64, rhs_f64) = fixture_f64(256);
@@ -737,7 +778,7 @@ mod tests {
         simd_vs_serial_bitwise_f64(BinaryOp::Mul, lhs, rhs);
     }
 
-    // ---- binary property tests (W14T10) ----
+    // ---- binary property tests ----
 
     use crate::complex::Complex;
 

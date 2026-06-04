@@ -53,10 +53,10 @@ pub(crate) enum UnaryOp {
 mod tests {
     use super::*;
 
+    /// Verifies that the capability query returns `None` for every
+    /// supported element type (ISA lane widths not yet wired).
     #[test]
     fn test_simd_vector_width_skeleton_returns_none() {
-        // Skeleton stage: capability query returns None for every supported
-        // SimdElement type until later W14 tasks wire ISA lane widths.
         assert_eq!(crate::simd::simd_vector_width::<f32>(), None);
         assert_eq!(crate::simd::simd_vector_width::<f64>(), None);
         assert_eq!(crate::simd::simd_vector_width::<i32>(), None);
