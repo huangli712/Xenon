@@ -10,6 +10,7 @@
 use pulp::{Simd, WithSimd};
 
 use std::slice;
+use std::mem::size_of;
 use crate::complex::Complex;
 use crate::simd::{BinaryOp, get_arch};
 
@@ -413,7 +414,9 @@ impl WithSimd for ComplexSubF32Kernel<'_> {
 // ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f32>` multiplication.
-/// Falls back to scalar; full SIMD vectorisation is pending.
+/// Deinterleaves each register pair into real/imag halves for a
+/// structure-of-arrays SIMD multiply, then re-interleaves; the odd
+/// leftover register and tail fall back to scalar.
 pub(crate) struct ComplexMulF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [Complex<f32>],
