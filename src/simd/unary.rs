@@ -143,9 +143,9 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Dispatch helpers (called from driver.rs facade)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Dispatches f32 unary Neg to the kernel.
 pub(crate) fn dispatch_unary_f32(
@@ -234,10 +234,11 @@ mod tests {
 
     /// Number of random cases per property test.
     const CASES: usize = 32;
+
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- basic correctness --------------------------------------------------
+    // ---- basic correctness -------------------------------------------------
 
     /// Asserts SIMD and scalar negation produce identical results.
     fn assert_neg_f32(src: &[f32], actual: &[f32]) {
@@ -271,8 +272,8 @@ mod tests {
         assert_neg_f64(&src, &dst);
     }
 
-    // ---- consistency vs serial ----------------------------------------------
-    //
+    // ---- consistency vs serial ---------------------------------------------
+
     // Verifies SIMD neg matches scalar bit-for-bit (or NaN-for-NaN)
     // against a fixture containing extreme float values.
 
@@ -306,8 +307,10 @@ mod tests {
             0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY,
             f64::MIN_POSITIVE / 2.0,
         ];
-        let lhs: Vec<f64> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
-        let rhs: Vec<f64> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
+        let lhs: Vec<f64> = (0..len)
+            .map(|i| lhs_seed[i % lhs_seed.len()]).collect();
+        let rhs: Vec<f64> = (0..len)
+            .map(|i| rhs_seed[i % rhs_seed.len()]).collect();
         (lhs, rhs)
     }
 
@@ -323,8 +326,10 @@ mod tests {
             0.0, -0.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY,
             f32::MIN_POSITIVE / 2.0,
         ];
-        let lhs: Vec<f32> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
-        let rhs: Vec<f32> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
+        let lhs: Vec<f32> = (0..len)
+            .map(|i| lhs_seed[i % lhs_seed.len()]).collect();
+        let rhs: Vec<f32> = (0..len)
+            .map(|i| rhs_seed[i % rhs_seed.len()]).collect();
         (lhs, rhs)
     }
 
