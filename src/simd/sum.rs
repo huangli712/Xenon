@@ -284,10 +284,11 @@ mod tests {
     /// for floating-point SIMD sum accumulation.
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len() as f64;
-        let max_abs = data.iter()
+        let max_abs = data
+            .iter()
             .map(|v| v.abs() as f64)
             .fold(0.0f64, f64::max);
-        // Tolerance per 13-reduction.md §6.3: max(4·ε·n·max_abs_input, 4·MIN_POSITIVE)
+        // Tolerance: max(4·ε·n·max_abs_input, 4·MIN_POSITIVE)
         ((4.0 * f32::EPSILON as f64 * n * max_abs) as f32)
             .max(4.0 * f32::MIN_POSITIVE)
     }
@@ -295,13 +296,16 @@ mod tests {
     /// Asserts 2048-element f32 sum enters SIMD and stays within tolerance.
     #[test]
     fn test_sum_dispatch_simd_float_f32() {
-        let data: Vec<f32> = (0..2048).map(|v| v as f32 * 0.25 - 64.0).collect();
+        let data: Vec<f32> = (0..2048)
+            .map(|v| v as f32 * 0.25 - 64.0)
+            .collect();
         let simd_result = try_sum_f32(&data);
         assert!(
             simd_result.is_some(),
             "len >= 1024 should enter SIMD sum path when supported"
         );
-        let simd = simd_result.expect("len >= 1024 should enter SIMD sum path");
+        let simd = simd_result
+            .expect("len >= 1024 should enter SIMD sum path");
         let scalar: f32 = data.iter().sum();
         let tol = tolerance_f32(&data);
         assert!(
