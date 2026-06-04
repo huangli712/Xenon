@@ -183,7 +183,9 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::simd::UnaryOp;
+    use crate::simd::{BinaryOp, UnaryOp};
+
+    // ---- basic correctness ----
 
     fn assert_neg_f32(src: &[f32], actual: &[f32]) {
         let expected: Vec<f32> = src.iter().map(|&v| -v).collect();
@@ -211,5 +213,129 @@ mod tests {
         let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_neg_f64(&src, &dst);
+    }
+
+    // ---- consistency vs serial (W14T8) ----
+
+    fn assert_same_bits_or_nan_f64(actual: f64, expected: f64) {
+        if expected.is_nan() || actual.is_nan() {
+            assert!(actual.is_nan() && expected.is_nan());
+        } else {
+            assert_eq!(actual.to_bits(), expected.to_bits());
+        }
+    }
+
+    fn assert_same_bits_or_nan_f32(actual: f32, expected: f32) {
+        if expected.is_nan() || actual.is_nan() {
+            assert!(actual.is_nan() && expected.is_nan());
+        } else {
+            assert_eq!(actual.to_bits(), expected.to_bits());
+        }
+    }
+
+    fn fixture_f64(len: usize) -> (Vec<f64>, Vec<f64>) {
+        let lhs_seed = [
+            1.5_f64, -2.3, 0.001, -1e20, std::f64::consts::PI,
+            0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY,
+            f64::MIN_POSITIVE / 2.0,
+        ];
+        let rhs_seed = [
+            -4.25_f64, 8.0, -0.125, 1e-20, -2.0,
+            0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY,
+            f64::MIN_POSITIVE / 2.0,
+        ];
+        let lhs: Vec<f64> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
+        let rhs: Vec<f64> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
+        (lhs, rhs)
+    }
+
+    fn fixture_f32(len: usize) -> (Vec<f32>, Vec<f32>) {
+        let lhs_seed = [
+            1.5_f32, -2.3, 0.001, -1e10, std::f32::consts::PI,
+            0.0, -0.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY,
+            f32::MIN_POSITIVE / 2.0,
+        ];
+        let rhs_seed = [
+            -4.25_f32, 8.0, -0.125, 1e-10, -2.0,
+            0.0, -0.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY,
+            f32::MIN_POSITIVE / 2.0,
+        ];
+        let lhs: Vec<f32> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
+        let rhs: Vec<f32> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
+        (lhs, rhs)
+    }
+
+    #[test]
+    fn test_simd_neg_f64_matches_serial() {
+        let (src, _) = fixture_f64(256);
+        let mut dst = vec![0.0_f64; src.len()];
+        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        if handled {
+            let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
+            for (&a, &e) in dst.iter().zip(serial.iter()) {
+                assert_same_bits_or_nan_f64(a, e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_simd_neg_f32_matches_serial() {
+        let (src, _) = fixture_f32(256);
+        let mut dst = vec![0.0_f32; src.len()];
+        let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+        if handled {
+            let serial: Vec<f32> = src.iter().map(|&v| -v).collect();
+            for (&a, &e) in dst.iter().zip(serial.iter()) {
+                assert_same_bits_or_nan_f32(a, e);
+            }
+        }
+    }
+
+    // ---- neg property tests (W14T10) ----
+
+    const CASES: usize = 32;
+    const MAX_LEN: usize = 4096;
+    const ELEMENTWISE_THRESHOLD: usize = 64;
+
+    fn splitmix64(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9e3779b97f4a7c15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+        z ^ (z >> 31)
+    }
+
+    fn gen_len(state: &mut u64, max_len: usize) -> usize {
+        (splitmix64(state) as usize) % (max_len + 1)
+    }
+
+    fn gen_f64(state: &mut u64) -> f64 {
+        let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
+        (frac - 0.5) * 20.0
+    }
+
+    fn prop_elementwise_neg_f64(seed: u64) {
+        let mut rng = seed;
+        for _case in 0..CASES {
+            let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let src: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
+            let mut dst = vec![0.0_f64; len];
+            let handled = crate::simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
+            if handled {
+                let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
+                for (&a, &e) in dst.iter().zip(serial.iter()) {
+                    if a.is_nan() || e.is_nan() {
+                        assert!(a.is_nan() && e.is_nan());
+                    } else {
+                        assert_eq!(a.to_bits(), e.to_bits());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn prop_neg_consistency() {
+        prop_elementwise_neg_f64(0x1002);
     }
 }

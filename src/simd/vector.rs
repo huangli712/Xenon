@@ -190,28 +190,6 @@ mod tests {
     }
 
     #[test]
-    fn test_simd_neg_f64_matches_serial() {
-        let (src, _) = fixture_f64(256);
-        let mut dst = vec![0.0_f64; src.len()];
-        let handled = simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
-        if handled {
-            let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
-            assert_vec_bits_or_nan_f64(&dst, &serial);
-        }
-    }
-
-    #[test]
-    fn test_simd_neg_f32_matches_serial() {
-        let (src, _) = fixture_f32(256);
-        let mut dst = vec![0.0_f32; src.len()];
-        let handled = simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
-        if handled {
-            let serial: Vec<f32> = src.iter().map(|&v| -v).collect();
-            assert_vec_bits_or_nan_f32(&dst, &serial);
-        }
-    }
-
-    #[test]
     fn test_elementwise_boundary_lengths() {
         let mut lengths = vec![0, 1, 32, 64, 65, 128, 256];
         lengths.extend((1..8).map(|extra| SIMD_WIDTH + extra));
@@ -331,26 +309,6 @@ mod tests {
         }
     }
 
-    fn prop_elementwise_neg_f64(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let src: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            let mut dst = vec![0.0_f64; len];
-            let handled = simd::dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);
-            if handled {
-                let serial: Vec<f64> = src.iter().map(|&v| -v).collect();
-                for (&a, &e) in dst.iter().zip(serial.iter()) {
-                    if a.is_nan() || e.is_nan() {
-                        assert!(a.is_nan() && e.is_nan());
-                    } else {
-                        assert_eq!(a.to_bits(), e.to_bits());
-                    }
-                }
-            }
-        }
-    }
-
     fn prop_elementwise_complex_add_f32(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -437,7 +395,6 @@ mod tests {
     #[test]
     fn prop_elementwise_consistency() {
         prop_elementwise_binary_f64(0x1001);
-        prop_elementwise_neg_f64(0x1002);
         prop_elementwise_complex_add_f32(0x1003);
     }
 
