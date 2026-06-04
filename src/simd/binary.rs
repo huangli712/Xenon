@@ -431,21 +431,64 @@ pub(crate) struct ComplexMulF32Kernel<'a> {
 impl WithSimd for ComplexMulF32Kernel<'_> {
     type Output = ();
 
-    /// Falls back to scalar for complex multiply.
-    /// SIMD vectorisation requires deinterleaving and is not yet implemented.
+    /// Deinterleaves register pairs into real/imag halves, multiplies in
+    /// structure-of-arrays form, re-interleaves, and handles the remainder
+    /// (odd leftover register and sub-register tail) with scalar multiply.
     fn with_simd<S: Simd>(self, simd: S) {
-        // PROBE: verify deinterleave_shfl_f32s / interleave_shfl_f32s signatures.
-        let lhs_f32 = unsafe {
-            slice::from_raw_parts(self.lhs.as_ptr() as *const f32, self.lhs.len() * 2)
-        };
-        let (body, _tail) = S::as_simd_f32s(lhs_f32);
-        if body.len() >= 2 {
-            let [re, im] = simd.deinterleave_shfl_f32s([body[0], body[1]]);
-            let [_d0, _d1] = simd.interleave_shfl_f32s([re, im]);
+        let n = self.lhs.len();
+        // f32 lanes per SIMD register (1 for the scalar fallback).
+        let lane = size_of::<S::f32s>() / size_of::<f32>();
+
+        // Reinterpret the interleaved [re, im, ...] complex slices as flat f32.
+        // SAFETY: Complex<f32> is repr(C) with two f32 fields, so the layout is
+        // identical to [f32; 2]; the length 2*n is exact and provenance is kept.
+        let lhs_f32: &[f32] =
+            unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: same layout reasoning as lhs.
+        let rhs_f32: &[f32] =
+            unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: same layout; this is the sole mutable view of dst (no aliasing).
+        let dst_f32: &mut [f32] =
+            unsafe { slice::from_raw_parts_mut(self.dst.as_mut_ptr() as *mut f32, n * 2) };
+
+        let (lhs_body, _) = S::as_simd_f32s(lhs_f32);
+        let (rhs_body, _) = S::as_simd_f32s(rhs_f32);
+
+        // Complex multiply needs operands deinterleaved, which works on register
+        // PAIRS; each pair covers `lane` complex numbers.
+        let num_pairs = lhs_body.len() / 2;
+        let covered = num_pairs * lane;
+
+        // Split dst so the SIMD region and scalar remainder never alias.
+        let (dst_simd, dst_scalar) = dst_f32.split_at_mut(covered * 2);
+        let (dst_body, _) = S::as_mut_simd_f32s(dst_simd);
+
+        for p in 0..num_pairs {
+            // Deinterleave each operand pair into [re, im] (structure-of-arrays).
+            // The within-register lane permutation is irrelevant: every step is
+            // lane-local and interleave is the exact inverse of deinterleave.
+            let a = simd.deinterleave_shfl_f32s([lhs_body[2 * p], lhs_body[2 * p + 1]]);
+            let b = simd.deinterleave_shfl_f32s([rhs_body[2 * p], rhs_body[2 * p + 1]]);
+
+            // re = a.re*b.re - a.im*b.im ; im = a.re*b.im + a.im*b.re.
+            // Separate mul + sub/add (no FMA) to stay bit-identical with scalar.
+            let re = simd.sub_f32s(simd.mul_f32s(a[0], b[0]), simd.mul_f32s(a[1], b[1]));
+            let im = simd.add_f32s(simd.mul_f32s(a[0], b[1]), simd.mul_f32s(a[1], b[0]));
+
+            let out = simd.interleave_shfl_f32s([re, im]);
+            dst_body[2 * p] = out[0];
+            dst_body[2 * p + 1] = out[1];
         }
-        // (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
-        for i in 0..self.lhs.len() {
-            self.dst[i] = self.lhs[i] * self.rhs[i];
+
+        // Scalar remainder: complex indices `covered..n`, written through the
+        // dst_scalar f32 view (same operation order as Complex<f32> mul).
+        for k in 0..(n - covered) {
+            let re_l = lhs_f32[(covered + k) * 2];
+            let im_l = lhs_f32[(covered + k) * 2 + 1];
+            let re_r = rhs_f32[(covered + k) * 2];
+            let im_r = rhs_f32[(covered + k) * 2 + 1];
+            dst_scalar[k * 2] = re_l * re_r - im_l * im_r;
+            dst_scalar[k * 2 + 1] = re_l * im_r + im_l * re_r;
         }
     }
 }
@@ -1086,6 +1129,64 @@ mod tests {
             let e = l + r;
             assert_eq!(a.re, e.re, "real mismatch at i={i}");
             assert_eq!(a.im, e.im, "imag mismatch at i={i}");
+        }
+    }
+
+    /// 128-element `Complex<f32>` multiplication goes through SIMD and is
+    /// bit-identical with the scalar `Complex<f32>` multiply.
+    #[test]
+    fn test_vector_complex_mul_f32() {
+        let lhs: Vec<Complex<f32>> = (0..128)
+            .map(|v| Complex::new(v as f32 - 64.0, (v as f32) * 0.5))
+            .collect();
+        let rhs: Vec<Complex<f32>> = (0..128)
+            .map(|v| Complex::new((v as f32) * 0.25, v as f32 - 32.0))
+            .collect();
+        let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
+        let handled = dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
+        assert!(handled, "len=128 above threshold must admit SIMD");
+        for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
+            let e = l * r;
+            assert_eq!(a.re.to_bits(), e.re.to_bits(), "real bits at i={i}");
+            assert_eq!(a.im.to_bits(), e.im.to_bits(), "imag bits at i={i}");
+        }
+    }
+
+    /// `Complex<f32>` multiply stays bit-identical (or NaN-for-NaN) with the
+    /// scalar reference across lengths that exercise the SIMD body, the
+    /// leftover register, and the sub-register tail, using extreme inputs
+    /// (NaN, infinities, signed zero, subnormals).
+    #[test]
+    fn test_complex_mul_f32_tail_and_extremes() {
+        let seeds_re = [
+            1.5_f32, -2.3, 0.001, -1e10, f32::NAN,
+            f32::INFINITY, -0.0, f32::MIN_POSITIVE / 2.0,
+        ];
+        let seeds_im = [
+            -4.25_f32, 8.0, f32::NEG_INFINITY, 1e-10, 2.0,
+            f32::NAN, 0.0, -1.5,
+        ];
+        // Lengths >= COMPLEX_ELEMENTWISE_THRESHOLD that leave assorted
+        // leftover-register + tail remainders for any SIMD width.
+        for len in [128_usize, 129, 131, 135, 143, 160, 200, 257] {
+            let lhs: Vec<Complex<f32>> = (0..len)
+                .map(|i| {
+                    Complex::new(seeds_re[i % seeds_re.len()], seeds_im[i % seeds_im.len()])
+                })
+                .collect();
+            let rhs: Vec<Complex<f32>> = (0..len)
+                .map(|i| {
+                    Complex::new(seeds_im[i % seeds_im.len()], seeds_re[i % seeds_re.len()])
+                })
+                .collect();
+            let mut dst = vec![Complex::new(0.0, 0.0); len];
+            if dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst) {
+                for ((&a, &l), &r) in dst.iter().zip(lhs.iter()).zip(rhs.iter()) {
+                    let e = l * r;
+                    assert_same_bits_or_nan_f32(a.re, e.re);
+                    assert_same_bits_or_nan_f32(a.im, e.im);
+                }
+            }
         }
     }
 }

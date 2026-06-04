@@ -163,29 +163,39 @@ where
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const f32, src.len()) };
+        let src = unsafe {
+            slice::from_raw_parts(src.as_ptr() as *const f32, src.len())
+        };
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
+        let dst = unsafe {
+            slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len())
+        };
         return unary::dispatch_unary_f32(op, src, dst);
     }
     if tid == TypeId::of::<f64>() {
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const f64, src.len()) };
+        let src = unsafe {
+            slice::from_raw_parts(src.as_ptr() as *const f64, src.len())
+        };
         // SAFETY: TypeId check confirmed the concrete type; the unsized
         // coercion from &[A] to &[T] through raw pointers is sound
         // because A == T.
-        let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len()) };
+        let dst = unsafe {
+            slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f64, dst.len())
+        };
         return unary::dispatch_unary_f64(op, src, dst);
     }
     if tid == TypeId::of::<Complex<f32>>() {
         // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
         // identical to [T; 2]. The cast through raw pointers preserves
         // provenance and the length 2*n is correct.
-        let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len()) };
+        let src = unsafe {
+            slice::from_raw_parts(src.as_ptr() as *const Complex<f32>, src.len())
+        };
         // SAFETY: dst has the same layout guarantee as lhs/rhs — Complex<T>
         // is repr(C) with two T fields.
         let dst = unsafe {
@@ -197,7 +207,9 @@ where
         // SAFETY: Complex<T> is repr(C) with two T fields; the layout is
         // identical to [T; 2]. The cast through raw pointers preserves
         // provenance and the length 2*n is correct.
-        let src = unsafe { slice::from_raw_parts(src.as_ptr() as *const Complex<f64>, src.len()) };
+        let src = unsafe {
+            slice::from_raw_parts(src.as_ptr() as *const Complex<f64>, src.len())
+        };
         // SAFETY: dst has the same layout guarantee as lhs/rhs — Complex<T>
         // is repr(C) with two T fields.
         let dst = unsafe {
@@ -208,9 +220,9 @@ where
     false
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Facade entry points — sum (reduction)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Stub: i32 sum has no SIMD path (i32 widening unavailable).
 /// Always returns `None` so callers fall back to scalar.
@@ -231,18 +243,30 @@ pub(crate) fn try_sum_f64(data: &[f64]) -> Option<f64> {
 }
 
 /// Dispatches to SIMD `Complex<f32>` sum; returns `None` if below threshold.
-pub(crate) fn try_sum_complex_f32(data: &[Complex<f32>]) -> Option<Complex<f32>> {
+pub(crate) fn try_sum_complex_f32(
+    data: &[Complex<f32>]
+) -> Option<Complex<f32>> {
     sum::try_sum_complex_f32_impl(data)
 }
 
 /// Dispatches to SIMD `Complex<f64>` sum; returns `None` if below threshold.
-pub(crate) fn try_sum_complex_f64(data: &[Complex<f64>]) -> Option<Complex<f64>> {
+pub(crate) fn try_sum_complex_f64(
+    data: &[Complex<f64>]
+) -> Option<Complex<f64>> {
     sum::try_sum_complex_f64_impl(data)
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Facade entry points — dot (inner product)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+/// Stub: i32 dot has no SIMD path (i32 widening unavailable).
+/// Always returns `None` so callers fall back to scalar.
+#[allow(dead_code, reason = "i32 dot stub — no SIMD widening available")]
+pub(crate) fn try_dot_i32(lhs: &[i32], rhs: &[i32]) -> Option<i32> {
+    assert_eq!(lhs.len(), rhs.len());
+    None
+}
 
 /// Dispatches to SIMD f32 dot product; panics if lengths differ.
 pub(crate) fn try_dot_f32(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
@@ -274,17 +298,9 @@ pub(crate) fn try_dot_complex_f64(
     dot::try_dot_complex_f64_impl(lhs, rhs)
 }
 
-/// Stub: i32 dot has no SIMD path (i32 widening unavailable).
-/// Always returns `None` so callers fall back to scalar.
-#[allow(dead_code, reason = "i32 dot stub — no SIMD widening available")]
-pub(crate) fn try_dot_i32(lhs: &[i32], rhs: &[i32]) -> Option<i32> {
-    assert_eq!(lhs.len(), rhs.len());
-    None
-}
-
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Capability query
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Returns the SIMD lane width for `T` on the current platform.
 ///
