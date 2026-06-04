@@ -34,10 +34,13 @@ impl SimdElement for Complex<f64> {}
 pub(crate) enum BinaryOp {
     /// Element-wise addition.
     Add,
+
     /// Element-wise subtraction.
     Sub,
+
     /// Element-wise multiplication.
     Mul,
+    
     /// Element-wise division.
     Div,
 }

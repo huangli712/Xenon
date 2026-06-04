@@ -137,6 +137,7 @@ pub(crate) struct ComplexNegF32Kernel<'a> {
 impl WithSimd for ComplexNegF32Kernel<'_> {
     type Output = ();
 
+    /// Reinterprets complex slices as f32 and applies SIMD neg.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.src.len();
         let src_f32 = unsafe { std::slice::from_raw_parts(self.src.as_ptr() as *const f32, n * 2) };

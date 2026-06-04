@@ -8,57 +8,11 @@ use pulp::{Simd, WithSimd};
 
 use crate::complex::Complex;
 
-// ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
-// ---------------------------------------------------------------------------
-
 /// Minimum slice length for f32/f64 dot-product SIMD admission.
 const DOT_THRESHOLD: usize = 512;
 
-pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < DOT_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(DotF32Kernel { lhs, rhs }))
-}
-
-pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < DOT_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(DotF64Kernel { lhs, rhs }))
-}
-
 /// Minimum slice length for complex dot-product SIMD admission.
 const COMPLEX_DOT_THRESHOLD: usize = 512;
-
-pub(crate) fn try_dot_complex_f32_impl(
-    lhs: &[Complex<f32>],
-    rhs: &[Complex<f32>],
-) -> Option<Complex<f32>> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < COMPLEX_DOT_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(ComplexDotF32Kernel { lhs, rhs }))
-}
-
-pub(crate) fn try_dot_complex_f64_impl(
-    lhs: &[Complex<f64>],
-    rhs: &[Complex<f64>],
-) -> Option<Complex<f64>> {
-    assert_eq!(lhs.len(), rhs.len());
-    if lhs.len() < COMPLEX_DOT_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(ComplexDotF64Kernel { lhs, rhs }))
-}
 
 // ---------------------------------------------------------------------------
 // f32 dot kernel
@@ -74,6 +28,8 @@ pub(crate) struct DotF32Kernel<'a> {
 impl WithSimd for DotF32Kernel<'_> {
     type Output = f32;
 
+    /// FMA forbidden in per-element multiply+accumulate.
+    /// Uses separate mul and add lane ops.
     fn with_simd<S: Simd>(self, simd: S) -> f32 {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, _rhs_tail) = S::as_simd_f32s(self.rhs);
@@ -112,6 +68,7 @@ pub(crate) struct DotF64Kernel<'a> {
 impl WithSimd for DotF64Kernel<'_> {
     type Output = f64;
 
+    /// Same as DotF32Kernel, using f64 lanes.
     fn with_simd<S: Simd>(self, simd: S) -> f64 {
         let (lhs_body, lhs_tail) = S::as_simd_f64s(self.lhs);
         let (rhs_body, _rhs_tail) = S::as_simd_f64s(self.rhs);
@@ -147,6 +104,7 @@ pub(crate) struct ComplexDotF32Kernel<'a> {
 impl WithSimd for ComplexDotF32Kernel<'_> {
     type Output = Complex<f32>;
 
+    /// Computes BLAS xdotc via scalar loop over `Complex<f32>` elements.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f32> {
         // BLAS xdotc contract: dot = sum(conj(lhs_i) * rhs_i)
         // conj(lhs) * rhs = (re_l * re_r + im_l * im_r) + (re_l * im_r - im_l * re_r)i
@@ -178,6 +136,7 @@ pub(crate) struct ComplexDotF64Kernel<'a> {
 impl WithSimd for ComplexDotF64Kernel<'_> {
     type Output = Complex<f64>;
 
+    /// Same as ComplexDotF32Kernel, using `Complex<f64>` elements.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
         let mut re_acc = 0.0f64;
         let mut im_acc = 0.0f64;
@@ -190,6 +149,52 @@ impl WithSimd for ComplexDotF64Kernel<'_> {
         let _ = simd;
         Complex::new(re_acc, im_acc)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch helpers (called from mod.rs facade)
+// ---------------------------------------------------------------------------
+
+pub(crate) fn try_dot_f32_impl(lhs: &[f32], rhs: &[f32]) -> Option<f32> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(DotF32Kernel { lhs, rhs }))
+}
+
+pub(crate) fn try_dot_f64_impl(lhs: &[f64], rhs: &[f64]) -> Option<f64> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(DotF64Kernel { lhs, rhs }))
+}
+
+pub(crate) fn try_dot_complex_f32_impl(
+    lhs: &[Complex<f32>],
+    rhs: &[Complex<f32>],
+) -> Option<Complex<f32>> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < COMPLEX_DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(ComplexDotF32Kernel { lhs, rhs }))
+}
+
+pub(crate) fn try_dot_complex_f64_impl(
+    lhs: &[Complex<f64>],
+    rhs: &[Complex<f64>],
+) -> Option<Complex<f64>> {
+    assert_eq!(lhs.len(), rhs.len());
+    if lhs.len() < COMPLEX_DOT_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(ComplexDotF64Kernel { lhs, rhs }))
 }
 
 // ---------------------------------------------------------------------------

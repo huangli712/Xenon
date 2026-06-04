@@ -8,49 +8,11 @@ use pulp::{Simd, WithSimd};
 
 use crate::complex::Complex;
 
-// ---------------------------------------------------------------------------
-// Dispatch helpers (called from mod.rs facade)
-// ---------------------------------------------------------------------------
-
 /// Minimum slice length for f32/f64 sum SIMD admission.
 const SUM_THRESHOLD: usize = 1024;
 
-/// Dispatches f32 sum to the SIMD kernel if the threshold is met.
-pub(crate) fn try_sum_f32_impl(data: &[f32]) -> Option<f32> {
-    if data.len() < SUM_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(SumF32Kernel { data }))
-}
-
-/// Dispatches f64 sum to the SIMD kernel if the threshold is met.
-pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
-    if data.len() < SUM_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(SumF64Kernel { data }))
-}
-
 /// Minimum slice length for complex sum SIMD admission.
 const COMPLEX_SUM_THRESHOLD: usize = 1024;
-
-pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<f32>> {
-    if data.len() < COMPLEX_SUM_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(ComplexSumF32Kernel { data }))
-}
-
-pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<f64>> {
-    if data.len() < COMPLEX_SUM_THRESHOLD {
-        return None;
-    }
-    let arch = crate::simd::get_arch();
-    Some(arch.dispatch(ComplexSumF64Kernel { data }))
-}
 
 // ---------------------------------------------------------------------------
 // f32 sum kernel
@@ -64,6 +26,7 @@ pub(crate) struct SumF32Kernel<'a> {
 impl WithSimd for SumF32Kernel<'_> {
     type Output = f32;
 
+    /// Accumulates lane-local sums of f32 body, reduces horizontally, sums tail.
     fn with_simd<S: Simd>(self, simd: S) -> f32 {
         let (body, tail) = S::as_simd_f32s(self.data);
 
@@ -97,6 +60,7 @@ pub(crate) struct SumF64Kernel<'a> {
 impl WithSimd for SumF64Kernel<'_> {
     type Output = f64;
 
+    /// Accumulates lane-local sums of f64 body, reduces horizontally, sums tail.
     fn with_simd<S: Simd>(self, simd: S) -> f64 {
         let (body, tail) = S::as_simd_f64s(self.data);
 
@@ -127,6 +91,7 @@ pub(crate) struct ComplexSumF32Kernel<'a> {
 impl WithSimd for ComplexSumF32Kernel<'_> {
     type Output = Complex<f32>;
 
+    /// Accumulates interleaved real/imag lanes, deinterleaves, sums scalar tail.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f32> {
         // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...] f32 slice.
         // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields (complex/mod.rs:119-126).
@@ -202,6 +167,7 @@ pub(crate) struct ComplexSumF64Kernel<'a> {
 impl WithSimd for ComplexSumF64Kernel<'_> {
     type Output = Complex<f64>;
 
+    /// Same as ComplexSumF32Kernel, using f64 lanes.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
         let f64_data: &[f64] = unsafe {
             std::slice::from_raw_parts(self.data.as_ptr() as *const f64, self.data.len() * 2)
@@ -242,6 +208,44 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
         let _ = (simd, scalar);
         Complex::new(re_sum, im_sum)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch helpers (called from mod.rs facade)
+// ---------------------------------------------------------------------------
+
+/// Dispatches f32 sum to the SIMD kernel if the threshold is met.
+pub(crate) fn try_sum_f32_impl(data: &[f32]) -> Option<f32> {
+    if data.len() < SUM_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(SumF32Kernel { data }))
+}
+
+/// Dispatches f64 sum to the SIMD kernel if the threshold is met.
+pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
+    if data.len() < SUM_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(SumF64Kernel { data }))
+}
+
+pub(crate) fn try_sum_complex_f32_impl(data: &[Complex<f32>]) -> Option<Complex<f32>> {
+    if data.len() < COMPLEX_SUM_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(ComplexSumF32Kernel { data }))
+}
+
+pub(crate) fn try_sum_complex_f64_impl(data: &[Complex<f64>]) -> Option<Complex<f64>> {
+    if data.len() < COMPLEX_SUM_THRESHOLD {
+        return None;
+    }
+    let arch = crate::simd::get_arch();
+    Some(arch.dispatch(ComplexSumF64Kernel { data }))
 }
 
 // ---------------------------------------------------------------------------

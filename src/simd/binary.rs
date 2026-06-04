@@ -40,6 +40,7 @@ impl WithSimd for AddF32Kernel<'_> {
     type Output = ();
 
     /// Applies SIMD add over the body, scalar add over the tail.
+    /// Applies SIMD sub over the body, scalar sub over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
@@ -103,6 +104,7 @@ pub(crate) struct MulF32Kernel<'a> {
 impl WithSimd for MulF32Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD mul (not FMA) over the body, scalar mul over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
@@ -136,6 +138,7 @@ pub(crate) struct DivF32Kernel<'a> {
 impl WithSimd for DivF32Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD div over the body, scalar div over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
@@ -167,6 +170,7 @@ pub(crate) struct AddF64Kernel<'a> {
 impl WithSimd for AddF64Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD add over the body, scalar add over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f64s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f64s(self.rhs);
@@ -198,6 +202,7 @@ pub(crate) struct SubF64Kernel<'a> {
 impl WithSimd for SubF64Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD sub over the body, scalar sub over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f64s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f64s(self.rhs);
@@ -230,6 +235,7 @@ pub(crate) struct MulF64Kernel<'a> {
 impl WithSimd for MulF64Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD mul (not FMA) over the body, scalar mul over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f64s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f64s(self.rhs);
@@ -263,6 +269,7 @@ pub(crate) struct DivF64Kernel<'a> {
 impl WithSimd for DivF64Kernel<'_> {
     type Output = ();
 
+    /// Applies SIMD div over the body, scalar div over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f64s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f64s(self.rhs);
@@ -295,6 +302,7 @@ pub(crate) struct ComplexAddF32Kernel<'a> {
 impl WithSimd for ComplexAddF32Kernel<'_> {
     type Output = ();
 
+    /// Reinterprets complex slices as f32 and applies SIMD add.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
         let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
@@ -327,6 +335,7 @@ pub(crate) struct ComplexSubF32Kernel<'a> {
 impl WithSimd for ComplexSubF32Kernel<'_> {
     type Output = ();
 
+    /// Reinterprets complex slices as f32 and applies SIMD sub.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
         let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
@@ -364,6 +373,7 @@ pub(crate) struct ComplexMulF32Kernel<'a> {
 impl WithSimd for ComplexMulF32Kernel<'_> {
     type Output = ();
 
+    /// Falls back to scalar for complex multiply.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
         let lhs_f32 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
@@ -409,6 +419,7 @@ pub(crate) struct ComplexAddF64Kernel<'a> {
 impl WithSimd for ComplexAddF64Kernel<'_> {
     type Output = ();
 
+    /// Reinterprets complex slices as f64 and applies SIMD add.
     fn with_simd<S: Simd>(self, simd: S) {
         let n = self.lhs.len();
         let lhs_f64 = unsafe { std::slice::from_raw_parts(self.lhs.as_ptr() as *const f64, n * 2) };
