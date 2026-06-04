@@ -416,13 +416,15 @@ mod tests {
                 Strides::from_slice(&strides).expect("valid strides"),
                 0,
             )
-        }
-        .expect("valid F-order layout")
+        }.expect("valid F-order layout")
     }
 
     /// Helper: build a `TensorView<Ix2>` via `from_raw_parts` from a shape
     /// plus canonical F-order strides (no owning-constructor dependency).
-    fn make_view_f64_ix2<'a>(data: &'a [f64], shape: [usize; 2]) -> TensorView<'a, f64, Ix2> {
+    fn make_view_f64_ix2<'a>(
+        data: &'a [f64],
+        shape: [usize; 2]
+    ) -> TensorView<'a, f64, Ix2> {
         // Canonical F-order strides for shape [m, n] are [1, m].
         let strides = [1_usize, shape[0]];
         // SAFETY: F-order canonical layout fits within data.len() = product(shape).
@@ -434,8 +436,7 @@ mod tests {
                 Strides::from_slice(&strides).expect("valid strides"),
                 0,
             )
-        }
-        .expect("valid F-order layout")
+        }.expect("valid F-order layout")
     }
 
     /// Helper: build a 1-D `TensorView<f64, Ix1>` over a slice with unit stride.
@@ -449,8 +450,7 @@ mod tests {
                 Strides::from_slice(&[1_usize]).expect("valid strides"),
                 0,
             )
-        }
-        .expect("valid F-order 1-D")
+        }.expect("valid F-order 1-D")
     }
 
     // -- BLAS tests ----------------------------------------------------------
