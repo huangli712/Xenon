@@ -30,27 +30,22 @@ mod sum;
 #[cfg(feature = "simd")]
 mod driver;
 
-// ---------------------------------------------------------------------------
-// Re-exports so existing imports still resolve
-// ---------------------------------------------------------------------------
+pub(crate) use types::{BinaryOp, SimdElement, UnaryOp};
 
 #[allow(unused_imports)]
 pub(crate) use driver::{
-    dispatch_vector_binary_op,
-    dispatch_vector_unary_op,
     get_arch,
     simd_vector_width,
+    dispatch_vector_binary_op,
+    dispatch_vector_unary_op,
     try_dot_complex_f32,
     try_dot_complex_f64,
+    try_dot_i32,
     try_dot_f32,
     try_dot_f64,
-    try_dot_i32,
     try_sum_complex_f32,
     try_sum_complex_f64,
+    try_sum_i32,
     try_sum_f32,
     try_sum_f64,
-    try_sum_i32,
 };
-pub(crate) use types::{BinaryOp, SimdElement, UnaryOp};
-
-
