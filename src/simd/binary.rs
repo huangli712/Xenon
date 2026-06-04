@@ -9,13 +9,13 @@
 
 use pulp::{Simd, WithSimd};
 
-use crate::simd::{BinaryOp, get_arch};
-use crate::complex::Complex;
 use std::slice;
+use crate::complex::Complex;
+use crate::simd::{BinaryOp, get_arch};
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Thresholds
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Minimum slice length for element-wise SIMD admission (f32, f64).
 pub(crate) const ELEMENTWISE_THRESHOLD: usize = 64;
@@ -23,16 +23,18 @@ pub(crate) const ELEMENTWISE_THRESHOLD: usize = 64;
 /// Minimum slice length for complex element-wise SIMD admission.
 pub(crate) const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f32 binary kernel (Add)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise f32 addition: `dst[i] = lhs[i] + rhs[i]`.
 pub(crate) struct AddF32Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+
     /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
@@ -41,7 +43,6 @@ impl WithSimd for AddF32Kernel<'_> {
     type Output = ();
 
     /// Applies SIMD add over the body, scalar add over the tail.
-    /// Applies SIMD sub over the body, scalar sub over the tail.
     fn with_simd<S: Simd>(self, simd: S) {
         let (lhs_body, lhs_tail) = S::as_simd_f32s(self.lhs);
         let (rhs_body, rhs_tail) = S::as_simd_f32s(self.rhs);
@@ -56,16 +57,18 @@ impl WithSimd for AddF32Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f32 binary kernel (Sub)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise f32 subtraction: `dst[i] = lhs[i] - rhs[i]`.
 pub(crate) struct SubF32Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    
     /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
@@ -88,17 +91,19 @@ impl WithSimd for SubF32Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f32 binary kernel (Mul)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise f32 multiplication: `dst[i] = lhs[i] * rhs[i]`.
 /// Uses separate mul lane ops (not FMA) to stay bit-identical with scalar.
 pub(crate) struct MulF32Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+    
     /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
@@ -123,16 +128,18 @@ impl WithSimd for MulF32Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f32 binary kernel (Div)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Element-wise f32 division: `dst[i] = lhs[i] / rhs[i]`.
 pub(crate) struct DivF32Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f32],
+
     /// Right operand slice.
     pub(crate) rhs: &'a [f32],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f32],
 }
@@ -163,8 +170,10 @@ impl WithSimd for DivF32Kernel<'_> {
 pub(crate) struct AddF64Kernel<'a> {
     /// Left operand slice.
     pub(crate) lhs: &'a [f64],
+    
     /// Right operand slice.
     pub(crate) rhs: &'a [f64],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [f64],
 }
