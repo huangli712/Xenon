@@ -16,8 +16,8 @@ use crate::complex::Complex;
 // Thresholds
 // ---------------------------------------------------------------------------
 
-/// Minimum slice length for f32/f64 element-wise SIMD admission.
-pub(crate) const ELEMENTWISE_F32_F64_THRESHOLD: usize = 64;
+/// Minimum slice length for element-wise SIMD admission (f32, f64).
+pub(crate) const ELEMENTWISE_THRESHOLD: usize = 64;
 
 /// Minimum slice length for complex element-wise SIMD admission.
 pub(crate) const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
@@ -446,7 +446,7 @@ impl WithSimd for ComplexAddF64Kernel<'_> {
 
 /// Dispatches f32 binary op to the corresponding kernel.
 pub(crate) fn dispatch_binary_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32], dst: &mut [f32]) -> bool {
-    if lhs.len() < ELEMENTWISE_F32_F64_THRESHOLD {
+    if lhs.len() < ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -461,7 +461,7 @@ pub(crate) fn dispatch_binary_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32], dst: &
 
 /// Dispatches f64 binary op to the corresponding kernel.
 pub(crate) fn dispatch_binary_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64], dst: &mut [f64]) -> bool {
-    if lhs.len() < ELEMENTWISE_F32_F64_THRESHOLD {
+    if lhs.len() < ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -530,10 +530,6 @@ mod tests {
     const CASES: usize = 32;
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
-    /// Element-wise threshold used by property tests.
-    const ELEMENTWISE_THRESHOLD: usize = 64;
-    /// Complex element-wise threshold used by property tests.
-    const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
     // ---- f32 admission ----
 
@@ -899,7 +895,7 @@ mod tests {
     fn prop_elementwise_binary_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             for op in [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div] {
@@ -932,7 +928,7 @@ mod tests {
     fn prop_elementwise_complex_add_f32(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = COMPLEX_ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::COMPLEX_ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let lhs: Vec<Complex<f32>> = (0..len)
                 .map(|_| Complex::new(gen_f32(&mut rng), gen_f32(&mut rng)))
                 .collect();

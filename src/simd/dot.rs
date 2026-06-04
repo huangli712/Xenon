@@ -217,10 +217,6 @@ mod tests {
     const CASES: usize = 32;
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
-    /// Dot-product threshold used by property tests.
-    const DOT_THRESHOLD: usize = 512;
-    /// Complex dot-product threshold used by property tests.
-    const COMPLEX_DOT_THRESHOLD: usize = 512;
 
     // ---- tolerance ----
 
@@ -398,7 +394,7 @@ mod tests {
     fn prop_dot_tolerance_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             if let Some(simd) = try_dot_f64(&lhs, &rhs) {
@@ -412,7 +408,7 @@ mod tests {
     fn prop_dot_conjugate_complex_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = COMPLEX_DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::COMPLEX_DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let lhs: Vec<Complex<f64>> = (0..len)
                 .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
                 .collect();

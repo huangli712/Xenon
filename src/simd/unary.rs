@@ -124,7 +124,7 @@ impl WithSimd for ComplexNegF64Kernel<'_> {
 
 /// Dispatches f32 unary Neg to the kernel.
 pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> bool {
-    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
+    if src.len() < super::binary::ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -142,7 +142,7 @@ pub(crate) fn dispatch_unary_f32(op: UnaryOp, src: &[f32], dst: &mut [f32]) -> b
 
 /// Dispatches f64 unary Neg to the kernel.
 pub(crate) fn dispatch_unary_f64(op: UnaryOp, src: &[f64], dst: &mut [f64]) -> bool {
-    if src.len() < super::binary::ELEMENTWISE_F32_F64_THRESHOLD {
+    if src.len() < super::binary::ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -203,8 +203,6 @@ mod tests {
     const CASES: usize = 32;
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
-    /// Element-wise threshold used by property tests.
-    const ELEMENTWISE_THRESHOLD: usize = 64;
 
     // ---- basic correctness ----
 
@@ -353,7 +351,7 @@ mod tests {
     fn prop_elementwise_neg_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = crate::simd::binary::ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let src: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let mut dst = vec![0.0_f64; len];
             let handled = dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst);

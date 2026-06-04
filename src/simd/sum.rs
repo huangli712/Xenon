@@ -264,10 +264,6 @@ mod tests {
     const CASES: usize = 32;
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
-    /// Sum threshold used by property tests.
-    const SUM_THRESHOLD: usize = 1024;
-    /// Complex sum threshold used by property tests.
-    const COMPLEX_SUM_THRESHOLD: usize = 1024;
 
     // ---- admission / basic correctness ----
 
@@ -545,7 +541,7 @@ mod tests {
     fn prop_sum_tolerance_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let data: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             if let Some(simd) = try_sum_f64(&data) {
                 let scalar: f64 = data.iter().sum();
@@ -558,7 +554,7 @@ mod tests {
     fn prop_sum_tolerance_f32(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let data: Vec<f32> = (0..len).map(|_| gen_f32(&mut rng)).collect();
             if let Some(simd) = try_sum_f32(&data) {
                 let scalar: f32 = data.iter().sum();
@@ -571,7 +567,7 @@ mod tests {
     fn prop_sum_complex_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = COMPLEX_SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = super::COMPLEX_SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let data: Vec<Complex<f64>> = (0..len)
                 .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
                 .collect();
