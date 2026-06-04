@@ -6,8 +6,13 @@
 
 use pulp::{Simd, WithSimd};
 
-use crate::complex::Complex;
 use std::slice;
+
+use crate::complex::Complex;
+
+// ----------------------------------------------------------------------------
+// Thresholds
+// ----------------------------------------------------------------------------
 
 /// Minimum slice length for f32/f64 sum SIMD admission.
 const SUM_THRESHOLD: usize = 1024;
@@ -15,9 +20,9 @@ const SUM_THRESHOLD: usize = 1024;
 /// Minimum slice length for complex sum SIMD admission.
 const COMPLEX_SUM_THRESHOLD: usize = 1024;
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f32 sum kernel
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Reduction sum of an `f32` slice.
 pub(crate) struct SumF32Kernel<'a> {
@@ -50,9 +55,9 @@ impl WithSimd for SumF32Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // f64 sum kernel
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Reduction sum of an `f64` slice.
 pub(crate) struct SumF64Kernel<'a> {
@@ -67,13 +72,16 @@ impl WithSimd for SumF64Kernel<'_> {
     fn with_simd<S: Simd>(self, simd: S) -> f64 {
         let (body, tail) = S::as_simd_f64s(self.data);
 
+        // Lane-local accumulation: each lane holds its own partial sum.
         let mut acc = simd.splat_f64s(0.0);
         for &v in body {
             acc = simd.add_f64s(acc, v);
         }
 
+        // Horizontal reduction merge: sum across lanes.
         let mut scalar = simd.reduce_sum_f64s(acc);
 
+        // Scalar tail: remaining elements after the vector-aligned prefix.
         for &v in tail {
             scalar += v;
         }
@@ -82,9 +90,9 @@ impl WithSimd for SumF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Complex<f32> sum kernel
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /// Reduction sum of a `Complex<f32>` slice.
 /// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
@@ -101,7 +109,10 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
         // Reinterpret Complex<f32> as interleaved [re, im, re, im, ...] f32 slice.
         // SAFETY: Complex<f32> is #[repr(C)] with two f32 fields.
         let f32_data: &[f32] = unsafe {
-            slice::from_raw_parts(self.data.as_ptr() as *const f32, self.data.len() * 2)
+            slice::from_raw_parts(
+                self.data.as_ptr() as *const f32,
+                self.data.len() * 2
+            )
         };
         let (body, tail) = S::as_simd_f32s(f32_data);
 
@@ -277,8 +288,6 @@ mod tests {
 
     // ---- admission / basic correctness --------------------------------------
 
-    /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
-    /// for floating-point SIMD sum accumulation.
     /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
     /// for floating-point SIMD sum accumulation.
     fn tolerance_f32(data: &[f32]) -> f32 {
