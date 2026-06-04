@@ -121,6 +121,7 @@ impl<A> BlasInfo<A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::mem::{align_of, offset_of, size_of};
 
     /// `as_blas_int` returns the backend integer for BLAS sizes that fit.
     #[test]
@@ -160,11 +161,10 @@ mod tests {
 
     /// Validate the C ABI layout: raw descriptors are `#[repr(C)]` with
     /// `data` at offset 0, followed by `element_type`, `ndim`, `shape`,
-    /// `strides`, `storage_len`, `offset`. Field offsets verified via `offset_of!`.
+    /// `strides`, `storage_len`, `offset`. Field offsets verified
+    /// via `offset_of!`.
     #[test]
     fn test_raw_descriptors_repr_c_layout() {
-        use core::mem::{align_of, offset_of, size_of};
-
         // Size lower bound check
         assert!(
             size_of::<TensorExportRaw>()
