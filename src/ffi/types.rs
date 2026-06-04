@@ -183,12 +183,16 @@ mod tests {
         );
 
         // Field offset checks (declaration order).
-        assert_eq!(offset_of!(TensorExportRaw, data), 0);
+        assert_eq!(
+            offset_of!(TensorExportRaw, data),
+            0
+        );
         assert_eq!(
             offset_of!(TensorExportRaw, element_type),
             size_of::<*const c_void>()
         );
-        // ndim follows element_type; exact offset depends on u8 + alignment padding
+        // ndim follows element_type;
+        // exact offset depends on u8 + alignment padding
         assert!(
             offset_of!(TensorExportRaw, ndim)
                 >= offset_of!(TensorExportRaw, element_type) + size_of::<u8>()
