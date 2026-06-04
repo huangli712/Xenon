@@ -278,15 +278,18 @@ mod tests {
     /// Maximum random slice length for property tests.
     const MAX_LEN: usize = 4096;
 
-    // ---- admission / basic correctness --------------------------------------
+    // ---- admission / basic correctness -------------------------------------
 
     /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
     /// for floating-point SIMD sum accumulation.
     fn tolerance_f32(data: &[f32]) -> f32 {
         let n = data.len() as f64;
-        let max_abs = data.iter().map(|v| v.abs() as f64).fold(0.0f64, f64::max);
+        let max_abs = data.iter()
+            .map(|v| v.abs() as f64)
+            .fold(0.0f64, f64::max);
         // Tolerance per 13-reduction.md §6.3: max(4·ε·n·max_abs_input, 4·MIN_POSITIVE)
-        ((4.0 * f32::EPSILON as f64 * n * max_abs) as f32).max(4.0 * f32::MIN_POSITIVE)
+        ((4.0 * f32::EPSILON as f64 * n * max_abs) as f32)
+            .max(4.0 * f32::MIN_POSITIVE)
     }
 
     /// Asserts 2048-element f32 sum enters SIMD and stays within tolerance.
