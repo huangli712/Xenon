@@ -264,9 +264,7 @@ mod tests {
     const MAX_LEN: usize = 4096;
     const ELEMENTWISE_THRESHOLD: usize = 64;
     const SUM_THRESHOLD: usize = 1024;
-    const DOT_THRESHOLD: usize = 512;
     const COMPLEX_SUM_THRESHOLD: usize = 1024;
-    const COMPLEX_DOT_THRESHOLD: usize = 512;
     const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
     // ---- splitmix64 PRNG ----
@@ -455,19 +453,6 @@ mod tests {
         }
     }
 
-    fn prop_dot_tolerance_f64(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            if let Some(simd) = simd::try_dot_f64(&lhs, &rhs) {
-                let scalar: f64 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
-                assert_within_reduction_bound_f64(simd, scalar, len, "dot f64");
-            }
-        }
-    }
-
     fn prop_sum_complex_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
@@ -482,28 +467,6 @@ mod tests {
                     .fold(Complex::new(0.0, 0.0), |a, b| a + b);
                 assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex sum f64 re");
                 assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex sum f64 im");
-            }
-        }
-    }
-
-    fn prop_dot_conjugate_complex_f64(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = COMPLEX_DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let lhs: Vec<Complex<f64>> = (0..len)
-                .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
-                .collect();
-            let rhs: Vec<Complex<f64>> = (0..len)
-                .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
-                .collect();
-            if let Some(simd) = simd::try_dot_complex_f64(&lhs, &rhs) {
-                let scalar: Complex<f64> = lhs
-                    .iter()
-                    .zip(rhs.iter())
-                    .map(|(l, r)| l.conj() * *r)
-                    .fold(Complex::new(0.0, 0.0), |a, b| a + b);
-                assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex dot f64 re");
-                assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex dot f64 im");
             }
         }
     }
@@ -560,12 +523,6 @@ mod tests {
         prop_sum_tolerance_f64(0x2001);
         prop_sum_tolerance_f32(0x2002);
         prop_sum_complex_f64(0x2003);
-    }
-
-    #[test]
-    fn prop_dot_conjugate_contract() {
-        prop_dot_tolerance_f64(0x3001);
-        prop_dot_conjugate_complex_f64(0x3002);
     }
 
     #[test]

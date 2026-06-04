@@ -317,4 +317,83 @@ mod tests {
             assert_eq!(simd, scalar_i32);
         }
     }
+
+    // ---- dot property tests (W14T10) ----
+
+    const CASES: usize = 32;
+    const MAX_LEN: usize = 4096;
+    const DOT_THRESHOLD: usize = 512;
+    const COMPLEX_DOT_THRESHOLD: usize = 512;
+
+    fn splitmix64(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9e3779b97f4a7c15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+        z ^ (z >> 31)
+    }
+
+    fn gen_len(state: &mut u64, max_len: usize) -> usize {
+        (splitmix64(state) as usize) % (max_len + 1)
+    }
+
+    fn gen_f64(state: &mut u64) -> f64 {
+        let frac = (splitmix64(state) >> 11) as f64 / (1u64 << 53) as f64;
+        (frac - 0.5) * 20.0
+    }
+
+    fn reduction_bound_f64(expected: f64, len: usize) -> f64 {
+        let eps = f64::EPSILON;
+        let magnitude = expected.abs().max(1.0);
+        ((len as f64) * eps * magnitude * 4.0).max(4.0 * f64::MIN_POSITIVE)
+    }
+
+    fn assert_within_reduction_bound_f64(actual: f64, expected: f64, len: usize, op: &str) {
+        let bound = reduction_bound_f64(expected, len);
+        assert!(
+            (actual - expected).abs() <= bound,
+            "{op} outside bound at len={len}: actual={actual}, expected={expected}, bound={bound}"
+        );
+    }
+
+    fn prop_dot_tolerance_f64(seed: u64) {
+        let mut rng = seed;
+        for _case in 0..CASES {
+            let len = DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
+            let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
+            if let Some(simd) = simd::try_dot_f64(&lhs, &rhs) {
+                let scalar: f64 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
+                assert_within_reduction_bound_f64(simd, scalar, len, "dot f64");
+            }
+        }
+    }
+
+    fn prop_dot_conjugate_complex_f64(seed: u64) {
+        let mut rng = seed;
+        for _case in 0..CASES {
+            let len = COMPLEX_DOT_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let lhs: Vec<Complex<f64>> = (0..len)
+                .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
+                .collect();
+            let rhs: Vec<Complex<f64>> = (0..len)
+                .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
+                .collect();
+            if let Some(simd) = simd::try_dot_complex_f64(&lhs, &rhs) {
+                let scalar: Complex<f64> = lhs
+                    .iter()
+                    .zip(rhs.iter())
+                    .map(|(l, r)| l.conj() * *r)
+                    .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+                assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex dot f64 re");
+                assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex dot f64 im");
+            }
+        }
+    }
+
+    #[test]
+    fn prop_dot_conjugate_contract() {
+        prop_dot_tolerance_f64(0x3001);
+        prop_dot_conjugate_complex_f64(0x3002);
+    }
 }
