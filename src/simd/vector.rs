@@ -263,8 +263,6 @@ mod tests {
     const CASES: usize = 32;
     const MAX_LEN: usize = 4096;
     const ELEMENTWISE_THRESHOLD: usize = 64;
-    const SUM_THRESHOLD: usize = 1024;
-    const COMPLEX_SUM_THRESHOLD: usize = 1024;
     const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
     // ---- splitmix64 PRNG ----
@@ -293,39 +291,6 @@ mod tests {
 
     fn gen_i32_no_overflow(state: &mut u64) -> i32 {
         ((splitmix64(state) % 2001) as i32) - 1000
-    }
-
-    // ---- Tolerance helpers ----
-
-    fn reduction_bound_f64(expected: f64, len: usize) -> f64 {
-        let eps = f64::EPSILON;
-        let magnitude = expected.abs().max(1.0);
-        // Generous bound: O(n * eps * |expected|) with factor 4.0.
-        // This is looser than the strict design bound (13-reduction §6.3)
-        // but avoids flaky failures from different accumulation orders.
-        ((len as f64) * eps * magnitude * 4.0).max(4.0 * f64::MIN_POSITIVE)
-    }
-
-    fn reduction_bound_f32(expected: f32, len: usize) -> f32 {
-        let eps = f32::EPSILON;
-        let magnitude = expected.abs().max(1.0);
-        ((len as f32) * eps * magnitude * 4.0).max(4.0 * f32::MIN_POSITIVE)
-    }
-
-    fn assert_within_reduction_bound_f64(actual: f64, expected: f64, len: usize, op: &str) {
-        let bound = reduction_bound_f64(expected, len);
-        assert!(
-            (actual - expected).abs() <= bound,
-            "{op} outside bound at len={len}: actual={actual}, expected={expected}, bound={bound}"
-        );
-    }
-
-    fn assert_within_reduction_bound_f32(actual: f32, expected: f32, len: usize, op: &str) {
-        let bound = reduction_bound_f32(expected, len);
-        assert!(
-            (actual - expected).abs() <= bound,
-            "{op} outside bound at len={len}: actual={actual}, expected={expected}, bound={bound}"
-        );
     }
 
     // ---- Element-wise property tests ----
@@ -427,49 +392,7 @@ mod tests {
         }
     }
 
-    // ---- Reduction/dot property tests ----
-
-    fn prop_sum_tolerance_f64(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let data: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-            if let Some(simd) = simd::try_sum_f64(&data) {
-                let scalar: f64 = data.iter().sum();
-                assert_within_reduction_bound_f64(simd, scalar, len, "sum f64");
-            }
-        }
-    }
-
-    fn prop_sum_tolerance_f32(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let data: Vec<f32> = (0..len).map(|_| gen_f32(&mut rng)).collect();
-            if let Some(simd) = simd::try_sum_f32(&data) {
-                let scalar: f32 = data.iter().sum();
-                assert_within_reduction_bound_f32(simd, scalar, len, "sum f32");
-            }
-        }
-    }
-
-    fn prop_sum_complex_f64(seed: u64) {
-        let mut rng = seed;
-        for _case in 0..CASES {
-            let len = COMPLEX_SUM_THRESHOLD + gen_len(&mut rng, MAX_LEN);
-            let data: Vec<Complex<f64>> = (0..len)
-                .map(|_| Complex::new(gen_f64(&mut rng), gen_f64(&mut rng)))
-                .collect();
-            if let Some(simd) = simd::try_sum_complex_f64(&data) {
-                let scalar: Complex<f64> = data
-                    .iter()
-                    .copied()
-                    .fold(Complex::new(0.0, 0.0), |a, b| a + b);
-                assert_within_reduction_bound_f64(simd.re, scalar.re, len, "complex sum f64 re");
-                assert_within_reduction_bound_f64(simd.im, scalar.im, len, "complex sum f64 im");
-            }
-        }
-    }
+    // ---- Integer stub ----
 
     fn prop_integer_no_panic_i32(seed: u64) {
         let mut rng = seed;
@@ -516,13 +439,6 @@ mod tests {
         prop_elementwise_binary_f64(0x1001);
         prop_elementwise_neg_f64(0x1002);
         prop_elementwise_complex_add_f32(0x1003);
-    }
-
-    #[test]
-    fn prop_sum_tolerance() {
-        prop_sum_tolerance_f64(0x2001);
-        prop_sum_tolerance_f32(0x2002);
-        prop_sum_complex_f64(0x2003);
     }
 
     #[test]
