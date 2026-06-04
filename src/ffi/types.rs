@@ -167,13 +167,20 @@ mod tests {
     fn test_raw_descriptors_repr_c_layout() {
         // Size lower bound check
         assert!(
-            size_of::<TensorExportRaw>()
-                >= size_of::<*const c_void>() + size_of::<u8>() + 5 * size_of::<usize>()
+            size_of::<TensorExportRaw>() >=
+                size_of::<*const c_void>() +
+                size_of::<u8>() + 5 * size_of::<usize>()
         );
 
         // Alignment checks
-        assert_eq!(align_of::<TensorExportRaw>(), align_of::<*const c_void>());
-        assert_eq!(align_of::<TensorExportMutRaw>(), align_of::<*mut c_void>());
+        assert_eq!(
+            align_of::<TensorExportRaw>(),
+            align_of::<*const c_void>()
+        );
+        assert_eq!(
+            align_of::<TensorExportMutRaw>(),
+            align_of::<*mut c_void>()
+        );
 
         // Field offset checks (declaration order).
         assert_eq!(offset_of!(TensorExportRaw, data), 0);
