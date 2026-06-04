@@ -6,6 +6,9 @@
 
 use pulp::{Simd, WithSimd};
 
+use std::slice;
+use std::mem::size_of;
+
 use crate::complex::Complex;
 use crate::simd::get_arch;
 
@@ -119,21 +122,63 @@ pub(crate) struct ComplexDotF32Kernel<'a> {
 impl WithSimd for ComplexDotF32Kernel<'_> {
     type Output = Complex<f32>;
 
-    /// Computes BLAS xdotc via scalar loop over `Complex<f32>` elements.
+    /// Computes BLAS xdotc (`sum(conj(lhs_i) * rhs_i)`) by deinterleaving each
+    /// register pair into real/imag halves, accumulating the per-lane products
+    /// in structure-of-arrays form, then horizontally reducing; the leftover
+    /// register and sub-register tail fall back to scalar.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f32> {
-        // BLAS xdotc contract: dot = sum(conj(lhs_i) * rhs_i)
-        // conj(lhs) * rhs = (re_l * re_r + im_l * im_r) + (re_l * im_r - im_l * re_r)i
-        let mut re_acc = 0.0f32;
-        let mut im_acc = 0.0f32;
-        for i in 0..self.lhs.len() {
+        let n = self.lhs.len();
+        // f32 lanes per SIMD register.
+        let lane = size_of::<S::f32s>() / size_of::<f32>();
+
+        // Reinterpret the interleaved [re, im, ...] complex slices as flat f32.
+        // SAFETY: Complex<f32> is repr(C) with two f32 fields, so the layout is
+        // identical to [f32; 2]; the length 2*n is exact and provenance is kept.
+        let lhs_f32: &[f32] =
+            unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f32, n * 2) };
+        // SAFETY: same layout reasoning as lhs.
+        let rhs_f32: &[f32] =
+            unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f32, n * 2) };
+
+        let (lhs_body, _) = S::as_simd_f32s(lhs_f32);
+        let (rhs_body, _) = S::as_simd_f32s(rhs_f32);
+
+        // Complex deinterleave works on register PAIRS; each pair covers `lane`
+        // complex numbers.
+        let num_pairs = lhs_body.len() / 2;
+        let covered = num_pairs * lane;
+
+        // Structure-of-arrays accumulators for the real and imag partial sums.
+        let mut re_acc = simd.splat_f32s(0.0);
+        let mut im_acc = simd.splat_f32s(0.0);
+
+        for p in 0..num_pairs {
+            // Deinterleave each operand pair into [re, im]. The within-register
+            // lane permutation is irrelevant: the final reduce_sum is order-
+            // independent and the same shuffle pairs lhs/rhs lanes by index.
+            let l = simd.deinterleave_shfl_f32s([lhs_body[2 * p], lhs_body[2 * p + 1]]);
+            let r = simd.deinterleave_shfl_f32s([rhs_body[2 * p], rhs_body[2 * p + 1]]);
+
+            // conj(l)*r = (lre*rre + lim*rim) + (lre*rim - lim*rre)i.
+            // Separate mul + add/sub (no FMA) to match the scalar reference.
+            let re = simd.add_f32s(simd.mul_f32s(l[0], r[0]), simd.mul_f32s(l[1], r[1]));
+            let im = simd.sub_f32s(simd.mul_f32s(l[0], r[1]), simd.mul_f32s(l[1], r[0]));
+            re_acc = simd.add_f32s(re_acc, re);
+            im_acc = simd.add_f32s(im_acc, im);
+        }
+
+        let mut re_sum = simd.reduce_sum_f32s(re_acc);
+        let mut im_sum = simd.reduce_sum_f32s(im_acc);
+
+        // Scalar remainder: complex indices `covered..n`.
+        for i in covered..n {
             let l = self.lhs[i];
             let r = self.rhs[i];
-            // conj(l) * r
-            re_acc += l.re * r.re + l.im * r.im;
-            im_acc += l.re * r.im - l.im * r.re;
+            re_sum += l.re * r.re + l.im * r.im;
+            im_sum += l.re * r.im - l.im * r.re;
         }
-        let _ = simd;
-        Complex::new(re_acc, im_acc)
+
+        Complex::new(re_sum, im_sum)
     }
 }
 
@@ -153,21 +198,61 @@ pub(crate) struct ComplexDotF64Kernel<'a> {
 impl WithSimd for ComplexDotF64Kernel<'_> {
     type Output = Complex<f64>;
 
-    /// Same as ComplexDotF32Kernel, using `Complex<f64>` elements.
+    /// Same structure-of-arrays SIMD approach as `ComplexDotF32Kernel`,
+    /// using `Complex<f64>` elements and f64 lanes.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
-        // BLAS xdotc contract: dot = sum(conj(lhs_i) * rhs_i)
-        // conj(lhs) * rhs = (re_l * re_r + im_l * im_r) + (re_l * im_r - im_l * re_r)i
-        let mut re_acc = 0.0f64;
-        let mut im_acc = 0.0f64;
-        for i in 0..self.lhs.len() {
+        let n = self.lhs.len();
+        // f64 lanes per SIMD register.
+        let lane = size_of::<S::f64s>() / size_of::<f64>();
+
+        // Reinterpret the interleaved [re, im, ...] complex slices as flat f64.
+        // SAFETY: Complex<f64> is repr(C) with two f64 fields, so the layout is
+        // identical to [f64; 2]; the length 2*n is exact and provenance is kept.
+        let lhs_f64: &[f64] =
+            unsafe { slice::from_raw_parts(self.lhs.as_ptr() as *const f64, n * 2) };
+        // SAFETY: same layout reasoning as lhs.
+        let rhs_f64: &[f64] =
+            unsafe { slice::from_raw_parts(self.rhs.as_ptr() as *const f64, n * 2) };
+
+        let (lhs_body, _) = S::as_simd_f64s(lhs_f64);
+        let (rhs_body, _) = S::as_simd_f64s(rhs_f64);
+
+        // Complex deinterleave works on register PAIRS; each pair covers `lane`
+        // complex numbers.
+        let num_pairs = lhs_body.len() / 2;
+        let covered = num_pairs * lane;
+
+        // Structure-of-arrays accumulators for the real and imag partial sums.
+        let mut re_acc = simd.splat_f64s(0.0);
+        let mut im_acc = simd.splat_f64s(0.0);
+
+        for p in 0..num_pairs {
+            // Deinterleave each operand pair into [re, im]. The within-register
+            // lane permutation is irrelevant: the final reduce_sum is order-
+            // independent and the same shuffle pairs lhs/rhs lanes by index.
+            let l = simd.deinterleave_shfl_f64s([lhs_body[2 * p], lhs_body[2 * p + 1]]);
+            let r = simd.deinterleave_shfl_f64s([rhs_body[2 * p], rhs_body[2 * p + 1]]);
+
+            // conj(l)*r = (lre*rre + lim*rim) + (lre*rim - lim*rre)i.
+            // Separate mul + add/sub (no FMA) to match the scalar reference.
+            let re = simd.add_f64s(simd.mul_f64s(l[0], r[0]), simd.mul_f64s(l[1], r[1]));
+            let im = simd.sub_f64s(simd.mul_f64s(l[0], r[1]), simd.mul_f64s(l[1], r[0]));
+            re_acc = simd.add_f64s(re_acc, re);
+            im_acc = simd.add_f64s(im_acc, im);
+        }
+
+        let mut re_sum = simd.reduce_sum_f64s(re_acc);
+        let mut im_sum = simd.reduce_sum_f64s(im_acc);
+
+        // Scalar remainder: complex indices `covered..n`.
+        for i in covered..n {
             let l = self.lhs[i];
             let r = self.rhs[i];
-            // conj(l) * r
-            re_acc += l.re * r.re + l.im * r.im;
-            im_acc += l.re * r.im - l.im * r.re;
+            re_sum += l.re * r.re + l.im * r.im;
+            im_sum += l.re * r.im - l.im * r.re;
         }
-        let _ = simd;
-        Complex::new(re_acc, im_acc)
+
+        Complex::new(re_sum, im_sum)
     }
 }
 
@@ -395,6 +480,59 @@ mod tests {
                 .max(4.0 * f32::MIN_POSITIVE);
             assert_within_tolerance_f32(simd.re, scalar.re, tol);
             assert_within_tolerance_f32(simd.im, scalar.im, tol);
+        }
+    }
+
+    /// `Complex` conjugate dot stays within tolerance across lengths that
+    /// exercise the SIMD body, the leftover (unpaired) register, and the
+    /// sub-register tail, for both f32 and f64. These remainders are the
+    /// riskiest part of the SoA kernel's scalar fallback boundary.
+    #[test]
+    fn test_complex_dot_tail_and_leftover_register() {
+        // Lengths >= COMPLEX_DOT_THRESHOLD chosen to leave assorted
+        // leftover-register + tail remainders for any SIMD width.
+        for len in [512_usize, 513, 515, 519, 527, 543, 575, 639, 768] {
+            // ---- f64 ----
+            let lhs64: Vec<Complex<f64>> = (0..len)
+                .map(|i| Complex::new((i as f64 * 0.1).sin(), (i as f64 * 0.2).cos()))
+                .collect();
+            let rhs64: Vec<Complex<f64>> = (0..len)
+                .map(|i| Complex::new((i as f64 * 0.3).cos(), (i as f64 * 0.15).sin()))
+                .collect();
+            if let Some(simd) = try_dot_complex_f64(&lhs64, &rhs64) {
+                let scalar: Complex<f64> = lhs64
+                    .iter()
+                    .zip(rhs64.iter())
+                    .map(|(l, r)| l.conj() * *r)
+                    .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+                let max_abs_a = lhs64.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+                let max_abs_b = rhs64.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+                let tol = (16.0 * f64::EPSILON * (len as f64) * max_abs_a * max_abs_b)
+                    .max(4.0 * f64::MIN_POSITIVE);
+                assert_within_tolerance_f64(simd.re, scalar.re, tol);
+                assert_within_tolerance_f64(simd.im, scalar.im, tol);
+            }
+
+            // ---- f32 ----
+            let lhs32: Vec<Complex<f32>> = (0..len)
+                .map(|i| Complex::new((i as f32 * 0.1).sin(), (i as f32 * 0.2).cos()))
+                .collect();
+            let rhs32: Vec<Complex<f32>> = (0..len)
+                .map(|i| Complex::new((i as f32 * 0.3).cos(), (i as f32 * 0.15).sin()))
+                .collect();
+            if let Some(simd) = try_dot_complex_f32(&lhs32, &rhs32) {
+                let scalar: Complex<f32> = lhs32
+                    .iter()
+                    .zip(rhs32.iter())
+                    .map(|(l, r)| l.conj() * *r)
+                    .fold(Complex::new(0.0, 0.0), |a, b| a + b);
+                let max_abs_a = lhs32.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
+                let max_abs_b = rhs32.iter().map(|c| c.norm()).fold(0.0_f32, f32::max);
+                let tol = (16.0 * f32::EPSILON * (len as f32) * max_abs_a * max_abs_b)
+                    .max(4.0 * f32::MIN_POSITIVE);
+                assert_within_tolerance_f32(simd.re, scalar.re, tol);
+                assert_within_tolerance_f32(simd.im, scalar.im, tol);
+            }
         }
     }
 

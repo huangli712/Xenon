@@ -963,16 +963,19 @@ mod tests {
             0.0, -0.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY,
             f32::MIN_POSITIVE / 2.0,
         ];
-        let lhs: Vec<f32> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
-        let rhs: Vec<f32> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
+        let lhs: Vec<f32> = (0..len)
+            .map(|i| lhs_seed[i % lhs_seed.len()])
+            .collect();
+        let rhs: Vec<f32> = (0..len)
+            .map(|i| rhs_seed[i % rhs_seed.len()])
+            .collect();
         (lhs, rhs)
     }
 
     /// Runs SIMD vs scalar comparison for f64, checking bitwise equivalence.
     fn simd_vs_serial_bitwise_f64(op: BinaryOp, lhs: &[f64], rhs: &[f64]) {
         let mut dst = vec![0.0_f64; lhs.len()];
-        let handled = dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
-        if handled {
+        if dispatch_vector_binary_op(op, lhs, rhs, &mut dst) {
             let serial: Vec<f64> = lhs
                 .iter()
                 .zip(rhs.iter())
@@ -985,8 +988,7 @@ mod tests {
     /// Runs SIMD vs scalar comparison for f32, checking bitwise equivalence.
     fn simd_vs_serial_bitwise_f32(op: BinaryOp, lhs: &[f32], rhs: &[f32]) {
         let mut dst = vec![0.0_f32; lhs.len()];
-        let handled = dispatch_vector_binary_op(op, lhs, rhs, &mut dst);
-        if handled {
+        if dispatch_vector_binary_op(op, lhs, rhs, &mut dst) {
             let serial: Vec<f32> = lhs
                 .iter()
                 .zip(rhs.iter())
@@ -1063,7 +1065,7 @@ mod tests {
         simd_vs_serial_bitwise_f64(BinaryOp::Mul, lhs, rhs);
     }
 
-    // ---- binary property tests ----------------------------------------------
+    // ---- binary property tests ---------------------------------------------
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
@@ -1100,8 +1102,7 @@ mod tests {
             let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             for op in [BinaryOp::Add, BinaryOp::Sub, BinaryOp::Mul, BinaryOp::Div] {
                 let mut dst = vec![0.0_f64; len];
-                let handled = dispatch_vector_binary_op(op, &lhs, &rhs, &mut dst);
-                if handled {
+                if dispatch_vector_binary_op(op, &lhs, &rhs, &mut dst) {
                     let serial: Vec<f64> = lhs
                         .iter()
                         .zip(rhs.iter())
@@ -1114,9 +1115,15 @@ mod tests {
                         .collect();
                     for (i, (&a, &e)) in dst.iter().zip(serial.iter()).enumerate() {
                         if a.is_nan() || e.is_nan() {
-                            assert!(a.is_nan() && e.is_nan(), "nan mismatch at len={len}, i={i}");
+                            assert!(
+                                a.is_nan() && e.is_nan(),
+                                "nan mismatch at len={len}, i={i}"
+                            );
                         } else {
-                            assert_eq!(a.to_bits(), e.to_bits(), "bits mismatch at len={len}, i={i}");
+                            assert_eq!(
+                                a.to_bits(), e.to_bits(),
+                                "bits mismatch at len={len}, i={i}"
+                            );
                         }
                     }
                 }
@@ -1136,8 +1143,7 @@ mod tests {
                 .map(|_| Complex::new(gen_f32(&mut rng), gen_f32(&mut rng)))
                 .collect();
             let mut dst = vec![Complex::new(0.0, 0.0); len];
-            let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
-            if handled {
+            if dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst) {
                 for (i, (a, (l, r))) in dst.iter().zip(lhs.iter().zip(rhs.iter())).enumerate() {
                     let e = *l + *r;
                     if a.re.is_nan() || a.im.is_nan() || e.re.is_nan() || e.im.is_nan() {
@@ -1150,8 +1156,16 @@ mod tests {
                             "imag nan mismatch at len={len}, i={i}"
                         );
                     } else {
-                        assert_eq!(a.re.to_bits(), e.re.to_bits(), "real bits at len={len}, i={i}");
-                        assert_eq!(a.im.to_bits(), e.im.to_bits(), "imag bits at len={len}, i={i}");
+                        assert_eq!(
+                            a.re.to_bits(),
+                            e.re.to_bits(),
+                            "real bits at len={len}, i={i}"
+                        );
+                        assert_eq!(
+                            a.im.to_bits(),
+                            e.im.to_bits(),
+                            "imag bits at len={len}, i={i}"
+                        );
                     }
                 }
             }
@@ -1165,11 +1179,14 @@ mod tests {
             for tail in 1..width {
                 let base = 1 + (splitmix64(&mut rng) as usize % 16);
                 let len = base * width + tail;
-                let lhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
-                let rhs: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
+                let lhs: Vec<f64> = (0..len)
+                    .map(|_| gen_f64(&mut rng))
+                    .collect();
+                let rhs: Vec<f64> = (0..len)
+                    .map(|_| gen_f64(&mut rng))
+                    .collect();
                 let mut dst = vec![0.0_f64; len];
-                let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
-                if handled {
+                if dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst) {
                     for i in 0..len {
                         let expected = lhs[i] + rhs[i];
                         if expected.is_nan() || dst[i].is_nan() {
@@ -1198,9 +1215,10 @@ mod tests {
         prop_tail_handling_f64(0x5001);
     }
 
-    // ---- complex binary admission -------------------------------------------
+    // ---- complex binary admission ------------------------------------------
 
-    /// 128-element `Complex<f32>` subtraction goes through SIMD and matches scalar.
+    /// 128-element `Complex<f32>` subtraction goes through SIMD and
+    /// matches scalar.
     #[test]
     fn test_vector_complex_sub_f32() {
         let lhs: Vec<Complex<f32>> = (0..128)
@@ -1210,7 +1228,12 @@ mod tests {
             .map(|v| Complex::new((v as f32) * 0.5, v as f32))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Sub,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
             let e = l - r;
@@ -1219,7 +1242,8 @@ mod tests {
         }
     }
 
-    /// 128-element `Complex<f64>` addition goes through SIMD and matches scalar.
+    /// 128-element `Complex<f64>` addition goes through SIMD and
+    /// matches scalar.
     #[test]
     fn test_vector_complex_add_f64() {
         let lhs: Vec<Complex<f64>> = (0..128)
@@ -1229,7 +1253,12 @@ mod tests {
             .map(|v| Complex::new((v as f64) * 0.5 - 32.0, v as f64))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Add,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
             let e = l + r;
@@ -1249,7 +1278,12 @@ mod tests {
             .map(|v| Complex::new((v as f32) * 0.25, v as f32 - 32.0))
             .collect();
         let mut dst = vec![Complex::new(0.0, 0.0); lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Mul,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         for (i, ((&a, &l), &r)) in dst.iter().zip(lhs.iter()).zip(rhs.iter()).enumerate() {
             let e = l * r;
@@ -1277,12 +1311,18 @@ mod tests {
         for len in [128_usize, 129, 131, 135, 143, 160, 200, 257] {
             let lhs: Vec<Complex<f32>> = (0..len)
                 .map(|i| {
-                    Complex::new(seeds_re[i % seeds_re.len()], seeds_im[i % seeds_im.len()])
+                    Complex::new(
+                        seeds_re[i % seeds_re.len()],
+                        seeds_im[i % seeds_im.len()]
+                    )
                 })
                 .collect();
             let rhs: Vec<Complex<f32>> = (0..len)
                 .map(|i| {
-                    Complex::new(seeds_im[i % seeds_im.len()], seeds_re[i % seeds_re.len()])
+                    Complex::new(
+                        seeds_im[i % seeds_im.len()],
+                        seeds_re[i % seeds_re.len()]
+                    )
                 })
                 .collect();
             let mut dst = vec![Complex::new(0.0, 0.0); len];
