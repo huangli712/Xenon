@@ -8,13 +8,10 @@
 //! contract) for the authoritative semantics; `26-error.md` §5.1 defines
 //! the structured error payloads.
 
-use core::marker::PhantomData;
 use core::ptr::NonNull;
 use std::borrow::Cow;
 
-use super::types::{
-    BlasInfo, TensorExport, TensorExportMut, TensorExportMutRaw, TensorExportRaw,
-};
+use super::types::{BlasInfo, TensorExportMutRaw, TensorExportRaw};
 use crate::dimension::Dimension;
 use crate::element::{Element, element_type_of};
 use crate::error::{
@@ -336,19 +333,10 @@ where
     /// `shape`, `strides`, and `offset` still describe the empty
     /// tensor metadata.
     ///
-    /// **Visibility & return type** (`23-ffi.md` §5.4 line 547-555):
-    /// This is the public FFI entry; it returns `TensorExportRaw` (the
-    /// C-visible non-generic raw descriptor). The intermediate generic
-    /// descriptor `TensorExport<'_, A>` is `pub(crate)` Rust-only
-    /// borrowing evidence and cannot appear in a `pub fn` return type.
+    /// **Return type** (`23-ffi.md` §5.4 line 547-555): this is the
+    /// public FFI entry returning `TensorExportRaw`, the C-visible
+    /// non-generic raw descriptor, built directly from the source tensor.
     pub fn export(&self) -> TensorExportRaw {
-        self.export_internal().into()
-    }
-
-    /// `pub(crate)` internal helper: produces the typed generic descriptor
-    /// for in-crate borrow tracking and lifetime evidence. Not exposed to
-    /// downstream consumers; use `export()` for the public FFI surface.
-    pub(crate) fn export_internal(&self) -> TensorExport<'_, A> {
         let data = if self.is_empty() {
             // Empty tensor: a valid aligned non-dereferenceable pointer.
             // Do NOT call as_storage_ptr() — the backing storage may be
@@ -357,15 +345,14 @@ where
         } else {
             self.as_storage_ptr()
         };
-        TensorExport {
-            data,
-            element_type: element_type_of::<A>(),
+        TensorExportRaw {
+            data: data.cast(),
+            element_type: element_type_of::<A>() as u8,
             ndim: self.ndim(),
             shape: self.shape().as_ptr(),
             strides: self.strides().as_ptr(),
             storage_len: self.storage_len(),
             offset: self.offset(),
-            _marker: PhantomData,
         }
     }
 }
@@ -378,43 +365,35 @@ where
 {
     /// Export tensor data with mutable access.
     ///
-    /// **Visibility & return type**: Public FFI entry; returns
-    /// `TensorExportMutRaw`. The intermediate generic
-    /// `TensorExportMut<'_, A>` is `pub(crate)` Rust-only borrowing
-    /// evidence and cannot appear in `pub fn` return type.
+    /// **Return type**: public FFI entry returning `TensorExportMutRaw`,
+    /// the C-visible non-generic raw descriptor, built directly from the
+    /// source tensor.
     ///
     /// This API is only implemented for writable storage, so read-only
     /// storage modes are rejected at the trait boundary rather than at
     /// runtime. No additional fallible validation is performed beyond the
     /// existing `&mut self` + `S: StorageMut` exclusivity boundary.
     pub fn export_mut(&mut self) -> TensorExportMutRaw {
-        self.export_mut_internal().into()
-    }
-
-    /// `pub(crate)` internal helper: produces the typed mutable generic
-    /// descriptor for in-crate borrow tracking and lifetime evidence.
-    pub(crate) fn export_mut_internal(&mut self) -> TensorExportMut<'_, A> {
         let data = if self.is_empty() {
             NonNull::<A>::dangling().as_ptr()
         } else {
             self.as_storage_mut_ptr()
         };
-        // Capture metadata *before* moving the mutable borrow into `data`.
-        let element_type = element_type_of::<A>();
+        // Capture metadata after computing `data` (raw pointers hold no borrow).
+        let element_type = element_type_of::<A>() as u8;
         let ndim = self.ndim();
         let shape = self.shape().as_ptr();
         let strides = self.strides().as_ptr();
         let storage_len = self.storage_len();
         let offset = self.offset();
-        TensorExportMut {
-            data,
+        TensorExportMutRaw {
+            data: data.cast(),
             element_type,
             ndim,
             shape,
             strides,
             storage_len,
             offset,
-            _marker: PhantomData,
         }
     }
 }
