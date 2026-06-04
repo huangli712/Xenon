@@ -670,7 +670,9 @@ mod tests {
         let mut rng = seed;
         for _case in 0..CASES {
             let len = gen_len(&mut rng, MAX_LEN);
-            let data: Vec<i32> = (0..len).map(|_| gen_i32_no_overflow(&mut rng)).collect();
+            let data: Vec<i32> = (0..len)
+                .map(|_| gen_i32_no_overflow(&mut rng))
+                .collect();
             // i32 SIMD widening is unavailable; stub always returns None.
             assert!(
                 try_sum_i32(&data).is_none(),
