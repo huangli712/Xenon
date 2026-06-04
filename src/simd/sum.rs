@@ -324,13 +324,16 @@ mod tests {
     /// Asserts 2048-element f64 sum enters SIMD and stays within tolerance.
     #[test]
     fn test_sum_dispatch_simd_float_f64() {
-        let data: Vec<f64> = (0..2048).map(|v| v as f64 * 0.125 - 128.0).collect();
+        let data: Vec<f64> = (0..2048)
+            .map(|v| v as f64 * 0.125 - 128.0)
+            .collect();
         let simd_result = try_sum_f64(&data);
         assert!(
             simd_result.is_some(),
             "len >= 1024 should enter SIMD sum path when supported"
         );
-        let simd = simd_result.expect("len >= 1024 should enter SIMD sum path");
+        let simd = simd_result
+            .expect("len >= 1024 should enter SIMD sum path");
         let scalar: f64 = data.iter().sum();
         let tol = tolerance_f64(&data);
         assert!(
