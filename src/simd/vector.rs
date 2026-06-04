@@ -1,16 +1,11 @@
-//! Element-wise SIMD kernels for f32 and f64.
-//!
-//! Each kernel holds slice references and implements [`pulp::WithSimd`].
-//! The facade functions in [`super`] perform threshold admission and
-//! type-based dispatch before routing to these kernels.
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+//! Integration tests for the SIMD backend.
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
-    use crate::simd::{BinaryOp, UnaryOp};
+    use crate::complex::Complex;
+    use crate::simd::{self, BinaryOp, UnaryOp};
+
+    // ---- threshold rejection ----
 
     #[test]
     fn test_vector_sub_mul_div_below_threshold_rejects() {
@@ -41,14 +36,8 @@ mod tests {
             assert_eq!(v, 99.0_f32, "dst must be untouched on SIMD rejection");
         }
     }
-}
-// ---------------------------------------------------------------------------
-// W14T8 Element-wise consistency tests
-// ---------------------------------------------------------------------------
 
-#[cfg(all(test, feature = "simd"))]
-mod consistency_tests {
-    use crate::simd::{self, BinaryOp, UnaryOp};
+    // ---- element-wise consistency (W14T8) ----
 
     const SIMD_WIDTH: usize = 64;
 
@@ -268,16 +257,8 @@ mod consistency_tests {
         let rhs = &rhs_storage[1..257];
         simd_vs_serial_bitwise_f64(BinaryOp::Mul, lhs, rhs);
     }
-}
 
-// ---------------------------------------------------------------------------
-// W14T9 Reduction/dot tolerance tests
-// ---------------------------------------------------------------------------
-
-#[cfg(all(test, feature = "simd"))]
-mod reduction_tests {
-    use crate::complex::Complex;
-    use crate::simd;
+    // ---- reduction/dot tolerance (W14T9) ----
 
     fn tolerance_f64(data: &[f64]) -> f64 {
         let n = data.len();
@@ -498,14 +479,8 @@ mod reduction_tests {
         let simd = simd::try_sum_f64(&at_threshold).expect("len=1024 must enter f64 sum SIMD");
         assert_within_tolerance_f64(simd, 1024.0, tolerance_f64(&at_threshold));
     }
-} // ---------------------------------------------------------------------------
-// W14T10 Randomized property tests (in-crate, direct SIMD facade testing)
-// ---------------------------------------------------------------------------
 
-#[cfg(all(test, feature = "simd"))]
-mod property_tests {
-    use crate::complex::Complex;
-    use crate::simd::{self, BinaryOp, UnaryOp};
+    // ---- randomized property tests (W14T10) ----
 
     const CASES: usize = 32;
     const MAX_LEN: usize = 4096;
