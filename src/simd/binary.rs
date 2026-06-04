@@ -430,7 +430,16 @@ impl WithSimd for ComplexMulF32Kernel<'_> {
 
     /// Falls back to scalar for complex multiply.
     /// SIMD vectorisation requires deinterleaving and is not yet implemented.
-    fn with_simd<S: Simd>(self, _simd: S) {
+    fn with_simd<S: Simd>(self, simd: S) {
+        // PROBE: verify deinterleave_shfl_f32s / interleave_shfl_f32s signatures.
+        let lhs_f32 = unsafe {
+            slice::from_raw_parts(self.lhs.as_ptr() as *const f32, self.lhs.len() * 2)
+        };
+        let (body, _tail) = S::as_simd_f32s(lhs_f32);
+        if body.len() >= 2 {
+            let [re, im] = simd.deinterleave_shfl_f32s([body[0], body[1]]);
+            let [_d0, _d1] = simd.interleave_shfl_f32s([re, im]);
+        }
         // (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
         for i in 0..self.lhs.len() {
             self.dst[i] = self.lhs[i] * self.rhs[i];

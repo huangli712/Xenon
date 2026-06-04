@@ -55,16 +55,23 @@ where
 
     let tid = TypeId::of::<A>();
     if tid == TypeId::of::<f32>() {
-        // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
+        // SAFETY: TypeId check confirmed the concrete type; the unsized
+        // coercion from &[A] to &[T] through raw pointers is sound
+        // because A == T.
         let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr() as *const f32, lhs.len()) };
-        // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
+        // SAFETY: TypeId check confirmed the concrete type; the unsized
+        // coercion from &[A] to &[T] through raw pointers is sound
+        // because A == T.
         let rhs = unsafe { slice::from_raw_parts(rhs.as_ptr() as *const f32, rhs.len()) };
-        // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
+        // SAFETY: TypeId check confirmed the concrete type; the unsized
+        // coercion from &[A] to &[T] through raw pointers is sound
+        // because A == T.
         let dst = unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr() as *mut f32, dst.len()) };
         return binary::dispatch_binary_f32(op, lhs, rhs, dst);
     }
     if tid == TypeId::of::<f64>() {
-        // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
+        // SAFETY: TypeId check confirmed the concrete type; the unsized
+        // coercion from &[A] to &[T] through raw pointers is sound because A == T.
         let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr() as *const f64, lhs.len()) };
         // SAFETY: TypeId check confirmed the concrete type; the unsized coercion from &[A] to &[T] through raw pointers is sound because A == T.
         let rhs = unsafe { slice::from_raw_parts(rhs.as_ptr() as *const f64, rhs.len()) };
