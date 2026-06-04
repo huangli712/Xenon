@@ -781,14 +781,23 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Add, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Add,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_add_f64(&lhs, &rhs, &dst);
     }
 
     /// Asserts SIMD and scalar subtraction produce identical results.
     fn assert_sub_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
-        let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l - r).collect();
+        let expected: Vec<f64> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l - r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
@@ -798,14 +807,23 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Sub, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Sub,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_sub_f64(&lhs, &rhs, &dst);
     }
 
     /// Asserts SIMD and scalar multiplication produce identical results.
     fn assert_mul_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
-        let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l * r).collect();
+        let expected: Vec<f64> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l * r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
@@ -815,14 +833,23 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Mul, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Mul,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_mul_f64(&lhs, &rhs, &dst);
     }
 
     /// Asserts SIMD and scalar division produce identical results.
     fn assert_div_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
-        let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l / r).collect();
+        let expected: Vec<f64> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l / r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
@@ -833,13 +860,18 @@ mod tests {
         let lhs: Vec<f64> = (0..128).map(|v| v as f64 + 1.0).collect();
         let rhs: Vec<f64> = (0..128).map(|v| (v as f64) * 0.25 + 1.0).collect();
         let mut dst = vec![0.0f64; lhs.len()];
-        let handled = dispatch_vector_binary_op(BinaryOp::Div, &lhs, &rhs, &mut dst);
+        let handled = dispatch_vector_binary_op(
+            BinaryOp::Div,
+            &lhs,
+            &rhs,
+            &mut dst
+        );
         assert!(handled, "len=128 above threshold must admit SIMD");
         assert_div_f64(&lhs, &rhs, &dst);
     }
 
-    // ---- consistency vs serial ----------------------------------------------
-    //
+    // ---- consistency vs serial ---------------------------------------------
+
     // These tests verify that SIMD output matches the scalar equivalent
     // bit-for-bit (or NaN-for-NaN) across varied inputs including
     // extreme values, NaNs, infinities, and subnormals.
@@ -910,8 +942,12 @@ mod tests {
             0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY,
             f64::MIN_POSITIVE / 2.0,
         ];
-        let lhs: Vec<f64> = (0..len).map(|i| lhs_seed[i % lhs_seed.len()]).collect();
-        let rhs: Vec<f64> = (0..len).map(|i| rhs_seed[i % rhs_seed.len()]).collect();
+        let lhs: Vec<f64> = (0..len)
+            .map(|i| lhs_seed[i % lhs_seed.len()])
+            .collect();
+        let rhs: Vec<f64> = (0..len)
+            .map(|i| rhs_seed[i % rhs_seed.len()])
+            .collect();
         (lhs, rhs)
     }
 
