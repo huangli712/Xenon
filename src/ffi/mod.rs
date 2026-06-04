@@ -59,7 +59,6 @@
 //! undefined behavior. Wrappers must capture the panic and convert it to
 //! an upstream ABI error code (or use `panic = "abort"`).
 
-mod offset;
 mod ptr;
 mod types;
 
