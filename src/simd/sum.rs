@@ -134,49 +134,20 @@ impl WithSimd for ComplexSumF32Kernel<'_> {
             }
         }
 
-        // deinterleave accumulated SIMD vector into real-only and imag-only
-        // parts. acc contains [re0, im0, re1, im1, ...]; deinterleave splits
-        // into SoA.
-        self.deinterleave_and_accumulate::<S>(simd, &acc, &mut re_sum, &mut im_sum)
-    }
-}
-
-impl ComplexSumF32Kernel<'_> {
-    /// Deinterleaves accumulated SIMD vector into real and imag sums.
-    fn deinterleave_and_accumulate<S: Simd>(
-        &self,
-        simd: S,
-        acc: &S::f32s,
-        re_sum: &mut f32,
-        im_sum: &mut f32,
-    ) -> Complex<f32> {
+        // Deinterleave the accumulator: lanes are [re0, im0, re1, im1, ...],
+        // so even lanes hold real parts and odd lanes hold imag parts.
+        // SAFETY: S::f32s is a #[repr(C)] vector of contiguous f32 lanes
+        // (S::f32s: Pod); reading it as lane_count f32 values stays in bounds.
         let lane_count = size_of::<S::f32s>() / size_of::<f32>();
-        // SAFETY: the SIMD register has size lane_count * 4 bytes; reading
-        // it as a byte slice for deinterleaving accesses only within bounds.
-        let bytes: &[u8] = unsafe {
-            slice::from_raw_parts(
-                acc as *const S::f32s as *const u8,
-                lane_count * 4
-            )
+        let lanes: &[f32] = unsafe {
+            slice::from_raw_parts(&acc as *const S::f32s as *const f32, lane_count)
         };
         for i in 0..lane_count / 2 {
-            let re = f32::from_ne_bytes([
-                bytes[i * 8],
-                bytes[i * 8 + 1],
-                bytes[i * 8 + 2],
-                bytes[i * 8 + 3],
-            ]);
-            let im = f32::from_ne_bytes([
-                bytes[i * 8 + 4],
-                bytes[i * 8 + 5],
-                bytes[i * 8 + 6],
-                bytes[i * 8 + 7],
-            ]);
-            *re_sum += re;
-            *im_sum += im;
+            re_sum += lanes[2 * i];
+            im_sum += lanes[2 * i + 1];
         }
-        let _ = simd;
-        Complex::new(*re_sum, *im_sum)
+
+        Complex::new(re_sum, im_sum)
     }
 }
 
@@ -194,10 +165,11 @@ pub(crate) struct ComplexSumF64Kernel<'a> {
 impl WithSimd for ComplexSumF64Kernel<'_> {
     type Output = Complex<f64>;
 
-    /// Same as ComplexSumF32Kernel, using f64 lanes.
+    /// Accumulates interleaved real/imag lanes, deinterleaves, sums scalar tail.
     fn with_simd<S: Simd>(self, simd: S) -> Complex<f64> {
-        // SAFETY: Complex<f64> is #[repr(C)] with two f64 fields; same
-        // reasoning as f32 variant.
+        // Reinterpret Complex<f64> as interleaved [re, im, re, im, ...]
+        // f64 slice.
+        // SAFETY: Complex<f64> is #[repr(C)] with two f64 fields.
         let f64_data: &[f64] = unsafe {
             slice::from_raw_parts(
                 self.data.as_ptr() as *const f64,
@@ -206,11 +178,13 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
         };
         let (body, tail) = S::as_simd_f64s(f64_data);
 
+        // Accumulate interleaved f64 lanes (real/imag pairs).
         let mut acc = simd.splat_f64s(0.0);
         for &v in body {
             acc = simd.add_f64s(acc, v);
         }
 
+        // Scalar tail.
         let mut re_sum = 0.0f64;
         let mut im_sum = 0.0f64;
         for chunk in tail.chunks(2) {
@@ -220,29 +194,19 @@ impl WithSimd for ComplexSumF64Kernel<'_> {
             }
         }
 
-        // Horizontal reduction merge across lanes.
-        let scalar = simd.reduce_sum_f64s(acc);
-        // Since we summed [re0, im0, re1, im1, ...] all together,
-        // scalar = sum of all re + sum of all im. We need to split them.
-        // Use bytemuck to manually extract lanes.
+        // Deinterleave the accumulator: lanes are [re0, im0, re1, im1, ...],
+        // so even lanes hold real parts and odd lanes hold imag parts.
+        // SAFETY: S::f64s is a #[repr(C)] vector of contiguous f64 lanes
+        // (S::f64s: Pod); reading it as lane_count f64 values stays in bounds.
         let lane_count = size_of::<S::f64s>() / size_of::<f64>();
-        // SAFETY: the SIMD register has size lane_count * 8 bytes; same
-        // reasoning as f32 variant.
-        let bytes: &[u8] = unsafe {
-            slice::from_raw_parts(
-                &acc as *const S::f64s as *const u8,
-                lane_count * 8
-            )
+        let lanes: &[f64] = unsafe {
+            slice::from_raw_parts(&acc as *const S::f64s as *const f64, lane_count)
         };
         for i in 0..lane_count / 2 {
-            let mut re_bytes = [0u8; 8];
-            let mut im_bytes = [0u8; 8];
-            re_bytes.copy_from_slice(&bytes[i * 16..i * 16 + 8]);
-            im_bytes.copy_from_slice(&bytes[i * 16 + 8..i * 16 + 16]);
-            re_sum += f64::from_ne_bytes(re_bytes);
-            im_sum += f64::from_ne_bytes(im_bytes);
+            re_sum += lanes[2 * i];
+            im_sum += lanes[2 * i + 1];
         }
-        let _ = (simd, scalar);
+
         Complex::new(re_sum, im_sum)
     }
 }
