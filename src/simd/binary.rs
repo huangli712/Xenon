@@ -301,17 +301,19 @@ impl WithSimd for DivF64Kernel<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Complex<f32> binary kernels (Add, Sub)
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Complex<f32> binary kernels (Add)
+// ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f32>` addition.
 /// Reinterprets the interleaved real/imag layout as `[f32]` for SIMD.
 pub(crate) struct ComplexAddF32Kernel<'a> {
     /// Left operand slice (interleaved real/imag).
     pub(crate) lhs: &'a [crate::complex::Complex<f32>],
+
     /// Right operand slice (interleaved real/imag).
     pub(crate) rhs: &'a [crate::complex::Complex<f32>],
+    
     /// Destination slice (overwritten).
     pub(crate) dst: &'a mut [crate::complex::Complex<f32>],
 }
@@ -341,6 +343,10 @@ impl WithSimd for ComplexAddF32Kernel<'_> {
         }
     }
 }
+
+// ----------------------------------------------------------------------------
+// Complex<f32> binary kernels (Sub)
+// ----------------------------------------------------------------------------
 
 /// Element-wise `Complex<f32>` subtraction.
 pub(crate) struct ComplexSubF32Kernel<'a> {
