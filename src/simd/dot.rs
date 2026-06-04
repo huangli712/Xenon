@@ -310,11 +310,26 @@ mod tests {
     #[test]
     fn test_dot_tolerance_f32_within_documented_bounds() {
         let lhs = data_f32(1024);
-        let rhs: Vec<f32> = data_f32(1024).into_iter().map(|v| v * -0.5).collect();
-        let scalar: f32 = lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum();
+        let rhs: Vec<f32> = data_f32(1024)
+            .into_iter()
+            .map(|v| v * -0.5)
+            .collect();
+        let scalar: f32 = lhs
+            .iter()
+            .zip(rhs.iter())
+            .map(|(&l, &r)| l * r)
+            .sum();
         if let Some(simd) = try_dot_f32(&lhs, &rhs) {
-            let max_abs_a = lhs.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
-            let max_abs_b = rhs.iter().copied().map(f32::abs).fold(0.0_f32, f32::max);
+            let max_abs_a = lhs
+                .iter()
+                .copied()
+                .map(f32::abs)
+                .fold(0.0_f32, f32::max);
+            let max_abs_b = rhs
+                .iter()
+                .copied()
+                .map(f32::abs)
+                .fold(0.0_f32, f32::max);
             let tol = (8.0 * f32::EPSILON * (lhs.len() as f32) * max_abs_a * max_abs_b)
                 .max(4.0 * f32::MIN_POSITIVE);
             assert_within_tolerance_f32(simd, scalar, tol);
@@ -337,8 +352,14 @@ mod tests {
             .map(|(l, r)| l.conj() * *r)
             .fold(Complex::new(0.0, 0.0), |a, b| a + b);
         if let Some(simd) = try_dot_complex_f64(&lhs, &rhs) {
-            let max_abs_a = lhs.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
-            let max_abs_b = rhs.iter().map(|c| c.norm()).fold(0.0_f64, f64::max);
+            let max_abs_a = lhs
+                .iter()
+                .map(|c| c.norm())
+                .fold(0.0_f64, f64::max);
+            let max_abs_b = rhs
+                .iter()
+                .map(|c| c.norm())
+                .fold(0.0_f64, f64::max);
             let tol = (16.0 * f64::EPSILON * (lhs.len() as f64) * max_abs_a * max_abs_b)
                 .max(4.0 * f64::MIN_POSITIVE);
             assert_within_tolerance_f64(simd.re, scalar.re, tol);
