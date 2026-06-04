@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.26] — 2026-06-04
+
+### Removed
+
+- `src/ffi/blas.rs`, `src/ffi/offset.rs`, `src/ffi/private.rs` — content merged into `impls.rs` and `types.rs`.
+- `TensorExport<'a, A>` / `TensorExportMut<'a, A>` intermediate generic descriptor types and their `From` impls.
+- Module-level compile probe test from `ffi/mod.rs`.
+- Stale `compile_fail` doctest (`into_raw_parts` on view) from `impls.rs`.
+- Stale design-doc cross-references and task-tracking markers from all ffi module doc comments.
+- Unicode `─` section separators replaced with ASCII `--` across ffi module.
+
+### Changed
+
+- Refactored FFI module from 5 files (`blas.rs`, `offset.rs`, `private.rs`, `ptr.rs`, `types.rs`) to 3 files (`impls.rs`, `types.rs`, `mod.rs`):
+  - Merged `offset.rs` (index→offset helpers, BLAS layout queries) into `ptr.rs`.
+  - Merged `blas.rs` (BLAS methods) into `offset.rs`, then both into `ptr.rs`.
+  - Renamed `ptr.rs` → `impls.rs`.
+  - Merged `private.rs` (generic `TensorExport` types, `From` impls, tests) into `types.rs`.
+- Inlined `export_internal()`/`export_mut_internal()` — `export()`/`export_mut()` now build raw descriptors (`TensorExportRaw`/`TensorExportMutRaw`) directly.
+- Re-export `TensorBase`/`OwnedRawParts` directly from `crate::tensor` (not transitively via `impls.rs`).
+- Re-export `FfiBackend`/`FfiErrorCategory` directly from `crate::error` (not via `types.rs`).
+- Reordered module declarations and re-exports alphabetically in `mod.rs`.
+- Standardized `.expect()` placement (same line as closing `}`).
+- Removed inline argument comments from unsafe `from_raw_parts` calls.
+- Added blank-line separators between struct fields in `TensorExportRaw`/`TensorExportMutRaw`/`BlasInfo`.
+- Moved inline `use` imports in test functions to module-level `use super::*`.
+- Converted markdown error tables to bullet lists in doc comments.
+- Formatted operator placement, multi-line `assert!`/`assert_eq!` macros, and section separators.
+- Consolidated duplicate `use crate::error::{...}` imports.
+- Removed trailing whitespace.
+
 ## [v0.0.25] — 2026-06-04
 
 ### Added
