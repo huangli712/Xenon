@@ -767,7 +767,11 @@ mod tests {
 
     /// Asserts SIMD and scalar addition produce identical results.
     fn assert_add_f64(lhs: &[f64], rhs: &[f64], actual: &[f64]) {
-        let expected: Vec<f64> = lhs.iter().zip(rhs).map(|(&l, &r)| l + r).collect();
+        let expected: Vec<f64> = lhs
+            .iter()
+            .zip(rhs)
+            .map(|(&l, &r)| l + r)
+            .collect();
         assert_eq!(actual, expected.as_slice());
     }
 
