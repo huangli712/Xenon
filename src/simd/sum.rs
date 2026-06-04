@@ -260,6 +260,15 @@ mod tests {
     use crate::complex::Complex;
     use crate::simd::{try_sum_f32, try_sum_f64, try_sum_complex_f32, try_sum_complex_f64, try_sum_i32};
 
+    /// Number of random cases per property test.
+    const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
+    const MAX_LEN: usize = 4096;
+    /// Sum threshold used by property tests.
+    const SUM_THRESHOLD: usize = 1024;
+    /// Complex sum threshold used by property tests.
+    const COMPLEX_SUM_THRESHOLD: usize = 1024;
+
     // ---- admission / basic correctness ----
 
     /// Computing tolerance as 4·ε·n·max(|input|) — a documented bound
@@ -473,15 +482,6 @@ mod tests {
     //
     // Randomized property-based tests that compare SIMD sum against
     // scalar across many seed-driven random inputs.
-
-    /// Number of random cases per property test.
-    const CASES: usize = 32;
-    /// Maximum random slice length for property tests.
-    const MAX_LEN: usize = 4096;
-    /// Sum threshold used by property tests.
-    const SUM_THRESHOLD: usize = 1024;
-    /// Complex sum threshold used by property tests.
-    const COMPLEX_SUM_THRESHOLD: usize = 1024;
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {

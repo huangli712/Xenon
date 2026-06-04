@@ -210,10 +210,19 @@ mod tests {
     // Tests verify that the SIMD dot-product matches scalar within
     // documented floating-point tolerance bounds.
 
-    // ---- tolerance ----
-
     use crate::complex::Complex;
     use crate::simd::{try_dot_f32, try_dot_f64, try_dot_complex_f32, try_dot_complex_f64, try_dot_i32};
+
+    /// Number of random cases per property test.
+    const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
+    const MAX_LEN: usize = 4096;
+    /// Dot-product threshold used by property tests.
+    const DOT_THRESHOLD: usize = 512;
+    /// Complex dot-product threshold used by property tests.
+    const COMPLEX_DOT_THRESHOLD: usize = 512;
+
+    // ---- tolerance ----
 
     /// Asserts f64 is within tolerance (or matches NaN/∞).
     fn assert_within_tolerance_f64(actual: f64, expected: f64, tol: f64) {
@@ -348,15 +357,6 @@ mod tests {
 
     // ---- dot property tests ----
     // Randomized property-based tests for SIMD dot-product.
-
-    /// Number of random cases per property test.
-    const CASES: usize = 32;
-    /// Maximum random slice length for property tests.
-    const MAX_LEN: usize = 4096;
-    /// Dot-product threshold used by property tests.
-    const DOT_THRESHOLD: usize = 512;
-    /// Complex dot-product threshold used by property tests.
-    const COMPLEX_DOT_THRESHOLD: usize = 512;
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {

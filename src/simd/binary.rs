@@ -521,7 +521,19 @@ pub(crate) fn dispatch_binary_complex_f64(
 
 #[cfg(all(test, feature = "simd"))]
 mod tests {
+    use crate::complex::Complex;
     use crate::simd::{dispatch_vector_binary_op, BinaryOp};
+
+    /// Width used for boundary / tail coverage tests.
+    const SIMD_WIDTH: usize = 64;
+    /// Number of random cases per property test.
+    const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
+    const MAX_LEN: usize = 4096;
+    /// Element-wise threshold used by property tests.
+    const ELEMENTWISE_THRESHOLD: usize = 64;
+    /// Complex element-wise threshold used by property tests.
+    const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
     // ---- f32 admission ----
 
@@ -671,9 +683,6 @@ mod tests {
     // These tests verify that SIMD output matches the scalar equivalent
     // bit-for-bit (or NaN-for-NaN) across varied inputs including
     // extreme values, NaNs, infinities, and subnormals.
-
-    /// Width used for boundary / tail coverage tests.
-    const SIMD_WIDTH: usize = 64;
 
     /// Checks two f64 values are bit-identical or both NaN.
     fn assert_same_bits_or_nan_f64(actual: f64, expected: f64) {
@@ -859,17 +868,6 @@ mod tests {
     }
 
     // ---- binary property tests ----
-
-    use crate::complex::Complex;
-
-    /// Number of random cases per property test.
-    const CASES: usize = 32;
-    /// Maximum random slice length for property tests.
-    const MAX_LEN: usize = 4096;
-    /// Element-wise threshold used by property tests.
-    const ELEMENTWISE_THRESHOLD: usize = 64;
-    /// Complex element-wise threshold used by property tests.
-    const COMPLEX_ELEMENTWISE_THRESHOLD: usize = 128;
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {

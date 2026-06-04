@@ -199,6 +199,13 @@ mod tests {
     use crate::complex::Complex;
     use crate::simd::{dispatch_vector_unary_op, UnaryOp};
 
+    /// Number of random cases per property test.
+    const CASES: usize = 32;
+    /// Maximum random slice length for property tests.
+    const MAX_LEN: usize = 4096;
+    /// Element-wise threshold used by property tests.
+    const ELEMENTWISE_THRESHOLD: usize = 64;
+
     // ---- basic correctness ----
 
     /// Asserts SIMD and scalar negation produce identical results.
@@ -321,15 +328,6 @@ mod tests {
     }
 
     // ---- neg property tests ----
-
-    /// Number of random cases per property test.
-    const CASES: usize = 32;
-
-    /// Maximum random slice length for property tests.
-    const MAX_LEN: usize = 4096;
-    
-    /// Element-wise threshold used by property tests.
-    const ELEMENTWISE_THRESHOLD: usize = 64;
 
     /// splitmix64 PRNG for deterministic property-based tests.
     fn splitmix64(state: &mut u64) -> u64 {
