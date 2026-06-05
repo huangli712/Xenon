@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.27] — 2026-06-05
+
+### Changed
+
+- Consolidated all utility operations (clip, fill, try_fill, to_contiguous, into_contiguous) into single `impls.rs`.
+- `into_contiguous` repack path now iterates logical F-order instead of using `into_owned()`, correctly stripping tail padding and non-zero offset.
+- Reorganized `impls.rs` with free functions at top, section headers, and consistent impl block ordering.
+
+### Removed
+
+- `src/util/clip.rs` (merged into `impls.rs`).
+- `src/util/contiguous.rs` (merged into `impls.rs`).
+- `src/util/fill.rs` (merged into `impls.rs`).
+- Empty module-root compilation test in `src/util/mod.rs`.
+
+### Test
+
+- Implemented `test_into_contiguous_repacks_noncanonical_f_contiguous_owned` for tail-padded owned tensor.
 ## [v0.0.26] — 2026-06-04
 
 ### Removed
