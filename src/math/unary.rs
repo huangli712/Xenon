@@ -526,7 +526,7 @@ where
                 {
                     let strat = ParallelExecStrategy::auto();
                     let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                    crate::parallel::map::par_map(self, &strat, g, |x| !*x)
+                    crate::parallel::unary::par_map(self, &strat, g, |x| !*x)
                 }
                 #[cfg(not(feature = "parallel"))]
                 {
@@ -565,7 +565,7 @@ where
 /// branch of this helper always falls through to scalar.
 ///
 /// **Real acceleration today**: Parallel path via
-/// `crate::parallel::map::par_map` (W15T3) when `parallel` feature is
+/// `crate::parallel::unary::par_map` (W15T3) when `parallel` feature is
 /// enabled and `select_exec_path` returns `ExecPath::Parallel`.
 ///
 /// **Future-proof**: When W14 extends coverage (e.g. adds
@@ -595,7 +595,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::map::par_map(input, &strat, g, |x| op(*x))
+                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -639,7 +639,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::map::par_map(input, &strat, g, |x| op(*x))
+                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
             {

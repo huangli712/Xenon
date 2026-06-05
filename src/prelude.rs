@@ -201,7 +201,7 @@ pub use crate::dispatch::{
 };
 
 #[cfg(feature = "parallel")]
-pub use crate::parallel::map::par_map;
+pub use crate::parallel::unary::par_map;
 
 #[cfg(feature = "parallel")]
 pub use crate::parallel::reduce::{

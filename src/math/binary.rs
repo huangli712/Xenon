@@ -577,7 +577,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::map::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+                crate::parallel::binary::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -641,7 +641,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::map::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+                crate::parallel::binary::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
             {

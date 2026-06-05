@@ -1,6 +1,5 @@
-//! Parallel element-wise map operations.
+//! Dual-input parallel element-wise map.
 //!
-//! W15T2: par_map — single-input parallel element-wise map.
 //! W15T3: par_zip_map — dual-input broadcast element-wise parallel map.
 
 use std::borrow::Cow;
@@ -12,69 +11,6 @@ use crate::error::{InvalidShapeKind, XenonError};
 use crate::parallel::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
-
-/// Parallel element-wise map.
-///
-/// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
-///
-/// # Panics
-///
-/// Panics if `tensor` is not F-contiguous (i.e. `tensor.as_slice()` returns
-/// `None`). Callers must route non-contiguous / broadcast inputs to the
-/// Serial path via `dispatch::select_exec_path` before invoking `par_map`.
-#[cfg(feature = "parallel")]
-pub fn par_map<S, A, B, D, F>(
-    tensor: &TensorBase<S, D>,
-    strategy: &ParallelExecStrategy,
-    _guard: ParallelGuard,
-    f: F,
-) -> Tensor<B, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension + Clone,
-    A: Element + Send + Sync,
-    B: Element + Send,
-    F: Fn(&A) -> B + Send + Sync,
-{
-    let total = tensor.len();
-    let num_threads = strategy
-        .max_workers()
-        .unwrap_or_else(rayon::current_num_threads);
-    let chunk_size = strategy
-        .chunk_size()
-        .unwrap_or_else(|| compute_safe_chunks(total, num_threads));
-
-    // par_map is a single-input element-wise operation. The caller
-    // (dispatch) ensures the tensor is F-contiguous before routing
-    // to Parallel. We use the underlying contiguous slice directly
-    // via rayon's par_iter() on slices.
-    let src_slice = tensor.as_slice().expect(
-        "par_map caller must ensure F-contiguous + non-broadcast; \
-         dispatch gates non-contiguous inputs to Serial",
-    );
-
-    use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-
-    let mut output_data: Vec<B> = Vec::with_capacity(total);
-    src_slice
-        .par_iter()
-        .with_min_len(chunk_size)
-        .map(|src| {
-            // Worker TLS: IN_PARALLEL = true for the duration of this map call.
-            // Nested select_exec_path() inside f() will fall back to Serial.
-            with_parallel_worker_context(|| f(src))
-        })
-        .collect_into_vec(&mut output_data);
-
-    // SAFETY (07-tensor 5 from_raw_vec_unchecked precondition):
-    //   - output_data.len() == total == checked_size(tensor.raw_dim())
-    //     (collect_into_vec on an IndexedParallelIterator with len() = total)
-    //   - F-order index alignment guaranteed by IndexedParallelIterator
-    //     (09-parallel 6.7 line 504-505)
-    unsafe { Tensor::from_raw_vec_unchecked(output_data, tensor.raw_dim()) }
-}
-
-// ── W15T3: par_zip_map ──
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
@@ -182,37 +118,6 @@ mod tests {
     use crate::dispatch::ThresholdTestGuard;
     use crate::layout::Strides;
     use crate::tensor::TensorView;
-
-    #[test]
-    fn test_par_map_parallel_path() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-
-        let data = [1.0f64, 2.0, 3.0, 4.0];
-        let tensor = unsafe {
-            TensorView::<f64, Ix1>::from_raw_parts(
-                data.as_ptr(),
-                data.len(),
-                Ix1(4),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
-                0,
-            )
-        }
-        .expect("valid F-order [4] view");
-        let (path, guard_opt) =
-            select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
-        assert_eq!(path, ExecPath::Parallel);
-        let guard = guard_opt.expect("Parallel implies Some(guard) by 30-dispatch 5.5");
-
-        let strategy = ParallelExecStrategy::auto();
-        let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[2.0, 4.0, 6.0, 8.0]
-        );
-
-        reset_parallel_threshold();
-    }
 
     // ── W15T3 tests ──
 

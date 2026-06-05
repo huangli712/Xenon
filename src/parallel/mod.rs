@@ -25,11 +25,13 @@
 //! ```
 
 #[cfg(feature = "parallel")]
+pub(crate) mod binary;
+#[cfg(feature = "parallel")]
 pub(crate) mod checked;
 #[cfg(feature = "parallel")]
-pub(crate) mod map;
-#[cfg(feature = "parallel")]
 pub(crate) mod reduce;
+#[cfg(feature = "parallel")]
+pub(crate) mod unary;
 
 /// Compute a per-chunk element count for parallel splitting.
 ///
@@ -96,7 +98,6 @@ mod feature_matrix_tests {
     use crate::dispatch::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
-    use crate::parallel::map::par_map;
     use crate::parallel::reduce::par_sum;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
@@ -126,39 +127,6 @@ mod feature_matrix_tests {
             )
             .expect("valid F-order 1-D f64 view")
         }
-    }
-
-    #[test]
-    fn test_parallel_feature_matrix_single_worker() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let data = [1.0f64, 2.0, 3.0, 4.0];
-        let tensor = unsafe { view_1d_f64(&data) };
-        let strategy =
-            ParallelExecStrategy::new(None, Some(1)).expect("valid strategy with max_workers=1");
-        let guard = acquire_parallel_guard(&tensor);
-        let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[2.0, 4.0, 6.0, 8.0]
-        );
-        reset_parallel_threshold();
-    }
-
-    #[test]
-    fn test_parallel_feature_matrix_default_workers() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let data = [1.0f64, 2.0, 3.0, 4.0];
-        let tensor = unsafe { view_1d_f64(&data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&tensor);
-        let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[2.0, 4.0, 6.0, 8.0]
-        );
-        reset_parallel_threshold();
     }
 
     #[test]
