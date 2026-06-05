@@ -189,8 +189,9 @@ mod tests {
 
     #[test]
     fn test_display_tensor() {
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3))
+        };
         assert_eq!(format!("{}", tensor), "[1, 2, 3]");
     }
 
