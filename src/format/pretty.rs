@@ -9,7 +9,7 @@ use super::config::FormatConfig;
 
 use super::writer::LineWriter;
 
-// ── Top-level dispatch ──
+// -- Top-level dispatch --
 
 /// Internal Display dispatch.
 ///
@@ -72,7 +72,7 @@ where
     }
 }
 
-// ── Scalar helpers ──
+// -- Scalar helpers --
 
 /// Display-mode scalar rendering.
 ///
@@ -105,7 +105,7 @@ where
     write!(w, "{value:?}")
 }
 
-// ── Logical element access ──
+// -- Logical element access --
 
 /// Read the element at logical index `indices` (length must equal `ndim()`).
 ///
@@ -138,7 +138,7 @@ where
     unsafe { &*tensor.as_ptr().offset(rel_offset) }
 }
 
-// ── 1D Display / Debug ──
+// -- 1D Display / Debug --
 
 /// Entry point for 1D Display formatting.
 ///
@@ -295,7 +295,7 @@ where
     }
 }
 
-// ── ND Display / Debug ──
+// -- ND Display / Debug --
 
 /// ND Display rendering.
 ///
