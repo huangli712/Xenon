@@ -167,7 +167,7 @@ where
     }
 }
 
-// -- into_contiguous --
+// --- into_contiguous --------------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -189,21 +189,34 @@ where
     pub fn into_contiguous(self) -> Tensor<A, D> {
         if is_canonical_f_contiguous_owned(&self) {
             let dim = self.raw_dim();
-            let strides =
-                Strides::f_contiguous(&dim).expect("canonical predicate implies shape is valid");
+            let strides = Strides::f_contiguous(&dim)
+                .expect("canonical predicate implies shape is valid");
             let owned = self.storage.into_owned_storage();
-            let flags = compute_layout_flags::<A, D>(&dim, &strides, owned.as_ptr());
-            // SAFETY: is_canonical_f_contiguous_owned verified F-order, owned,
-            // offset==0, storage_len==shape product. D: Clone ensured raw_dim()
-            // snapshot precedes the move.
-            unsafe { TensorBase::new_unchecked(owned, dim, strides, 0, flags, false) }
+            let flags = compute_layout_flags::<A, D>(
+                &dim,
+                &strides,
+                owned.as_ptr()
+            );
+            // SAFETY: is_canonical_f_contiguous_owned verified F-order,
+            // owned, offset==0, storage_len==shape product. D: Clone
+            // ensured raw_dim() snapshot precedes the move.
+            unsafe {
+                TensorBase::new_unchecked(
+                    owned,
+                    dim,
+                    strides,
+                    0,
+                    flags,
+                    false
+                )
+            }
         } else {
             self.into_owned()
         }
     }
 }
 
-// -- try_fill --
+// --- try_fill ---------------------------------------------------------------
 
 impl<D, A> TensorBase<Owned<A>, D>
 where
@@ -216,10 +229,7 @@ where
     ///
     /// Always returns `Ok(())`. The `Result` return type exists for API
     /// uniformity with the read-only variants.
-    #[expect(
-        clippy::clone_on_copy,
-        reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
-    )]
+    #[expect(clippy::clone_on_copy)]
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError> {
         for slot in self.iter_mut() {
             *slot = value.clone();
@@ -258,10 +268,7 @@ where
     ///
     /// Always returns `Ok(())`. The `Result` return type exists for API
     /// uniformity with the read-only variants.
-    #[expect(
-        clippy::clone_on_copy,
-        reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
-    )]
+    #[expect(clippy::clone_on_copy)]
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError> {
         for slot in self.iter_mut() {
             *slot = value.clone();
@@ -286,8 +293,6 @@ where
         Err(fill_try_read_only_err(StorageKindTag::Shared))
     }
 }
-
-// -- Unit tests --
 
 #[cfg(test)]
 mod tests {
