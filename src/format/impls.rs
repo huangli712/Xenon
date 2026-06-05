@@ -58,6 +58,7 @@ where
         }
     }
 }
+
 impl<S, D, A> fmt::Display for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
