@@ -162,9 +162,13 @@ mod tests {
     /// `layout=broadcast` in the Debug header.
     #[test]
     fn test_debug_broadcast_view() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3))
+        };
         // Broadcast: shape=[4,3], strides=[0,1]
-        let view = unsafe { make_view(&tensor, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
+        let view = unsafe {
+            make_view(&tensor, Ix2(4, 3), Strides::new(Ix2(0, 1)))
+        };
         let text = format!("{:?}", view);
         assert!(text.contains("layout=broadcast"), "text = {text:?}");
     }
