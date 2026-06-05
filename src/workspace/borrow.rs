@@ -10,13 +10,14 @@
 //! making the workspace re-borrowable.
 
 use core::slice;
-use core::mem::MaybeUninit;
+use core::mem::{MaybeUninit, size_of, align_of};
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 
 use std::borrow::Cow;
 
 use crate::error::{TypedViewRejection, WorkspaceErrorCategory, XenonError};
+use crate::element::Element;
 use super::space::Workspace;
 
 /// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
@@ -193,12 +194,12 @@ impl<'a> WorkspaceBorrowMut<'a> {
     ///
     /// Caller must still uphold `T` initialization model; size / alignment /
     /// count violations are returned as `Result` errors rather than UB.
-    pub unsafe fn as_maybe_uninit_typed_slice<T: crate::element::Element>(
+    pub unsafe fn as_maybe_uninit_typed_slice<T: Element>(
         &mut self,
         count: usize,
-    ) -> crate::error::Result<&mut [core::mem::MaybeUninit<T>]> {
+    ) -> crate::error::Result<&mut [MaybeUninit<T>]> {
         const OP: &str = "WorkspaceBorrowMut::as_maybe_uninit_typed_slice";
-        if core::mem::size_of::<T>() == 0 {
+        if size_of::<T>() == 0 {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed(OP),
                 category: WorkspaceErrorCategory::TypedViewRejected {
@@ -209,13 +210,13 @@ impl<'a> WorkspaceBorrowMut<'a> {
         }
         let byte_len =
             count
-                .checked_mul(core::mem::size_of::<T>())
+                .checked_mul(size_of::<T>())
                 .ok_or(XenonError::Workspace {
                     operation: Cow::Borrowed(OP),
                     category: WorkspaceErrorCategory::TypedViewRejected {
                         detail: TypedViewRejection::TypedByteLengthOverflow {
                             count,
-                            elem_size: core::mem::size_of::<T>(),
+                            elem_size: size_of::<T>(),
                         },
                     },
                     
@@ -224,13 +225,13 @@ impl<'a> WorkspaceBorrowMut<'a> {
             return Err(XenonError::workspace_split_oob(OP, byte_len, self.len));
         }
         let actual_addr = self.ptr.as_ptr() as usize;
-        if !actual_addr.is_multiple_of(core::mem::align_of::<T>()) {
+        if !actual_addr.is_multiple_of(align_of::<T>()) {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed(OP),
                 category: WorkspaceErrorCategory::TypedViewRejected {
                     detail: TypedViewRejection::AlignmentMismatch {
-                        required: core::mem::align_of::<T>(),
-                        actual: actual_addr % core::mem::align_of::<T>(),
+                        required: align_of::<T>(),
+                        actual: actual_addr % align_of::<T>(),
                     },
                 },
                 
@@ -240,8 +241,8 @@ impl<'a> WorkspaceBorrowMut<'a> {
         // uninitialized representation. Exclusive borrow + `!Send + !Sync`
         // forbid aliasing.
         Ok(unsafe {
-            core::slice::from_raw_parts_mut(
-                self.ptr.as_ptr() as *mut core::mem::MaybeUninit<T>,
+            slice::from_raw_parts_mut(
+                self.ptr.as_ptr() as *mut MaybeUninit<T>,
                 count,
             )
         })
