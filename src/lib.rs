@@ -174,7 +174,6 @@ mod tests {
             env!("CARGO_PKG_VERSION"),
             "0.0.27",
             "Cargo.toml [package] version must be '0.0.27'"
-            "Cargo.toml [package] version must be '0.0.26'"
         );
     }
 
