@@ -21,6 +21,14 @@ pub struct FormatConfig {
     pub line_width: usize,
 }
 
+impl FormatConfig {
+    /// Crate-private helper used by pretty printers to honor §5.6 line 384:
+    /// `edge_items = 0` behaves as 1 without mutating the user's config.
+    pub(crate) fn normalized_edge_items(self) -> usize {
+        self.edge_items.max(1)
+    }
+}
+
 impl Default for FormatConfig {
     fn default() -> Self {
         Self {
@@ -29,14 +37,6 @@ impl Default for FormatConfig {
             precision: None,
             line_width: 80,
         }
-    }
-}
-
-impl FormatConfig {
-    /// Crate-private helper used by pretty printers to honor §5.6 line 384:
-    /// `edge_items = 0` behaves as 1 without mutating the user's config.
-    pub(crate) fn normalized_edge_items(self) -> usize {
-        self.edge_items.max(1)
     }
 }
 
