@@ -22,8 +22,11 @@ use crate::error::{
 /// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
 pub struct WorkspaceBorrow<'a> {
+    /// Raw pointer to the start of data in the scratch region.
     pub(crate) ptr: NonNull<u8>,
+    /// Length of the borrow in bytes.
     pub(crate) len: usize,
+    /// Reference to the parent workspace (guarantees `!Send + !Sync`).
     pub(crate) workspace: &'a Workspace,
 }
 
@@ -102,8 +105,11 @@ impl<'a> Drop for WorkspaceBorrow<'a> {
 /// Mutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
 pub struct WorkspaceBorrowMut<'a> {
+    /// Raw pointer to the start of data in the scratch region.
     pub(crate) ptr: NonNull<u8>,
+    /// Length of the borrow in bytes.
     pub(crate) len: usize,
+    /// Reference to the parent workspace (guarantees `!Send + !Sync`).
     pub(crate) workspace: &'a Workspace,
 }
 

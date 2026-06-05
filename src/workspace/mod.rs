@@ -35,7 +35,7 @@ mod borrow;
 mod split;
 #[expect(
     clippy::module_inception,
-    reason = "intentional: workspace::workspace follows design doc §3"
+    reason = "intentional: workspace::workspace holds the Workspace type definition"
 )]
 mod workspace;
 
@@ -62,7 +62,7 @@ mod compile_time_negative_assertions {
     assert_not_impl_all!(SplitBorrowMut<'static>: Sync);
 }
 
-// ── W9T7 typed-slice rejection tests ──
+// ── typed-slice rejection tests ──
 #[cfg(test)]
 mod tests {
     use crate::error::{TypedViewRejection, WorkspaceErrorCategory};

@@ -40,7 +40,7 @@ pub(crate) fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
 /// # Fields
 ///
 /// All fields except `_not_send_sync` are `pub(crate)` so that sibling
-/// modules (`borrow`, `split`, `expand`) can implement their logic directly
+/// modules (`borrow`, `split`) can implement their logic directly
 /// on the workspace's internal state (e.g., CAS on `borrow_state`, pointer
 /// arithmetic on `ptr`) without indirection through getters/setters.
 ///
@@ -226,10 +226,10 @@ impl Workspace {
         })
     }
 
-    /// Crate-internal probe used by `expand.rs` (W9T6) to verify no residual
-    /// borrow state before reallocation. Uses `Acquire` to pair with the
-    /// `Release` stores performed by guard `Drop` impls.
-    #[expect(dead_code, reason = "defense-in-depth helper; W9T6 uses direct load")]
+    /// Crate-internal probe to verify no residual borrow state before
+    /// reallocation. Uses `Acquire` to pair with the `Release` stores
+    /// performed by guard `Drop` impls.
+    #[expect(dead_code, reason = "defense-in-depth helper; ensure_capacity uses direct load")]
     pub(crate) fn is_borrowed(&self) -> bool {
         self.borrow_state.load(Ordering::Acquire) != Self::BORROW_NONE
     }
@@ -428,6 +428,7 @@ impl Drop for Workspace {
 mod tests {
     use super::*;
 
+    /// Verify default workspace has correct capacity and alignment.
     #[test]
     fn test_workspace_new_default() {
         let ws = Workspace::with_default_capacity().expect("default workspace");
@@ -435,6 +436,7 @@ mod tests {
         assert_eq!(ws.alignment(), Workspace::DEFAULT_ALIGNMENT);
     }
 
+    /// Verify custom-sized workspace allocation.
     #[test]
     fn test_workspace_new() {
         let ws = Workspace::new(1024, 64).expect("1024-byte workspace");
@@ -442,6 +444,7 @@ mod tests {
         assert_eq!(ws.alignment(), 64);
     }
 
+    /// Verify public constant values.
     #[test]
     fn test_workspace_constants() {
         assert_eq!(Workspace::DEFAULT_ALIGNMENT, 64);
@@ -449,6 +452,7 @@ mod tests {
         assert_eq!(Workspace::DEFAULT_CAPACITY, 4096);
     }
 
+    /// Invalid alignment (non-power-of-two, below minimum) must be rejected.
     #[test]
     fn test_workspace_new_invalid_alignment() {
         // alignment not a power of two → InvalidLayout
@@ -480,12 +484,14 @@ mod tests {
         }
     }
 
+    /// Dropping a workspace must not leak memory.
     #[test]
     fn test_workspace_drop_no_leak() {
         let ws = Workspace::new(1024, 64).expect("workspace for drop");
         drop(ws);
     }
 
+    /// Immutable borrow returns a guard covering the full workspace.
     #[test]
     fn test_borrow_basic() {
         let workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -494,6 +500,7 @@ mod tests {
         assert_eq!(view.len(), 64);
     }
 
+    /// Mutable borrow returns a writable view of the workspace.
     #[test]
     fn test_borrow_mut_basic() {
         let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -506,6 +513,7 @@ mod tests {
         }
     }
 
+    /// Second borrow while first is active must fail.
     #[test]
     fn test_borrow_double_fails() {
         let workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -515,6 +523,7 @@ mod tests {
         assert!(workspace.borrow().is_err());
     }
 
+    /// After dropping a borrow guard, re-borrowing must succeed.
     #[test]
     fn test_borrow_after_drop() {
         let workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -525,6 +534,7 @@ mod tests {
         assert!(workspace.borrow().is_ok());
     }
 
+    /// Out-of-bounds `assume_init_slice` rejects, within-bounds accepts.
     #[test]
     fn test_assume_init_requires_initialized_prefix() {
         let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -537,6 +547,7 @@ mod tests {
         assert!(ok.is_ok());
     }
 
+    /// `ensure_capacity` with smaller value must not reallocate.
     #[test]
     fn test_ensure_capacity_no_grow() {
         let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -546,6 +557,7 @@ mod tests {
         assert_eq!(workspace.capacity(), 64);
     }
 
+    /// `ensure_capacity` with larger value must grow and preserve alignment.
     #[test]
     fn test_ensure_capacity_grow() {
         let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
@@ -581,6 +593,7 @@ mod tests {
             .store(Workspace::BORROW_NONE, core::sync::atomic::Ordering::Release);
     }
 
+    /// Basic binary split produces correct sub-space lengths.
     #[test]
     fn test_split_at_mut_basic() {
         let mut workspace = Workspace::new(100, 64).expect("workspace in test");
@@ -589,6 +602,7 @@ mod tests {
         assert_eq!(right.len(), 60);
     }
 
+    /// Recursive split produces three sub-spaces with correct lengths.
     #[test]
     fn test_split_at_mut_recursive() {
         let mut workspace = Workspace::new(100, 64).expect("workspace in test");
@@ -599,6 +613,7 @@ mod tests {
         assert_eq!(right_b.len(), 30);
     }
 
+    /// Out-of-bounds split must fail without corrupting borrow state.
     #[test]
     fn test_split_at_mut_oob() {
         let mut workspace = Workspace::new(8, 64).expect("workspace in test");
