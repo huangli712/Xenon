@@ -66,8 +66,9 @@ mod tests {
     use super::*;
     use crate::complex::Complex;
     use crate::dimension::{Ix0, Ix1, Ix2};
-    use crate::layout::Strides;
     use crate::element::element_type_of;
+    use crate::layout::Strides;
+    use crate::storage::{Owned, ViewRepr};
 
     /// Verifies that Debug output contains the expected header fields
     /// (shape, strides, dtype, layout) and data section.
@@ -114,15 +115,20 @@ mod tests {
     /// Construct a tensor view via `from_raw_parts` with manually specified
     /// shape and strides.
     unsafe fn make_view<A: Element>(
-        base: &TensorBase<crate::storage::Owned<A>, Ix2>,
+        base: &TensorBase<Owned<A>, Ix2>,
         shape: Ix2,
         strides: Strides<Ix2>,
-    ) -> TensorBase<crate::storage::ViewRepr<'_, A>, Ix2> {
+    ) -> TensorBase<ViewRepr<'_, A>, Ix2> {
         // SAFETY: shape/strides are manually constructed from the original
         // tensor's data with known valid geometric transformations.
         unsafe {
-            TensorBase::from_raw_parts(base.as_ptr(), base.storage_len(), shape, strides, 0)
-                .expect("valid layout from manually constructed strides")
+            TensorBase::from_raw_parts(
+                base.as_ptr(),
+                base.storage_len(),
+                shape,
+                strides,
+                0
+            ).expect("valid layout from manually constructed strides")
         }
     }
 
