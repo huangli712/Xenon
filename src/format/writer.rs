@@ -8,11 +8,13 @@ use core::fmt::{self, Formatter};
 /// innermost-axis element boundaries: when the current column reaches or
 /// exceeds [`FormatConfig::line_width`], the next element starts on a
 /// new line with indentation.
-///
-/// Column counts Unicode scalar values (`char`), not bytes or grapheme
-/// clusters, consistent with `line_width` being a per-character budget.
 pub(crate) struct LineWriter<'a, 'b> {
+    /// The underlying formatter that performs the actual I/O.
     inner: &'a mut Formatter<'b>,
+    /// Current column position — number of Unicode scalar values since
+    /// the most recent `'\n'`.  Counted in `char` units, not bytes or
+    /// grapheme clusters, consistent with `line_width` being a
+    /// per-character budget.
     column: usize,
 }
 
