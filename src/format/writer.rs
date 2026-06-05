@@ -35,3 +35,114 @@ impl fmt::Write for LineWriter<'_, '_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::fmt::Write;
+
+    /// Drive a `LineWriter` from inside a `Display` impl and return both
+    /// the formatted output and the final column position.
+    fn run_probe(ops: impl Fn(&mut LineWriter<'_, '_>) -> fmt::Result) -> (String, usize) {
+        struct Probe<F> {
+            ops: F,
+            column: std::cell::Cell<usize>,
+        }
+        impl<F: Fn(&mut LineWriter<'_, '_>) -> fmt::Result> fmt::Display for Probe<F> {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                let mut w = LineWriter::new(f);
+                (self.ops)(&mut w)?;
+                self.column.set(w.column());
+                Ok(())
+            }
+        }
+        let probe = Probe {
+            ops,
+            column: std::cell::Cell::new(0),
+        };
+        let mut s = String::new();
+        write!(&mut s, "{}", probe).unwrap();
+        (s, probe.column.get())
+    }
+
+    #[test]
+    fn test_line_writer_initial_column() {
+        let (_, col) = run_probe(|_| Ok(()));
+        assert_eq!(col, 0);
+    }
+
+    #[test]
+    fn test_line_writer_empty_string() {
+        let (output, col) = run_probe(|w| w.write_str(""));
+        assert_eq!(output, "");
+        assert_eq!(col, 0);
+    }
+
+    #[test]
+    fn test_line_writer_no_newline() {
+        let (output, col) = run_probe(|w| w.write_str("hello"));
+        assert_eq!(output, "hello");
+        assert_eq!(col, 5);
+    }
+
+    #[test]
+    fn test_line_writer_trailing_newline() {
+        let (output, col) = run_probe(|w| w.write_str("abc\n"));
+        assert_eq!(output, "abc\n");
+        assert_eq!(col, 0);
+    }
+
+    #[test]
+    fn test_line_writer_newline_in_middle() {
+        let (output, col) = run_probe(|w| w.write_str("abc\ndef"));
+        assert_eq!(output, "abc\ndef");
+        assert_eq!(col, 3);
+    }
+
+    #[test]
+    fn test_line_writer_multiple_newlines() {
+        let (output, col) = run_probe(|w| w.write_str("a\nb\ncd"));
+        assert_eq!(output, "a\nb\ncd");
+        assert_eq!(col, 2);
+    }
+
+    #[test]
+    fn test_line_writer_multi_write_accumulation() {
+        let col_after_first = std::cell::Cell::new(0usize);
+        let (output, final_col) = run_probe(|w| {
+            w.write_str("ab")?;
+            col_after_first.set(w.column());
+            w.write_str("cd")?;
+            Ok(())
+        });
+        assert_eq!(output, "abcd");
+        assert_eq!(col_after_first.get(), 2);
+        assert_eq!(final_col, 4);
+    }
+
+    #[test]
+    fn test_line_writer_multi_write_with_newline() {
+        let (output, col) = run_probe(|w| {
+            w.write_str("ab")?;
+            w.write_str("\nde")?;
+            Ok(())
+        });
+        assert_eq!(output, "ab\nde");
+        assert_eq!(col, 2);
+    }
+
+    #[test]
+    fn test_line_writer_unicode_chars() {
+        // "你好" is 2 chars but 6 UTF-8 bytes.
+        let (output, col) = run_probe(|w| w.write_str("你好"));
+        assert_eq!(output, "你好");
+        assert_eq!(col, 2);
+    }
+
+    #[test]
+    fn test_line_writer_unicode_after_newline() {
+        let (output, col) = run_probe(|w| w.write_str("x\n你好"));
+        assert_eq!(output, "x\n你好");
+        assert_eq!(col, 2);
+    }
+}
