@@ -5,8 +5,9 @@
 //! overlapping memory regions, reference-counted via an `AtomicUsize`. The
 //! workspace is released only when the last split guard drops.
 
+use core::slice;
 use core::ptr::NonNull;
-use core::mem::MaybeUninit;
+use core::mem::{MaybeUninit, ManuallyDrop};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::XenonError;
@@ -51,8 +52,8 @@ impl<'a> SplitBorrowMut<'a> {
         // the pointer/length range is disjoint from sibling splits and the
         // borrow is exclusive within this sub-space.
         unsafe {
-            core::slice::from_raw_parts_mut(
-                self.ptr.as_ptr() as *mut core::mem::MaybeUninit<u8>,
+            slice::from_raw_parts_mut(
+                self.ptr.as_ptr() as *mut MaybeUninit<u8>,
                 self.len,
             )
         }
@@ -87,7 +88,7 @@ impl<'a> SplitBorrowMut<'a> {
 
         // Skip the original guard's Drop — its conceptual slot in the count
         // is transferred to the children (see invariant above).
-        let this = core::mem::ManuallyDrop::new(self);
+        let this = ManuallyDrop::new(self);
 
         // Increment for the additional sub-space; `Release` so the children's
         // Drop observes the up-to-date counter.
@@ -142,8 +143,6 @@ impl<'a> Drop for SplitBorrowMut<'a> {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
