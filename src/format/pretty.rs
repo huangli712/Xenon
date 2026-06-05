@@ -1,7 +1,7 @@
 use core::fmt::{self, Formatter, Write as _};
 
 use crate::dimension::Dimension;
-use crate::element::{Element, ElementType};
+use crate::element::{Element, element_type_of};
 use crate::layout::LayoutState;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
@@ -52,7 +52,7 @@ where
         "Tensor(shape={:?}, strides={:?}, dtype={}, layout={})",
         tensor.shape(),
         tensor.strides(),
-        dtype_name::<A>(),
+        element_type_of::<A>().name(),
         layout_name(tensor),
     )?;
     // Data section: route through W26T3 debug helpers.
@@ -122,21 +122,6 @@ where
     // - The resulting `&A` lifetime is tied to `'a`, which is bounded by the
     //   immutable borrow of `tensor`, preserving aliasing rules.
     unsafe { &*tensor.as_ptr().offset(rel_offset) }
-}
-
-/// dtype display name. Implements `22-output §6.2` line 587-604 via the
-/// closed `ElementType` enum (no `core::any::TypeId`, no `'static` bound,
-/// no fallback path).
-pub(crate) fn dtype_name<A: Element>() -> &'static str {
-    match A::ELEMENT_TYPE {
-        ElementType::I32 => "i32",
-        ElementType::I64 => "i64",
-        ElementType::F32 => "f32",
-        ElementType::F64 => "f64",
-        ElementType::Complex32 => "Complex<f32>",
-        ElementType::Complex64 => "Complex<f64>",
-        ElementType::Bool => "bool",
-    }
 }
 
 /// Layout category. Implements `22-output §5.4` line 258: distinguishes

@@ -51,7 +51,7 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix1, Ix2};
     use crate::layout::Strides;
-    use crate::format::pretty::dtype_name;
+    use crate::element::element_type_of;
 
     #[test]
     fn test_debug_tensor() {
@@ -125,7 +125,7 @@ mod tests {
         // §6.2 line 600-601: Complex<f32> / Complex<f64> dtype name format.
         // Statically assert dtype_name dispatch via monomorphization.
         fn check<A: Element>() -> &'static str {
-            dtype_name::<A>()
+            element_type_of::<A>().name()
         }
         assert_eq!(check::<i32>(), "i32");
         assert_eq!(check::<i64>(), "i64");
