@@ -5,13 +5,12 @@
 
 use std::borrow::Cow;
 
+use crate::error::{InvalidArgumentKind, StorageKindTag, XenonError};
 use crate::dimension::Dimension;
 use crate::element::{Element, OrderedCompareElement};
-use crate::error::{InvalidArgumentKind, StorageKindTag, XenonError};
 use crate::layout::{Strides, compute_layout_flags};
-use crate::storage::{
-    ArcRepr, Owned, RawStorage, Storage, StorageIntoOwned, StorageMut, ViewMutRepr, ViewRepr,
-};
+use crate::storage::{Owned, ViewRepr, ViewMutRepr, ArcRepr};
+use crate::storage::{RawStorage, Storage, StorageMut, StorageIntoOwned};
 use crate::tensor::{StorageKind, StorageSemantics, Tensor, TensorBase};
 
 // ── Free functions ──
