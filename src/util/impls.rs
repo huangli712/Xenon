@@ -313,34 +313,6 @@ where
     }
 }
 
-/// Crate-internal canonical predicate from `20-utility §6.3`.
-///
-/// Returns `true` iff **all four** conditions from `20-utility §6.3` hold:
-///   1. `is_f_contiguous()` — strides satisfy F-order pattern
-///   2. `storage_kind() == Owned` — sole-ownership
-///   3. `offset() == 0` — no head padding
-///   4. `storage_len() == product(shape)` — no tail padding
-fn is_canonical_f_contiguous_owned<S, D, A>(t: &TensorBase<S, D>) -> bool
-where
-    S: Storage<Elem = A> + StorageSemantics,
-    D: Dimension,
-{
-    if !t.is_f_contiguous() {
-        return false;
-    }
-    if t.storage_kind() != StorageKind::Owned {
-        return false;
-    }
-    if t.offset() != 0 {
-        return false;
-    }
-    let logical = match t.raw_dim().checked_size() {
-        Ok(n) => n,
-        Err(_) => return false,
-    };
-    t.storage_len() == logical
-}
-
 // ── Unit tests (§8.2) ──
 
 #[cfg(test)]
