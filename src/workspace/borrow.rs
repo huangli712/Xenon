@@ -423,10 +423,12 @@ mod tests {
 
         // SplitOutOfBounds (byte_len > workspace capacity) is reported via
         // the `SplitOutOfBounds` category, not `TypedViewRejected`.
-        let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(100) };
+        let result = unsafe {
+            guard.as_maybe_uninit_typed_slice::<f64>(100)
+        };
         assert!(matches!(
             result,
-            Err(crate::error::XenonError::Workspace {
+            Err(XenonError::Workspace {
                 category: WorkspaceErrorCategory::SplitOutOfBounds { .. },
                 ..
             })
