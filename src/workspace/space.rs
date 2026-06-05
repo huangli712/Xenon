@@ -10,6 +10,7 @@ use core::sync::atomic::AtomicU8;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
+use std::alloc::Layout;
 use std::borrow::Cow;
 
 use crate::error::{Result, XenonError};
@@ -111,24 +112,22 @@ impl Workspace {
     /// - `AllocFailed` — the global allocator returned `null`.
     pub fn new(capacity: usize, alignment: usize) -> Result<Self> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
-            return Err(crate::error::XenonError::Workspace {
+            return Err(XenonError::Workspace {
                 operation: Cow::Borrowed("Workspace::new"),
                 category: WorkspaceErrorCategory::InvalidLayout {
                     size: capacity,
                     align: alignment,
                 },
-                
             });
         }
         let size = capacity.max(1);
-        let layout = std::alloc::Layout::from_size_align(size, alignment).map_err(|_| {
-            crate::error::XenonError::Workspace {
+        let layout = Layout::from_size_align(size, alignment).map_err(|_| {
+            XenonError::Workspace {
                 operation: Cow::Borrowed("Workspace::new"),
                 category: WorkspaceErrorCategory::InvalidLayout {
                     size: capacity,
                     align: alignment,
                 },
-                
             }
         })?;
         let ptr = if size == 0 {
