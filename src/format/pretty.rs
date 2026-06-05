@@ -673,7 +673,9 @@ mod tests {
     /// A single-element 1D tensor renders without commas.
     #[test]
     fn test_fmt_1d_single() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![42], Ix1(1)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![42], Ix1(1))
+        };
         assert_eq!(
             fmt_1d_display_string(&tensor, FormatConfig::default()),
             "[42]"
