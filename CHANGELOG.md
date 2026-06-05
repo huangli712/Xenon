@@ -15,7 +15,7 @@ All notable changes to this project are documented in this file.
 - Extracted `validate_clip_bounds` to top of `impls.rs` as a free function.
 - Extracted `fill_try_read_only_err` to top of `impls.rs` as a free function.
 - Extracted `is_canonical_f_contiguous_owned` to top of `impls.rs` as a free function.
-- Reordered impl blocks to: clip → fill → to_contiguous → into_contiguous → try_fill.
+- Reordered impl blocks to: `clip` → `fill` → `to_contiguous` → `into_contiguous` → `try_fill`.
 - Standardized section header style to `---` format.
 - Simplified `#[expect(clippy::clone_on_copy)]` by removing `reason` attributes.
 - Improved `util/mod.rs` doc comment with operation table and intra-doc links.
