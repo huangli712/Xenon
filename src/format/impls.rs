@@ -31,20 +31,6 @@ where
     }
 }
 
-impl<S, D, A> fmt::Debug for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element + fmt::Debug,
-{
-    /// Writes a header line with shape, strides, dtype, and layout
-    /// metadata, followed by the tensor data rendered in logical
-    /// index order using Debug formatting for each element.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        format_tensor_debug(f, self, FormatConfig::default())
-    }
-}
-
 impl<S, D, A> fmt::Display for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -56,6 +42,20 @@ where
     /// marker. Truncation is controlled by [`FormatConfig::default()`].
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_display(f, self, FormatConfig::default())
+    }
+}
+
+impl<S, D, A> fmt::Debug for TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Debug,
+{
+    /// Writes a header line with shape, strides, dtype, and layout
+    /// metadata, followed by the tensor data rendered in logical
+    /// index order using Debug formatting for each element.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        format_tensor_debug(f, self, FormatConfig::default())
     }
 }
 
