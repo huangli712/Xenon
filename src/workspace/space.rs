@@ -249,7 +249,7 @@ impl Workspace {
     ///   (defensive; should be unreachable under correct `&mut self` semantics)
     /// - `XenonError::Workspace { GrowOverflow }` — `capacity * 1.5` overflows
     /// - `XenonError::Workspace { InvalidLayout | AllocFailed }` — allocator failure
-    pub fn ensure_capacity(&mut self, min_capacity: usize) -> crate::error::Result<()> {
+    pub fn ensure_capacity(&mut self, min_capacity: usize) -> Result<()> {
         if min_capacity <= self.capacity {
             return Ok(());
         }
