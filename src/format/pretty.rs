@@ -1,7 +1,8 @@
 use core::fmt::{self, Formatter, Write as _};
 
 use crate::dimension::Dimension;
-use crate::element::Element;
+use crate::element::{Element, ElementType};
+use crate::layout::LayoutState;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
@@ -63,6 +64,37 @@ where
     // - The resulting `&A` lifetime is tied to `'a`, which is bounded by the
     //   immutable borrow of `tensor`, preserving aliasing rules.
     unsafe { &*tensor.as_ptr().offset(rel_offset) }
+}
+
+/// dtype display name. Implements `22-output §6.2` line 587-604 via the
+/// closed `ElementType` enum (no `core::any::TypeId`, no `'static` bound,
+/// no fallback path).
+pub(crate) fn dtype_name<A: Element>() -> &'static str {
+    match A::ELEMENT_TYPE {
+        ElementType::I32 => "i32",
+        ElementType::I64 => "i64",
+        ElementType::F32 => "f32",
+        ElementType::F64 => "f64",
+        ElementType::Complex32 => "Complex<f32>",
+        ElementType::Complex64 => "Complex<f64>",
+        ElementType::Bool => "bool",
+    }
+}
+
+/// Layout category. Implements `22-output §5.4` line 258: distinguishes
+/// `f-contiguous`, `broadcast` (any zero stride), and `non-contiguous`
+/// (transposed / sliced without zero strides). Delegates to
+/// `TensorBase::layout_state()` for the authoritative classification.
+pub(crate) fn layout_name<S, D>(tensor: &TensorBase<S, D>) -> &'static str
+where
+    S: crate::storage::RawStorage,
+    D: Dimension,
+{
+    match tensor.layout_state() {
+        LayoutState::FContiguous => "f-contiguous",
+        LayoutState::BroadcastView => "broadcast",
+        LayoutState::NonContiguous => "non-contiguous",
+    }
 }
 
 // ── 1D Display / Debug ──
@@ -419,6 +451,30 @@ fn write_separator(
     } else {
         // Outer axis — always newline + indent by depth.
         outer_break(w, axis)
+    }
+}
+
+/// Internal Display dispatch: 0D → `Tensor0(...)`; 1D → `fmt_1d_display`;
+/// ND (n ≥ 2) → `fmt_nd_display`. Mirrors `22-output §5.3` line 235-249.
+pub(crate) fn format_tensor_display<S, D, A>(
+    f: &mut Formatter<'_>,
+    tensor: &TensorBase<S, D>,
+    config: FormatConfig,
+) -> fmt::Result
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Display,
+{
+    match tensor.ndim() {
+        0 => {
+            // §5.3 line 237-242 + Decision 3 line 793-799: explicit Tensor0(...) marker.
+            write!(f, "Tensor0(")?;
+            fmt_scalar_display(f, read_logical(tensor, &[]), config)?;
+            write!(f, ")")
+        },
+        1 => fmt_1d_display(f, tensor, config),
+        _ => fmt_nd_display(f, tensor, config),
     }
 }
 
