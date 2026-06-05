@@ -1,7 +1,7 @@
 use core::sync::atomic::Ordering;
 use std::borrow::Cow;
 
-use super::borrow::current_borrow_state;
+use super::workspace::current_borrow_state;
 use super::workspace::Workspace;
 use crate::error::{WorkspaceBorrowKind, WorkspaceErrorCategory, XenonError};
 

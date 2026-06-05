@@ -1,7 +1,7 @@
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use super::borrow::current_borrow_state;
+use super::workspace::current_borrow_state;
 use super::workspace::Workspace;
 use crate::error::{WorkspaceBorrowKind, XenonError};
 

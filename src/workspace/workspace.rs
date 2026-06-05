@@ -1,9 +1,12 @@
-use crate::error::{Result, WorkspaceErrorCategory};
+use crate::error::{Result, WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory, XenonError};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicU8;
 use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering;
 use std::borrow::Cow;
+
+use super::borrow::{WorkspaceBorrow, WorkspaceBorrowMut};
 
 /// Temporary aligned workspace for internal scratch buffers.
 ///
@@ -141,6 +144,103 @@ impl Drop for Workspace {
     }
 }
 
+// =============================================================================
+// borrow / borrow_mut on Workspace + diagnostic helper
+// =============================================================================
+
+/// Internal helper: read current borrow state in structured form for error
+/// reporting. Loads `borrow_state` and `split_count` with `Relaxed` because
+/// the loads are diagnostic-only — borrow safety is enforced by the CAS in
+/// `borrow()` and by `&mut self` in `borrow_mut`/`split_at_mut`/`ensure_capacity`.
+pub(crate) fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
+    let bs = ws.borrow_state.load(Ordering::Relaxed);
+    let sc = ws.split_count.load(Ordering::Relaxed);
+    match (bs, sc) {
+        (Workspace::BORROW_NONE, _) => WorkspaceBorrowState::None,
+        (Workspace::BORROW_READ, _) => WorkspaceBorrowState::Shared,
+        (Workspace::BORROW_EXCLUSIVE, 0) => WorkspaceBorrowState::Exclusive,
+        (Workspace::BORROW_EXCLUSIVE, count) => WorkspaceBorrowState::SplitActive { count },
+        _ => WorkspaceBorrowState::None,
+    }
+}
+
+impl Workspace {
+    /// Acquire the workspace for read-only inspection of the scratch region.
+    ///
+    /// Takes `&self`: at most one active read guard is enforced at runtime
+    /// by the internal `AtomicU8` state machine — multiple read guards are
+    /// mutually exclusive but do not require compile-time exclusivity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`XenonError::Workspace`] with
+    /// [`WorkspaceErrorCategory::BorrowConflict`] (`requested: Shared`) if
+    /// the workspace already has an active borrow (shared or exclusive). At
+    /// most one active read guard is allowed by design.
+    pub fn borrow(&self) -> crate::error::Result<WorkspaceBorrow<'_>> {
+        let prev = self.borrow_state.compare_exchange(
+            Self::BORROW_NONE,
+            Self::BORROW_READ,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        );
+        if prev.is_err() {
+            return Err(XenonError::workspace_borrow_conflict(
+                "Workspace::borrow",
+                WorkspaceBorrowKind::Shared,
+                current_borrow_state(self),
+            ));
+        }
+        Ok(WorkspaceBorrow {
+            ptr: self.ptr,
+            len: self.capacity,
+            workspace: self,
+        })
+    }
+
+    /// Mutably borrow the workspace.
+    ///
+    /// Takes `&mut self`: compile-time exclusivity makes "exclusive borrow
+    /// while another guard exists" a static type error. The internal
+    /// `AtomicU8` CAS still runs as defense-in-depth.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`XenonError::Workspace`] with
+    /// [`WorkspaceErrorCategory::BorrowConflict`] (`requested: Exclusive`) if
+    /// the internal `AtomicU8` CAS observes a non-`None` borrow state. In
+    /// practice this branch is unreachable while `&mut self` is held, but the
+    /// check remains as defense-in-depth.
+    pub fn borrow_mut(&mut self) -> crate::error::Result<WorkspaceBorrowMut<'_>> {
+        let prev = self.borrow_state.compare_exchange(
+            Self::BORROW_NONE,
+            Self::BORROW_EXCLUSIVE,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        );
+        if prev.is_err() {
+            return Err(XenonError::workspace_borrow_conflict(
+                "Workspace::borrow_mut",
+                WorkspaceBorrowKind::Exclusive,
+                current_borrow_state(self),
+            ));
+        }
+        Ok(WorkspaceBorrowMut {
+            ptr: self.ptr,
+            len: self.capacity,
+            workspace: self,
+        })
+    }
+
+    /// Crate-internal probe used by `expand.rs` (W9T6) to verify no residual
+    /// borrow state before reallocation. Uses `Acquire` to pair with the
+    /// `Release` stores performed by guard `Drop` impls.
+    #[expect(dead_code, reason = "defense-in-depth helper; W9T6 uses direct load")]
+    pub(crate) fn is_borrowed(&self) -> bool {
+        self.borrow_state.load(Ordering::Acquire) != Self::BORROW_NONE
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,4 +302,73 @@ mod tests {
         let ws = Workspace::new(1024, 64).expect("workspace for drop");
         drop(ws);
     }
+
+    #[test]
+    fn test_borrow_basic() {
+        let workspace = Workspace::new(64, 64).expect("64-byte workspace");
+        let mut guard = workspace.borrow().expect("immutable borrow");
+        let view = guard.as_maybe_uninit_slice();
+        assert_eq!(view.len(), 64);
+    }
+
+    #[test]
+    fn test_borrow_mut_basic() {
+        let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
+        let mut guard = workspace.borrow_mut().expect("mutable borrow");
+        let view = guard.as_maybe_uninit_slice();
+        assert_eq!(view.len(), 64);
+        // Write through the MaybeUninit view to demonstrate it is writable.
+        for slot in view.iter_mut() {
+            slot.write(0xAA);
+        }
+    }
+
+    #[test]
+    fn test_borrow_double_fails() {
+        let workspace = Workspace::new(64, 64).expect("64-byte workspace");
+        let _g1 = workspace.borrow().expect("first borrow");
+        // Second shared borrow must conflict — current design allows at most
+        // one active read guard.
+        assert!(workspace.borrow().is_err());
+    }
+
+    #[test]
+    fn test_borrow_after_drop() {
+        let workspace = Workspace::new(64, 64).expect("64-byte workspace");
+        {
+            let _g = workspace.borrow().expect("scoped borrow");
+        }
+        // Re-borrow after the previous guard is dropped must succeed.
+        assert!(workspace.borrow().is_ok());
+    }
+
+    #[test]
+    fn test_assume_init_requires_initialized_prefix() {
+        let mut workspace = Workspace::new(64, 64).expect("64-byte workspace");
+        let mut guard = workspace.borrow_mut().expect("mutable borrow");
+        // OOB request rejected with structured error rather than UB.
+        let err = unsafe { guard.assume_init_slice(128) };
+        assert!(err.is_err());
+        // Within bounds (caller takes responsibility for true initialization).
+        let ok = unsafe { guard.assume_init_slice(0) };
+        assert!(ok.is_ok());
+    }
 }
+
+/// `test_workspace_borrow_views_are_mutually_exclusive` is realized as a
+/// compile-fail doctest because the violation must be a *static* type error
+/// — `as_maybe_uninit_slice` and `assume_init_slice` both take `&mut self`,
+/// so safe code cannot hold both views from the same borrow at once.
+///
+/// ```compile_fail
+/// # use xenon::workspace::Workspace;
+/// let workspace = Workspace::new(64, 64).unwrap();
+/// let mut guard = workspace.borrow().unwrap();
+/// let a = guard.as_maybe_uninit_slice();
+/// // Second concurrent view from the same borrow — must fail to compile.
+/// let b = unsafe { guard.assume_init_slice(0) }.unwrap();
+/// let _ = (a, b);
+/// ```
+#[cfg(doctest)]
+struct ViewsMutuallyExclusiveDoctest;
+
