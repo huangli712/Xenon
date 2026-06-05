@@ -625,7 +625,9 @@ mod tests {
     /// Small 1D tensor renders the full contents in a single flat row.
     #[test]
     fn test_fmt_1d_full() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3))
+        };
         assert_eq!(
             fmt_1d_display_string(&tensor, FormatConfig::default()),
             "[1, 2, 3]"
