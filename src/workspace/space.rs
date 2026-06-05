@@ -232,14 +232,6 @@ impl Workspace {
         })
     }
 
-    /// Crate-internal probe to verify no residual borrow state before
-    /// reallocation. Uses `Acquire` to pair with the `Release` stores
-    /// performed by guard `Drop` impls.
-    #[expect(dead_code, reason = "defense-in-depth helper; ensure_capacity uses direct load")]
-    pub(crate) fn is_borrowed(&self) -> bool {
-        self.borrow_state.load(Ordering::Acquire) != Self::BORROW_NONE
-    }
-
     /// Ensure capacity is at least `min_capacity`.
     ///
     /// If current capacity is insufficient, a larger memory region is
