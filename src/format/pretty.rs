@@ -687,7 +687,10 @@ mod tests {
     #[test]
     fn test_fmt_2d_logical_order() {
         let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![1, 2, 3, 4, 5, 6, 7, 8, 9], Ix2(3, 3))
+            TensorBase::from_raw_vec_unchecked(
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+                Ix2(3, 3)
+            )
         };
         struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix2>);
         impl<'a> fmt::Display for Wrap<'a> {
@@ -709,7 +712,9 @@ mod tests {
     #[test]
     fn test_fmt_large_2d_truncated() {
         let data: Vec<i32> = (1..=10_000).collect();
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(data, Ix2(100, 100)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(data, Ix2(100, 100))
+        };
         struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix2>);
         impl<'a> fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
