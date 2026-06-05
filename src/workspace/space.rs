@@ -356,7 +356,7 @@ impl Workspace {
     pub fn split_at_mut(
         &mut self,
         mid: usize,
-    ) -> crate::error::Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>)> {
+    ) -> Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>)> {
         // 1. Bounds check FIRST — must not leave borrow_state in a partially
         //    transitioned state if mid is out of range.
         if mid > self.capacity {
@@ -368,15 +368,13 @@ impl Workspace {
         }
 
         // 2. CAS to acquire exclusive borrow.
-        if self
-            .borrow_state
+        if self.borrow_state
             .compare_exchange(
                 Self::BORROW_NONE,
                 Self::BORROW_EXCLUSIVE,
                 Ordering::Acquire,
                 Ordering::Relaxed,
-            )
-            .is_err()
+            ).is_err()
         {
             return Err(XenonError::workspace_borrow_conflict(
                 "Workspace::split_at_mut",
@@ -392,7 +390,9 @@ impl Workspace {
         let left_ptr = self.ptr;
         // SAFETY: mid <= capacity (checked above), so ptr + mid is within
         // the allocation.
-        let right_ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(mid)) };
+        let right_ptr = unsafe {
+            NonNull::new_unchecked(self.ptr.as_ptr().add(mid))
+        };
 
         Ok((
             SplitBorrowMut {
@@ -412,6 +412,7 @@ impl Workspace {
 }
 
 impl Drop for Workspace {
+    /// Deallocate the raw memory buffer using the original layout.
     fn drop(&mut self) {
         // SAFETY: layout was valid at allocation time and ptr is unchanged.
         unsafe {
