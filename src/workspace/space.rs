@@ -48,14 +48,19 @@ pub(crate) fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
 pub struct Workspace {
     /// Raw pointer to the start of the aligned allocation.
     pub(crate) ptr: NonNull<u8>,
+    
     /// Total byte length of the allocation.
     pub(crate) capacity: usize,
+    
     /// Allocation alignment in bytes.
     pub(crate) alignment: usize,
+    
     /// Borrow-state tag: `BORROW_NONE` / `BORROW_READ` / `BORROW_EXCLUSIVE`.
     pub(crate) borrow_state: AtomicU8,
+    
     /// Number of active split guards (ref-counted).
     pub(crate) split_count: AtomicUsize,
+    
     /// Negative auto-trait marker: `!Send + !Sync`.
     _not_send_sync: PhantomData<*mut ()>,
 }
@@ -63,9 +68,11 @@ pub struct Workspace {
 impl Workspace {
     /// Default allocation alignment (64 bytes — cache-line friendly).
     pub const DEFAULT_ALIGNMENT: usize = 64;
+    
     /// Minimum allowed alignment (8 bytes — required by the `Element` type
     /// set's alignment guarantees).
     pub const MIN_ALIGNMENT: usize = 8;
+    
     /// Default allocation capacity (4 KiB).
     pub const DEFAULT_CAPACITY: usize = 4096;
 
