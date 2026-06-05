@@ -6,9 +6,15 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- Consolidated all utility operations (clip, fill, try_fill, to_contiguous, into_contiguous) into single `impls.rs`.
+- Merged `clip` into `impls.rs` (via `contiguous.rs`).
+- Merged `fill` / `try_fill` into `impls.rs`.
+- Merged `to_contiguous` / `into_contiguous` into `impls.rs`.
+- Consolidated `util/` module from 4 files to 1 (`impls.rs` + `mod.rs`).
 - `into_contiguous` repack path now iterates logical F-order instead of using `into_owned()`, correctly stripping tail padding and non-zero offset.
-- Reorganized `impls.rs` with free functions at top, section headers, and consistent impl block ordering.
+- Extracted free functions to top of `impls.rs` (`validate_clip_bounds`, `fill_try_read_only_err`, `is_canonical_f_contiguous_owned`).
+- Reordered impl blocks: clip → fill → to_contiguous → into_contiguous → try_fill.
+- Standardized section header style and simplified `#[expect(clippy::clone_on_copy)]` attributes.
+- Improved `util/mod.rs` doc comment with operation table and intra-doc links.
 
 ### Removed
 
