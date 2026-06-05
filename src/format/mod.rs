@@ -19,7 +19,6 @@
 //! - Custom formatter registration.
 
 mod config;
-mod debug;
 mod display;
 mod pretty;
 mod writer;
