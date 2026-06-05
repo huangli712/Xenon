@@ -188,6 +188,13 @@ where
     ///
     /// Reuses backing storage when the input is already a canonical
     /// F-contiguous `Owned` tensor. Otherwise falls back to `into_owned()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if F-order strides cannot be derived from the shape. This
+    /// cannot happen on the reuse path because the canonical predicate
+    /// already verified `is_f_contiguous()`, which implies the shape's
+    /// element count fits `usize`.
     pub fn into_contiguous(self) -> Tensor<A, D> {
         if is_canonical_f_contiguous_owned(&self) {
             let dim = self.raw_dim();
