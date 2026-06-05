@@ -1,5 +1,6 @@
 //! `TensorDisplay` wrapper and `Display` impl — configurable tensor formatting
-//! adapter constructed via [`TensorBase::display_with`](crate::tensor::TensorBase::display_with).
+//! adapter constructed via `TensorBase::display_with`.
+
 use core::fmt;
 
 use crate::dimension::Dimension;
@@ -12,7 +13,7 @@ use super::pretty::format_tensor_display;
 
 /// A wrapper that formats a tensor with a specific [`FormatConfig`].
 ///
-/// Constructed via [`TensorBase::display_with`]. Implements [`core::fmt::Display`]
+/// Constructed via `TensorBase::display_with`. Implements `core::fmt::Display`
 /// so it can be used directly in `format!` / `write!` macros.
 #[expect(
     missing_debug_implementations,
