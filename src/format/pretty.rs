@@ -758,7 +758,9 @@ mod tests {
     /// should produce 4 identical logical rows.
     #[test]
     fn test_fmt_broadcast_view() {
-        let base = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
+        let base = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3))
+        };
         let view = unsafe { make_view(&base, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
         struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
         impl<'a> fmt::Display for Wrap<'a> {
