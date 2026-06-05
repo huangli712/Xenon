@@ -370,7 +370,13 @@ where
     let truncated = total > config.threshold;
     let mut indices: Vec<usize> = Vec::with_capacity(tensor.ndim());
     let mut w = LineWriter::new(f);
-    let visible = walk_axis_debug(&mut w, tensor, config, 0, &mut indices, truncated)?;
+    let visible = walk_axis_debug(
+        &mut w,
+        tensor,
+        config,
+        0,
+        &mut indices, truncated
+    )?;
 
     if truncated {
         let omitted = total.saturating_sub(visible);
@@ -417,7 +423,14 @@ where
                 write_separator(w, axis, tensor.ndim(), config)?;
             }
             indices.push(i);
-            visible += walk_axis_display(w, tensor, config, axis + 1, indices, truncated)?;
+            visible += walk_axis_display(
+                w,
+                tensor,
+                config,
+                axis + 1,
+                indices,
+                truncated
+            )?;
             indices.pop();
         }
     } else {
@@ -427,7 +440,14 @@ where
                 write_separator(w, axis, tensor.ndim(), config)?;
             }
             indices.push(i);
-            visible += walk_axis_display(w, tensor, config, axis + 1, indices, truncated)?;
+            visible += walk_axis_display(
+                w,
+                tensor,
+                config,
+                axis + 1,
+                indices,
+                truncated
+            )?;
             indices.pop();
         }
         // Ellipsis marker between head and tail along this axis.
@@ -437,7 +457,14 @@ where
         for i in (axis_len - edge)..axis_len {
             write_separator(w, axis, tensor.ndim(), config)?;
             indices.push(i);
-            visible += walk_axis_display(w, tensor, config, axis + 1, indices, truncated)?;
+            visible += walk_axis_display(
+                w,
+                tensor,
+                config,
+                axis + 1,
+                indices,
+                truncated
+            )?;
             indices.pop();
         }
     }
