@@ -2,7 +2,6 @@ use core::fmt::{self, Formatter, Write as _};
 
 use crate::dimension::Dimension;
 use crate::element::{Element, element_type_of};
-use crate::layout::LayoutState;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
@@ -53,8 +52,7 @@ where
         tensor.shape(),
         tensor.strides(),
         element_type_of::<A>().name(),
-        layout_name(tensor),
-    )?;
+            tensor.layout_state().as_str(),    )?;
     // Data section: route through W26T3 debug helpers.
     // §5.6 line 391 — Debug data omits Display's trailing shape suffix.
     match tensor.ndim() {
@@ -122,22 +120,6 @@ where
     // - The resulting `&A` lifetime is tied to `'a`, which is bounded by the
     //   immutable borrow of `tensor`, preserving aliasing rules.
     unsafe { &*tensor.as_ptr().offset(rel_offset) }
-}
-
-/// Layout category. Implements `22-output §5.4` line 258: distinguishes
-/// `f-contiguous`, `broadcast` (any zero stride), and `non-contiguous`
-/// (transposed / sliced without zero strides). Delegates to
-/// `TensorBase::layout_state()` for the authoritative classification.
-pub(crate) fn layout_name<S, D>(tensor: &TensorBase<S, D>) -> &'static str
-where
-    S: crate::storage::RawStorage,
-    D: Dimension,
-{
-    match tensor.layout_state() {
-        LayoutState::FContiguous => "f-contiguous",
-        LayoutState::BroadcastView => "broadcast",
-        LayoutState::NonContiguous => "non-contiguous",
-    }
 }
 
 // ── 1D Display / Debug ──

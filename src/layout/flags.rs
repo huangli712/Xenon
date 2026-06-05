@@ -9,11 +9,6 @@ use super::aligned::is_aligned;
 use super::contiguous::is_f_contiguous;
 use super::strides::Strides;
 
-/// 8-bit packed layout flags: F_CONTIGUOUS (bit 0), ALIGNED (bit 2),
-/// HAS_ZERO_STRIDE (bit 3). Bits 1, 4-7 are reserved.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LayoutFlags(u8);
-
 /// Classification of tensor memory layout contiguity status.
 ///
 /// Variants are mutually exclusive. `BroadcastView` applies only when
@@ -30,6 +25,22 @@ pub enum LayoutState {
     /// Non-empty view with at least one zero-stride axis (broadcast).
     BroadcastView,
 }
+
+impl LayoutState {
+    /// Returns a human-readable label for the layout classification.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LayoutState::FContiguous => "f-contiguous",
+            LayoutState::BroadcastView => "broadcast",
+            LayoutState::NonContiguous => "non-contiguous",
+        }
+    }
+}
+
+/// 8-bit packed layout flags: F_CONTIGUOUS (bit 0), ALIGNED (bit 2),
+/// HAS_ZERO_STRIDE (bit 3). Bits 1, 4-7 are reserved.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LayoutFlags(u8);
 
 impl LayoutFlags {
     /// Empty flags — all bits cleared.
