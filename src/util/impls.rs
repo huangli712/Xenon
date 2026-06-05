@@ -382,12 +382,13 @@ mod tests {
         assert_eq!(values, vec![2.0, 2.0, 3.0, 4.0, 5.0, 5.0]);
     }
 
-    // -- fill tests --
+    // --- fill tests ---------------------------------------------------------
 
     /// fill writes the given value to all elements.
     #[test]
     fn test_fill_basic() {
-        let mut tensor = Tensor1::<f64>::zeros([3]).expect("zeros(valid shape)");
+        let mut tensor = Tensor1::<f64>::zeros([3])
+            .expect("zeros(valid shape)");
         tensor.fill(2.5);
         assert_eq!(
             tensor.iter().copied().collect::<Vec<_>>(),
