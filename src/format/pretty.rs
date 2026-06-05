@@ -661,7 +661,9 @@ mod tests {
     /// An empty 1D tensor renders as `[]`.
     #[test]
     fn test_fmt_1d_empty() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(Vec::<i32>::new(), Ix1(0)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(Vec::<i32>::new(), Ix1(0))
+        };
         assert_eq!(
             fmt_1d_display_string(&tensor, FormatConfig::default()),
             "[]"
