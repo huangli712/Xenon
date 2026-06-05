@@ -9,6 +9,26 @@ use std::borrow::Cow;
 use super::borrow::{WorkspaceBorrow, WorkspaceBorrowMut};
 use super::split::SplitBorrowMut;
 
+// =============================================================================
+// borrow / borrow_mut on Workspace + diagnostic helper
+// =============================================================================
+
+/// Internal helper: read current borrow state in structured form for error
+/// reporting. Loads `borrow_state` and `split_count` with `Relaxed` because
+/// the loads are diagnostic-only — borrow safety is enforced by the CAS in
+/// `borrow()` and by `&mut self` in `borrow_mut`/`split_at_mut`/`ensure_capacity`.
+pub(crate) fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
+    let bs = ws.borrow_state.load(Ordering::Relaxed);
+    let sc = ws.split_count.load(Ordering::Relaxed);
+    match (bs, sc) {
+        (Workspace::BORROW_NONE, _) => WorkspaceBorrowState::None,
+        (Workspace::BORROW_READ, _) => WorkspaceBorrowState::Shared,
+        (Workspace::BORROW_EXCLUSIVE, 0) => WorkspaceBorrowState::Exclusive,
+        (Workspace::BORROW_EXCLUSIVE, count) => WorkspaceBorrowState::SplitActive { count },
+        _ => WorkspaceBorrowState::None,
+    }
+}
+
 /// Temporary aligned workspace for internal scratch buffers.
 ///
 /// # Fields
@@ -132,9 +152,7 @@ impl Workspace {
     pub fn with_default_capacity() -> Result<Self> {
         Self::new(Self::DEFAULT_CAPACITY, Self::DEFAULT_ALIGNMENT)
     }
-}
 
-impl Workspace {
     /// Acquire the workspace for read-only inspection of the scratch region.
     ///
     /// Takes `&self`: at most one active read guard is enforced at runtime
@@ -397,26 +415,6 @@ impl Drop for Workspace {
                 std::alloc::Layout::from_size_align_unchecked(self.capacity, self.alignment);
             std::alloc::dealloc(self.ptr.as_ptr(), layout);
         }
-    }
-}
-
-// =============================================================================
-// borrow / borrow_mut on Workspace + diagnostic helper
-// =============================================================================
-
-/// Internal helper: read current borrow state in structured form for error
-/// reporting. Loads `borrow_state` and `split_count` with `Relaxed` because
-/// the loads are diagnostic-only — borrow safety is enforced by the CAS in
-/// `borrow()` and by `&mut self` in `borrow_mut`/`split_at_mut`/`ensure_capacity`.
-pub(crate) fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
-    let bs = ws.borrow_state.load(Ordering::Relaxed);
-    let sc = ws.split_count.load(Ordering::Relaxed);
-    match (bs, sc) {
-        (Workspace::BORROW_NONE, _) => WorkspaceBorrowState::None,
-        (Workspace::BORROW_READ, _) => WorkspaceBorrowState::Shared,
-        (Workspace::BORROW_EXCLUSIVE, 0) => WorkspaceBorrowState::Exclusive,
-        (Workspace::BORROW_EXCLUSIVE, count) => WorkspaceBorrowState::SplitActive { count },
-        _ => WorkspaceBorrowState::None,
     }
 }
 
