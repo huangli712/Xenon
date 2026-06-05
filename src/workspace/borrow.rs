@@ -8,9 +8,9 @@ use crate::error::{
     XenonError,
 };
 
-/// Mutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
+/// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
-pub struct WorkspaceBorrowMut<'a> {
+pub struct WorkspaceBorrow<'a> {
     pub(crate) ptr: NonNull<u8>,
     pub(crate) len: usize,
     pub(crate) workspace: &'a Workspace,
@@ -88,9 +88,9 @@ impl<'a> Drop for WorkspaceBorrow<'a> {
     }
 }
 
-/// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
+/// Mutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
-pub struct WorkspaceBorrow<'a> {
+pub struct WorkspaceBorrowMut<'a> {
     pub(crate) ptr: NonNull<u8>,
     pub(crate) len: usize,
     pub(crate) workspace: &'a Workspace,
