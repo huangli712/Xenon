@@ -116,14 +116,17 @@ where
     write!(w, "{value:?}")
 }
 
-// -- Logical element access --
+// --- Logical element access -------------------------------------------------
 
 /// Read the element at logical index `indices` (length must equal `ndim()`).
 ///
 /// Returns a reference obtained via raw pointer arithmetic. Callers must
 /// ensure each index is in range; the pretty-printing pipeline only
 /// generates in-range coordinates.
-pub(crate) fn read_logical<'a, S, D, A>(tensor: &'a TensorBase<S, D>, indices: &[usize]) -> &'a A
+pub(crate) fn read_logical<'a, S, D, A>(
+    tensor: &'a TensorBase<S, D>,
+    indices: &[usize]
+) -> &'a A
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -140,16 +143,18 @@ where
     // SAFETY:
     // - `tensor.as_ptr()` returns `storage_base.add(tensor.offset())`,
     //   pointing at the first logical element.
+    //
     // - The pretty-printing pipeline only produces indices satisfying
     //   `indices[i] < shape[i]`, so `rel_offset` stays within the
     //   contiguous span of the logical view. Broadcast zero-strides alias
     //   back to valid positions, never out-of-bounds.
+    //
     // - The resulting `&A` lifetime is tied to `'a`, which is bounded by
     //   the immutable borrow of `tensor`, preserving aliasing rules.
     unsafe { &*tensor.as_ptr().offset(rel_offset) }
 }
 
-// -- 1D Display / Debug --
+// --- 1D Display / Debug -----------------------------------------------------
 
 /// Entry point for 1D Display formatting.
 ///
