@@ -622,6 +622,28 @@ mod tests {
         s
     }
 
+    /// Construct a tensor view by manually assembling raw parts (shape
+    /// and strides).
+    unsafe fn make_view<A: Element>(
+        base: &TensorBase<Owned<A>, Ix2>,
+        shape: Ix2,
+        strides: Strides<Ix2>,
+    ) -> TensorBase<ViewRepr<'_, A>, Ix2> {
+        // SAFETY: shape and strides are manually constructed from the
+        // original tensor's data and known geometric transformations
+        // (transpose or broadcast), keeping all logical indices within
+        // the valid storage range.
+        unsafe {
+            TensorBase::from_raw_parts(
+                base.as_ptr(),
+                base.storage_len(),
+                shape,
+                strides,
+                0
+            ).expect("valid layout from manually constructed strides")
+        }
+    }
+
     /// Small 1D tensor renders the full contents in a single flat row.
     #[test]
     fn test_fmt_1d_full() {
@@ -731,28 +753,6 @@ mod tests {
         assert!(text.contains("9900, 10000"), "text = {text:?}");
     }
 
-    /// Construct a tensor view by manually assembling raw parts (shape
-    /// and strides).
-    unsafe fn make_view<A: Element>(
-        base: &TensorBase<Owned<A>, Ix2>,
-        shape: Ix2,
-        strides: Strides<Ix2>,
-    ) -> TensorBase<ViewRepr<'_, A>, Ix2> {
-        // SAFETY: shape and strides are manually constructed from the
-        // original tensor's data and known geometric transformations
-        // (transpose or broadcast), keeping all logical indices within
-        // the valid storage range.
-        unsafe {
-            TensorBase::from_raw_parts(
-                base.as_ptr(),
-                base.storage_len(),
-                shape,
-                strides,
-                0
-            ).expect("valid layout from manually constructed strides")
-        }
-    }
-
     /// Broadcast view must render in logical index order, not physical
     /// zero-stride aliasing. A `[1,3]` source broadcast to `[4,3]`
     /// should produce 4 identical logical rows.
@@ -761,7 +761,9 @@ mod tests {
         let base = unsafe {
             TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3))
         };
-        let view = unsafe { make_view(&base, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
+        let view = unsafe {
+            make_view(&base, Ix2(4, 3), Strides::new(Ix2(0, 1)))
+        };
         struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
         impl<'a> fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
