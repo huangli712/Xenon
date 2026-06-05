@@ -444,7 +444,7 @@ mod tests {
             let raw = guard.as_maybe_uninit_slice();
             let (head, _) = raw.split_at_mut(16);
             let f64s: &mut [MaybeUninit<f64>] = unsafe {
-                std::slice::from_raw_parts_mut(
+                slice::from_raw_parts_mut(
                     head.as_mut_ptr() as *mut MaybeUninit<f64>,
                     2,
                 )
