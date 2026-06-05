@@ -416,9 +416,11 @@ impl Drop for Workspace {
     fn drop(&mut self) {
         // SAFETY: layout was valid at allocation time and ptr is unchanged.
         unsafe {
-            let layout =
-                std::alloc::Layout::from_size_align_unchecked(self.capacity, self.alignment);
-            std::alloc::dealloc(self.ptr.as_ptr(), layout);
+            let layout = Layout::from_size_align_unchecked(
+                self.capacity,
+                self.alignment
+            );
+            dealloc(self.ptr.as_ptr(), layout);
         }
     }
 }
@@ -430,7 +432,8 @@ mod tests {
     /// Verify default workspace has correct capacity and alignment.
     #[test]
     fn test_workspace_new_default() {
-        let ws = Workspace::with_default_capacity().expect("default workspace");
+        let ws = Workspace::with_default_capacity()
+            .expect("default workspace");
         assert_eq!(ws.capacity(), Workspace::DEFAULT_CAPACITY);
         assert_eq!(ws.alignment(), Workspace::DEFAULT_ALIGNMENT);
     }
