@@ -1,5 +1,6 @@
-//! `Debug` and `Display` trait implementations for [`TensorBase`](crate::tensor::TensorBase),
-//! plus the `display_with` constructor method.
+//! `Debug` and `Display` trait implementations for `TensorBase`, plus the
+//! `display_with` constructor method.
+
 use core::fmt;
 
 use crate::dimension::Dimension;
@@ -17,9 +18,10 @@ where
     D: Dimension,
     A: Element,
 {
-    /// Returns a display wrapper that formats this tensor with the given config.
+    /// Returns a display wrapper that formats this tensor with the
+    /// given config.
     ///
-    /// The returned [`TensorDisplay`] implements [`core::fmt::Display`], so
+    /// The returned `TensorDisplay` implements `core::fmt::Display`, so
     /// it can be used directly in `format!` / `write!` macros.
     pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
         TensorDisplay {
