@@ -27,6 +27,10 @@ impl<'a, 'b> LineWriter<'a, 'b> {
 impl fmt::Write for LineWriter<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.inner.write_str(s)?;
+        // If the inner Formatter fails, column is left inconsistent — the
+        // Formatter may have partially written before erroring and there is
+        // no rollback API. This is the same tradeoff every fmt::Write impl
+        // makes.
         // Reset column after the last '\n'; otherwise accumulate.
         match s.rfind('\n') {
             Some(p) => self.column = s[p + 1..].chars().count(),
@@ -93,6 +97,13 @@ mod tests {
     }
 
     #[test]
+    fn test_line_writer_only_newline() {
+        let (output, col) = run_probe(|w| w.write_str("\n"));
+        assert_eq!(output, "\n");
+        assert_eq!(col, 0);
+    }
+
+    #[test]
     fn test_line_writer_newline_in_middle() {
         let (output, col) = run_probe(|w| w.write_str("abc\ndef"));
         assert_eq!(output, "abc\ndef");
@@ -143,6 +154,15 @@ mod tests {
     fn test_line_writer_unicode_after_newline() {
         let (output, col) = run_probe(|w| w.write_str("x\n你好"));
         assert_eq!(output, "x\n你好");
+        assert_eq!(col, 2);
+    }
+
+    #[test]
+    fn test_line_writer_combining_chars_scalar_count() {
+        // Column counts Unicode scalar values, not grapheme clusters.
+        // Decomposed 'é' = 'e' + combining acute: 2 scalars, 1 grapheme.
+        let (output, col) = run_probe(|w| w.write_str("e\u{301}"));
+        assert_eq!(output, "e\u{301}");
         assert_eq!(col, 2);
     }
 }
