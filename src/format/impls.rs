@@ -73,7 +73,12 @@ mod tests {
     /// (shape, strides, dtype, layout) and data section.
     #[test]
     fn test_debug_tensor() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4], Ix2(2, 2)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![1_i32, 2, 3, 4],
+                Ix2(2, 2)
+            )
+        };
         let text = format!("{:?}", tensor);
         assert!(text.contains("shape=[2, 2]"), "text = {text:?}");
         assert!(text.contains("strides="), "text = {text:?}");
