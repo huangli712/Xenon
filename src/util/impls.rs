@@ -399,8 +399,8 @@ mod tests {
     /// try_fill on a read-only view returns [`XenonError::InvalidStorageMode`].
     #[test]
     fn test_try_fill_read_only_returns_error() {
-        let tensor =
-            Tensor1::from_shape_vec([2], vec![1_i32, 2]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([2], vec![1_i32, 2])
+            .expect("from_shape_vec matching shape");
         let mut view = tensor.view();
         let error = view.try_fill(7).expect_err("view is read-only");
         assert!(matches!(error, XenonError::InvalidStorageMode { .. }));
@@ -409,8 +409,8 @@ mod tests {
     /// try_fill on read-only storage returns InvalidStorageMode.
     #[test]
     fn test_try_fill_read_only_returns_read_only_storage() {
-        let tensor =
-            Tensor1::from_shape_vec([2], vec![1_i32, 2]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([2], vec![1_i32, 2])
+            .expect("from_shape_vec matching shape");
         let mut view = tensor.view();
         let error = view.try_fill(7).expect_err("view is read-only");
         assert!(matches!(error, XenonError::InvalidStorageMode { .. }));
