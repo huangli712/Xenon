@@ -1,6 +1,6 @@
 //! Column-tracking `Formatter` wrapper for the pretty-printing pipeline.
 
-use core::fmt::{Formatter, Write, Result};
+use core::fmt::{self, Formatter, Write};
 
 /// Tracks the current character-column position on the most recent line.
 ///
@@ -40,7 +40,7 @@ impl Write for LineWriter<'_, '_> {
     /// If the inner formatter fails partway through writing, the column
     /// may be left inconsistent — there is no rollback API in `fmt::Write`.
     /// This is the same trade-off every `Write` implementation makes.
-    fn write_str(&mut self, s: &str) -> Result {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
         self.inner.write_str(s)?;
         // Reset column after the last '\n'; otherwise accumulate.
         match s.rfind('\n') {
@@ -61,14 +61,14 @@ mod tests {
     /// formatted output string and the final column position.
     fn run_probe(
         ops: impl Fn(&mut LineWriter<'_, '_>
-    ) -> Result) -> (String, usize) {
+    ) -> fmt::Result) -> (String, usize) {
         struct Probe<F> {
             ops: F,
             column: Cell<usize>,
         }
         //
-        impl<F: Fn(&mut LineWriter<'_, '_>) -> Result> Display for Probe<F> {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        impl<F: Fn(&mut LineWriter<'_, '_>) -> fmt::Result> Display for Probe<F> {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
                 let mut w = LineWriter::new(f);
                 (self.ops)(&mut w)?;
                 self.column.set(w.column());
