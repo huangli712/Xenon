@@ -187,6 +187,8 @@ mod tests {
         assert_eq!(check::<bool>(), "bool");
     }
 
+    /// Verifies that a 1D tensor displays as a comma-separated list
+    /// inside square brackets.
     #[test]
     fn test_display_tensor() {
         let tensor = unsafe {
@@ -199,7 +201,9 @@ mod tests {
     /// explicit `Tensor0(...)` marker, not just the bare value.
     #[test]
     fn test_fmt_zero_dim() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0)
+        };
         assert_eq!(format!("{}", tensor), "Tensor0(42)");
     }
 
