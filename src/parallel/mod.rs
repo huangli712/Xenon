@@ -1,12 +1,10 @@
-//! Parallel backend module. Only compiled with `--features parallel`.
-//! See `docs/design/09-parallel.md` for the full design.
+//! Parallel backend module. Only compiled with the `parallel` feature.
 //!
 //! # Compile-fail test: bool does not implement Numeric (par_sum / par_dot)
 //!
-//! 03-element §5.2 line 707-721: `bool` implements `Element` only, NOT
-//! `Numeric`. W15T4 `par_sum` and W15T5 `par_dot` require `A: Numeric`,
-//! so any attempt to call them on a `bool` tensor must fail to compile.
-//! This satisfies 09-parallel.md §8.7 ("type boundary / compile-time test").
+//! `bool` implements `Element` but not `Numeric`, while `par_sum` and
+//! `par_dot` require `A: Numeric`. Calling them on a `bool` tensor must
+//! therefore fail to compile:
 //!
 //! ```compile_fail
 //! use xenon::tensor::TensorBase;
@@ -24,33 +22,41 @@
 //! // ^^^^^^^ trait bound `bool: Numeric` is not satisfied
 //! ```
 
+/// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
 #[cfg(feature = "parallel")]
 pub(crate) mod binary;
+/// Chunk-size computation for parallel splitting.
 #[cfg(feature = "parallel")]
 pub(crate) mod chunks;
+/// Parallel dot product (`par_dot`).
 #[cfg(feature = "parallel")]
 pub(crate) mod dot;
+/// Parallel reduction skeleton (`par_reduce_impl`).
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;
+/// Parallel sum reduction (`par_sum`).
 #[cfg(feature = "parallel")]
 pub(crate) mod sum;
+/// Single-input parallel element-wise maps (`par_map`, `par_map_checked`).
 #[cfg(feature = "parallel")]
 pub(crate) mod unary;
 
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
     use crate::dimension::{Dimension, Ix1};
+    use crate::dispatch::ThresholdTestGuard;
     use crate::dispatch::{
         ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
-    use crate::dispatch::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::parallel::sum::par_sum;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
 
+    /// Force the parallel path and return its guard, panicking if the
+    /// parallel path was not selected.
     fn acquire_parallel_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
     where
         S: Storage<Elem = A>,
@@ -64,6 +70,7 @@ mod feature_matrix_tests {
         g.expect("Parallel implies Some(guard)")
     }
 
+    /// Build a 1-D F-order `f64` view over `data` for test inputs.
     unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
         // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
         unsafe {
@@ -78,6 +85,7 @@ mod feature_matrix_tests {
         }
     }
 
+    /// Single-worker and multi-worker `par_sum` agree with the serial sum.
     #[test]
     fn test_parallel_single_and_multi_worker_results_agree() {
         let _threshold_guard = ThresholdTestGuard::new();

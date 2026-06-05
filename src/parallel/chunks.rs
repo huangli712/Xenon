@@ -1,10 +1,10 @@
 //! Chunk-size computation for parallel splitting.
 //!
-//! W15: compute_safe_chunks — per-chunk element count for rayon splitting.
+//! Provides [`compute_safe_chunks`], the per-chunk element count used to
+//! split work across rayon workers.
 
 /// Compute a per-chunk element count for parallel splitting.
 ///
-/// Algorithm (09-parallel §6.3):
 /// - `MIN_CHUNK = 1024`           : lower bound to amortize rayon scheduling.
 /// - `TARGET_CHUNKS_PER_WORKER=4` : give work-stealing slack for tail balance.
 /// - `total == 0`        → returns 1 (dummy; no work will be scheduled).
@@ -30,18 +30,19 @@ pub(crate) fn compute_safe_chunks(total: usize, num_workers: usize) -> usize {
 mod chunk_tests {
     use super::compute_safe_chunks;
 
+    /// `total == 0` collapses to a single dummy chunk.
     #[test]
     fn test_compute_safe_chunks_empty_returns_one() {
-        // 09-parallel §6.3 line 350: total == 0 → 1 (dummy)
         assert_eq!(compute_safe_chunks(0, 8), 1);
     }
 
+    /// When there are no more elements than workers, each worker gets one.
     #[test]
     fn test_compute_safe_chunks_few_elements_returns_one() {
-        // 09-parallel §6.3 line 353: total <= workers → 1
         assert_eq!(compute_safe_chunks(5, 8), 1);
     }
 
+    /// A computed chunk below `MIN_CHUNK` is raised to the 1024 floor.
     #[test]
     fn test_compute_safe_chunks_respects_min_chunk() {
         // total=10_000, workers=8 → ceil(10_000 / 32) = 313 < MIN_CHUNK(1024)
@@ -49,6 +50,7 @@ mod chunk_tests {
         assert_eq!(compute_safe_chunks(10_000, 8), 1024);
     }
 
+    /// A large total yields a chunk above the `MIN_CHUNK` floor.
     #[test]
     fn test_compute_safe_chunks_large_total_overrides_min() {
         // total=1_000_000, workers=8 → ceil(1_000_000 / 32) = 31_250 > 1024

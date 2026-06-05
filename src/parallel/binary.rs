@@ -1,8 +1,8 @@
 //! Dual-input parallel element-wise maps.
 //!
-//! - `par_zip` — infallible dual-input broadcast element-wise parallel map.
-//! - `par_zip_checked` (W15T3) — fallible variant: the closure returns
-//!   `Result`, with error + panic propagation.
+//! - [`par_zip`] — infallible dual-input broadcast element-wise map.
+//! - [`par_zip_checked`] — fallible variant whose closure returns `Result`,
+//!   with error + panic propagation.
 
 use std::borrow::Cow;
 
@@ -25,8 +25,7 @@ use crate::tensor::{Tensor, TensorBase};
 ///
 /// Panics if `output_dim.checked_size()` overflows `usize`, or if either
 /// input is not broadcast-compatible with `output_dim`. Both are caller
-/// (math layer) preconditions; a violation is an internal bug
-/// (09-parallel 6.3 line 422, 30-dispatch debug_assert policy).
+/// (math layer) preconditions; a violation is an internal bug.
 #[cfg(feature = "parallel")]
 #[allow(
     dead_code,
@@ -74,10 +73,9 @@ where
 
     // Broadcast-compatible read-only views: math layer ensures both inputs
     // already broadcast against output_dim.
-    let lhs_view = lhs.broadcast_to(output_dim.clone()).expect(
-        "math layer ensures broadcast compatibility; violation is an internal bug \
-         (09-parallel 6.3 line 422, 30-dispatch debug_assert policy)",
-    );
+    let lhs_view = lhs
+        .broadcast_to(output_dim.clone())
+        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
     let rhs_view = rhs
         .broadcast_to(output_dim.clone())
         .expect("math layer ensures broadcast compatibility; violation is an internal bug");
@@ -118,13 +116,20 @@ where
         })
         .collect_into_vec(&mut output_data);
 
-    // SAFETY (07-tensor 5 from_raw_vec_unchecked precondition):
+    // SAFETY: from_raw_vec_unchecked requires the Vec length and F-order
+    // layout to match the dimension.
     //   - output_data.len() == total == output_dim.checked_size() (validated above)
     //   - F-order alignment: (0..total).into_par_iter() + collect_into_vec
-    //     preserves index -> slot mapping (09-parallel 6.7 line 504-505)
+    //     preserves index -> slot mapping
     unsafe { Tensor::from_raw_vec_unchecked(output_data, output_dim.clone()) }
 }
 
+/// Fallible dual-input broadcast element-wise parallel map.
+///
+/// Like `par_zip` but the closure may return `Err`, in which case at least
+/// one error is propagated and no result tensor is produced. Worker panics
+/// propagate as panics. Results are buffered per element and aggregated in
+/// logical order on the success path.
 #[cfg(feature = "parallel")]
 pub(crate) fn par_zip_checked<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
@@ -164,10 +169,9 @@ where
 
     // Broadcast-compatible read-only views: math layer ensures both inputs
     // already broadcast against output_dim.
-    let lhs_view = lhs.broadcast_to(output_dim.clone()).expect(
-        "math layer ensures broadcast compatibility; violation is an internal bug \
-         (09-parallel 6.3 line 422, 30-dispatch debug_assert policy)",
-    );
+    let lhs_view = lhs
+        .broadcast_to(output_dim.clone())
+        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
     let rhs_view = rhs
         .broadcast_to(output_dim.clone())
         .expect("math layer ensures broadcast compatibility; violation is an internal bug");
@@ -213,10 +217,11 @@ where
         succeeded.push(r?);
     }
 
-    // SAFETY (07-tensor 5 from_raw_vec_unchecked precondition):
+    // SAFETY: from_raw_vec_unchecked requires the Vec length and F-order
+    // layout to match the dimension.
     //   - succeeded.len() == total == output_dim.checked_size() (validated above)
     //   - F-order alignment: (0..total).into_par_iter() + collect_into_vec
-    //     preserves index -> slot mapping (09-parallel 6.7 line 504-505)
+    //     preserves index -> slot mapping
     Ok(unsafe { Tensor::from_raw_vec_unchecked(succeeded, output_dim.clone()) })
 }
 
@@ -224,16 +229,16 @@ where
 mod tests {
     use super::*;
     use crate::dimension::Ix1;
+    use crate::dispatch::ThresholdTestGuard;
     use crate::dispatch::{
         ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
-    use crate::dispatch::ThresholdTestGuard;
     use crate::layout::Strides;
     use crate::tensor::TensorView;
 
-    // ── W15T3 tests ──
-
+    /// Force the parallel path and return its guard, asserting the parallel
+    /// path was actually selected.
     fn acquire_parallel_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
     where
         S: Storage<Elem = A>,
@@ -245,7 +250,7 @@ mod tests {
         g.expect("Parallel implies Some(guard)")
     }
 
-    /// SAFETY helper: build a 1-D F-order view over a Vec.
+    /// Build a 1-D F-order view over `data` for test inputs.
     unsafe fn view_1d<'a, A: Element>(data: &'a [A]) -> TensorView<'a, A, Ix1> {
         // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
         unsafe {
@@ -260,6 +265,7 @@ mod tests {
         }
     }
 
+    /// `par_zip_checked` matches the serial element-wise add.
     #[test]
     fn test_par_zip_checked_matches_serial_add() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -280,6 +286,7 @@ mod tests {
         reset_parallel_threshold();
     }
 
+    /// `par_zip_checked` broadcasts a length-1 rhs against the lhs.
     #[test]
     fn test_par_zip_checked_broadcast_rhs_scalar() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -313,8 +320,7 @@ mod tests {
         reset_parallel_threshold();
     }
 
-    // ── par_zip tests ──
-
+    /// `par_zip` matches the serial element-wise add.
     #[test]
     fn test_par_zip_matches_serial_add() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -334,6 +340,7 @@ mod tests {
         reset_parallel_threshold();
     }
 
+    /// `par_zip` broadcasts a length-1 rhs against the lhs.
     #[test]
     fn test_par_zip_broadcast_rhs_scalar() {
         let _threshold_guard = ThresholdTestGuard::new();

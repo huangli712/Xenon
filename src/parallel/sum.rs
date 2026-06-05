@@ -1,6 +1,6 @@
 //! Parallel sum reduction.
 //!
-//! W15T4: par_sum — parallel sum reduction.
+//! Provides [`par_sum`], the parallel sum of all elements in a tensor.
 
 use crate::dimension::Dimension;
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
@@ -9,9 +9,10 @@ use crate::parallel::reduce::par_reduce_impl;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
-/// Parallel sum reduction.
+/// Parallel sum of all elements in a tensor.
 ///
-/// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
+/// Public (rather than `pub(crate)`) so integration tests can exercise the
+/// kernel directly; re-exported through the crate prelude.
 #[cfg(feature = "parallel")]
 pub fn par_sum<S, A, D>(
     tensor: &TensorBase<S, D>,
@@ -30,20 +31,19 @@ where
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix1};
+    use crate::dispatch::ThresholdTestGuard;
     use crate::dispatch::{
         ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
-    use crate::dispatch::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
 
-    /// Acquire a guard from select_exec_path. Uses `set_parallel_threshold(1)`
-    /// to force the parallel path. If IN_PARALLEL TLS is contaminated from a
-    /// prior test, the guard will be None — tests that need a real parallel
-    /// path must still get Some(guard), so we assert it.
+    /// Force the parallel path (via `set_parallel_threshold(1)`) and return
+    /// its guard. Panics if a contaminated `IN_PARALLEL` TLS prevents the
+    /// parallel path from being selected, since these tests require it.
     fn acquire_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
     where
         S: Storage<Elem = A>,
@@ -64,6 +64,7 @@ mod tests {
         g.expect("Parallel implies Some(guard)")
     }
 
+    /// Build a 1-D F-order `f64` view over `data` for test inputs.
     unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
         // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
         unsafe {
@@ -78,8 +79,8 @@ mod tests {
         }
     }
 
-    // ── W15T4 tests ──
-
+    /// `par_sum` matches the serial sum and returns the identity (0) for an
+    /// empty tensor.
     #[test]
     fn test_par_sum_serial_match_and_empty_identity() {
         let _threshold_guard = ThresholdTestGuard::new();

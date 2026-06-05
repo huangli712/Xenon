@@ -1,6 +1,6 @@
 //! Parallel dot product.
 //!
-//! W15T5: par_dot — parallel dot product.
+//! Provides [`par_dot`], the parallel inner product of two 1-D tensors.
 
 use std::borrow::Cow;
 
@@ -14,7 +14,9 @@ use crate::tensor::TensorBase;
 
 /// Parallel dot product of two 1-D tensors.
 ///
-/// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
+/// Computes `sum(conj(lhs_i) * rhs_i)`. Public (rather than `pub(crate)`) so
+/// integration tests can exercise the kernel directly; re-exported through
+/// the crate prelude.
 ///
 /// # Errors
 ///
@@ -126,20 +128,19 @@ where
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix1, Ix2};
+    use crate::dispatch::ThresholdTestGuard;
     use crate::dispatch::{
         ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
         set_parallel_threshold,
     };
-    use crate::dispatch::ThresholdTestGuard;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
 
-    /// Acquire a guard from select_exec_path. Uses `set_parallel_threshold(1)`
-    /// to force the parallel path. If IN_PARALLEL TLS is contaminated from a
-    /// prior test, the guard will be None — tests that need a real parallel
-    /// path must still get Some(guard), so we assert it.
+    /// Force the parallel path (via `set_parallel_threshold(1)`) and return
+    /// its guard. Panics if a contaminated `IN_PARALLEL` TLS prevents the
+    /// parallel path from being selected, since these tests require it.
     fn acquire_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
     where
         S: Storage<Elem = A>,
@@ -160,6 +161,7 @@ mod tests {
         g.expect("Parallel implies Some(guard)")
     }
 
+    /// Build a 1-D F-order `f64` view over `data` for test inputs.
     unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
         // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
         unsafe {
@@ -174,8 +176,8 @@ mod tests {
         }
     }
 
-    // ── W15T5 tests ──
-
+    /// `par_dot` matches the serial inner product and returns the identity
+    /// (0) for empty inputs.
     #[test]
     fn test_par_dot_matches_serial_and_empty_identity() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -209,6 +211,8 @@ mod tests {
         reset_parallel_threshold();
     }
 
+    /// `par_dot` rejects shape mismatch, non-1-D rank, and broadcast views
+    /// with the appropriate errors.
     #[test]
     fn test_par_dot_error_cases() {
         let _threshold_guard = ThresholdTestGuard::new();
