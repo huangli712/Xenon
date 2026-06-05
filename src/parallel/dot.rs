@@ -8,7 +8,7 @@ use crate::dimension::Dimension;
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::element::Numeric;
 use crate::error::{InvalidArgumentKind, XenonError};
-use crate::parallel::compute_safe_chunks;
+use crate::parallel::chunks::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 

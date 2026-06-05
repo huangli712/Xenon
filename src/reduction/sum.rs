@@ -116,7 +116,7 @@ where
             // (30-dispatch.md §5.3 + Wave 10 audit memo); we construct the default
             // strategy locally and pass by reference.
             let strategy = ParallelExecStrategy::auto();
-            crate::parallel::reduce::par_sum(tensor, &strategy, guard)
+            crate::parallel::sum::par_sum(tensor, &strategy, guard)
         },
         #[cfg(feature = "simd")]
         crate::dispatch::ExecPath::Simd => {

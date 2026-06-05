@@ -207,7 +207,7 @@ pub use crate::parallel::unary::par_map;
 pub use crate::parallel::dot::par_dot;
 
 #[cfg(feature = "parallel")]
-pub use crate::parallel::reduce::par_sum;
+pub use crate::parallel::sum::par_sum;
 
 #[cfg(test)]
 mod tests {
