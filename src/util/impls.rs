@@ -13,7 +13,7 @@ use crate::storage::{Owned, ViewRepr, ViewMutRepr, ArcRepr};
 use crate::storage::{RawStorage, Storage, StorageMut, StorageIntoOwned};
 use crate::tensor::{StorageKind, StorageSemantics, Tensor, TensorBase};
 
-// ── Free functions ──
+// --- Free functions ---------------------------------------------------------
 
 /// Validate that `min <= max`; reject NaN bounds.
 ///
@@ -79,9 +79,7 @@ where
     t.storage_len() == logical
 }
 
-// ── impl blocks ──
-
-// ── clip ──
+// --- clip -------------------------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -100,10 +98,7 @@ where
     ///
     /// Returns [`XenonError::InvalidArgument`] when either bound is `NaN`
     /// or `min > max`.
-    #[expect(
-        clippy::clone_on_copy,
-        reason = "generic over Clone (not Copy); .clone() is correct generic pattern"
-    )]
+    #[expect(clippy::clone_on_copy)]
     pub fn clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError> {
         validate_clip_bounds(&min, &max)?;
         let data: Vec<A> = self
@@ -122,7 +117,7 @@ where
     }
 }
 
-// ── fill ──
+// --- fill -------------------------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -134,10 +129,7 @@ where
     ///
     /// Stride-aware: iterates via `iter_mut()` so only logical elements
     /// are written, regardless of layout or internal padding.
-    #[expect(
-        clippy::clone_on_copy,
-        reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
-    )]
+    #[expect(clippy::clone_on_copy)]
     pub fn fill(&mut self, value: A) {
         for slot in self.iter_mut() {
             *slot = value.clone();
@@ -145,7 +137,7 @@ where
     }
 }
 
-// ── to_contiguous ──
+// --- to_contiguous ----------------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -175,7 +167,7 @@ where
     }
 }
 
-// ── into_contiguous ──
+// -- into_contiguous --
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -211,7 +203,7 @@ where
     }
 }
 
-// ── try_fill ──
+// -- try_fill --
 
 impl<D, A> TensorBase<Owned<A>, D>
 where
@@ -295,14 +287,14 @@ where
     }
 }
 
-// ── Unit tests ──
+// -- Unit tests --
 
 #[cfg(test)]
 mod tests {
     use crate::error::XenonError;
     use crate::tensor::{StorageKind, Tensor1, Tensor2};
 
-    // ── clip tests ──
+    // -- clip tests --
 
     /// Values outside [min, max] are clamped; values within pass through.
     #[test]
@@ -379,7 +371,7 @@ mod tests {
         assert_eq!(values, vec![2.0, 2.0, 3.0, 4.0, 5.0, 5.0]);
     }
 
-    // ── fill tests ──
+    // -- fill tests --
 
     /// fill writes the given value to all elements.
     #[test]
@@ -456,7 +448,7 @@ mod tests {
         }
     }
 
-    // ── contiguous tests ──
+    // -- contiguous tests --
 
     /// to_contiguous on an F-contiguous input preserves element values.
     #[test]
