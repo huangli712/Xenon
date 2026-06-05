@@ -743,8 +743,13 @@ mod tests {
         // (transpose or broadcast), keeping all logical indices within
         // the valid storage range.
         unsafe {
-            TensorBase::from_raw_parts(base.as_ptr(), base.storage_len(), shape, strides, 0)
-                .expect("valid layout from manually constructed strides")
+            TensorBase::from_raw_parts(
+                base.as_ptr(),
+                base.storage_len(),
+                shape,
+                strides,
+                0
+            ).expect("valid layout from manually constructed strides")
         }
     }
 
