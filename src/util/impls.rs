@@ -460,7 +460,7 @@ mod tests {
         }
     }
 
-    // -- contiguous tests --
+    // --- contiguous tests ---------------------------------------------------
 
     /// to_contiguous on an F-contiguous input preserves element values.
     #[test]
@@ -478,8 +478,10 @@ mod tests {
     /// to_contiguous on a transposed input produces F-order output.
     #[test]
     fn test_to_contiguous_transposed_becomes_f() {
-        let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
-            .expect("from_shape_vec matching shape");
+        let tensor = Tensor2::<i32>::from_shape_vec(
+            [2, 3],
+            vec![1, 2, 3, 4, 5, 6]
+        ).expect("from_shape_vec matching shape");
         let contiguous = tensor.transpose().to_contiguous();
         assert!(contiguous.is_f_contiguous());
         assert_eq!(contiguous.shape(), &[3, 2]);
@@ -531,8 +533,10 @@ mod tests {
     /// to_contiguous on a non-contiguous tensor produces canonical F-order.
     #[test]
     fn test_to_contiguous_non_contiguous() {
-        let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
-            .expect("from_shape_vec matching shape");
+        let tensor = Tensor2::<i32>::from_shape_vec(
+            [2, 3],
+            vec![1, 2, 3, 4, 5, 6]
+        ).expect("from_shape_vec matching shape");
         let transposed = tensor.transpose();
         assert!(!transposed.is_f_contiguous());
         let contiguous = transposed.to_contiguous();
