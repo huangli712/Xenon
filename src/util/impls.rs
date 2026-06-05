@@ -299,14 +299,15 @@ mod tests {
     use crate::error::XenonError;
     use crate::tensor::{StorageKind, Tensor1, Tensor2};
 
-    // -- clip tests --
+    // --- clip tests ---------------------------------------------------------
 
     /// Values outside [min, max] are clamped; values within pass through.
     #[test]
     fn test_clip_basic() {
         let tensor = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0])
             .expect("from_shape_vec matching shape");
-        let clipped = tensor.clip(0.0, 2.0).expect("valid clip bounds");
+        let clipped = tensor.clip(0.0, 2.0)
+            .expect("valid clip bounds");
         let values: Vec<f64> = clipped.iter().copied().collect();
         assert_eq!(values, vec![0.0, 0.5, 1.0, 2.0, 2.0]);
     }
@@ -316,7 +317,8 @@ mod tests {
     fn test_clip_no_change() {
         let tensor = Tensor1::from_shape_vec([3], vec![0.5, 1.0, 1.5])
             .expect("from_shape_vec matching shape");
-        let clipped = tensor.clip(0.0, 2.0).expect("valid clip bounds");
+        let clipped = tensor.clip(0.0, 2.0)
+            .expect("valid clip bounds");
         let values: Vec<f64> = clipped.iter().copied().collect();
         assert_eq!(values, vec![0.5, 1.0, 1.5]);
     }
