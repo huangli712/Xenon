@@ -60,7 +60,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::{Ix1, Ix2};
+    use crate::complex::Complex;
+    use crate::dimension::{Ix0, Ix1, Ix2};
     use crate::layout::Strides;
     use crate::element::element_type_of;
 
@@ -145,5 +146,65 @@ mod tests {
         assert_eq!(check::<f32>(), "f32");
         assert_eq!(check::<f64>(), "f64");
         assert_eq!(check::<bool>(), "bool");
+    }
+
+    #[test]
+    fn test_display_tensor() {
+        let tensor =
+            unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3)) };
+        assert_eq!(format!("{}", tensor), "[1, 2, 3]");
+    }
+
+    /// Verifies that a scalar tensor (zero dimensions) renders with the
+    /// explicit `Tensor0(...)` marker, not just the bare value.
+    #[test]
+    fn test_fmt_zero_dim() {
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
+        assert_eq!(format!("{}", tensor), "Tensor0(42)");
+    }
+
+    /// Verifies that Complex values with a positive imaginary part render
+    /// with a `+` separator (e.g. `1+2j`).
+    #[test]
+    fn test_display_complex_f64() {
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![
+                    Complex::new(1.0_f64, 2.0_f64),
+                    Complex::new(3.0_f64, 4.0_f64),
+                ],
+                Ix1(2),
+            )
+        };
+        assert_eq!(format!("{}", tensor), "[1+2j, 3+4j]");
+    }
+
+    /// Verifies that Complex values with a negative imaginary part render
+    /// with a `-` separator (e.g. `1-2j`).
+    #[test]
+    fn test_display_complex_negative_imag() {
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![
+                    Complex::new(1.0_f64, -2.0_f64),
+                    Complex::new(-3.0_f64, -4.0_f64),
+                ],
+                Ix1(2),
+            )
+        };
+        assert_eq!(format!("{}", tensor), "[1-2j, -3-4j]");
+    }
+
+    /// Verifies that f64 special values (NaN, ±∞) pass through the Display
+    /// pipeline correctly — `f64::Display` produces `"NaN"`, `"inf"`, `"-inf"`.
+    #[test]
+    fn test_display_nan_inf_f64() {
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![f64::NAN, f64::INFINITY, f64::NEG_INFINITY],
+                Ix1(3),
+            )
+        };
+        assert_eq!(format!("{}", tensor), "[NaN, inf, -inf]");
     }
 }
