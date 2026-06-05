@@ -176,7 +176,8 @@ mod tests {
         }
     }
 
-    /// split_at_mut() at boundaries: mid=0 (empty left) and mid=self.len (empty right).
+    /// split_at_mut() at boundaries: mid=0 (empty left) and mid=self.len
+    /// (empty right).
     #[test]
     fn test_split_at_mut_boundary() {
         let mut ws = Workspace::new(100, 64).expect("workspace");
