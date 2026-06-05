@@ -12,6 +12,22 @@ use super::pretty::{
     fmt_1d_debug, fmt_nd_debug, fmt_scalar_debug,
     dtype_name, layout_name, format_tensor_display,
 };
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element,
+{
+    /// Returns a display wrapper that formats this tensor with the given config.
+    pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
+        TensorDisplay {
+            tensor: self,
+            config,
+        }
+    }
+}
+
 impl<S, D, A> fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -50,21 +66,6 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_display(f, self, FormatConfig::default())
-    }
-}
-
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element,
-{
-    /// Returns a display wrapper that formats this tensor with the given config.
-    pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
-        TensorDisplay {
-            tensor: self,
-            config,
-        }
     }
 }
 
