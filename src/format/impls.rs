@@ -91,7 +91,12 @@ mod tests {
     /// trailing shape suffix (` ... (N omitted)  shape=[...]`).
     #[test]
     fn test_debug_truncated_does_not_repeat_shape_suffix() {
-        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![0_i32; 1001], Ix1(1001)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![0_i32; 1001],
+                Ix1(1001)
+            )
+        };
         let text = format!("{:?}", tensor);
         assert!(text.contains("shape=[1001]"), "header missing; text = {text:?}");
         assert!(!text.contains("elements omitted)  shape="), "Debug must not repeat Display's shape suffix; text = {text:?}");
