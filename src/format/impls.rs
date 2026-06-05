@@ -59,6 +59,17 @@ where
     config: FormatConfig,
 }
 
+impl<'a, S, D, A> fmt::Display for TensorDisplay<'a, S, D, A>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        format_tensor_display(f, self.tensor, self.config)
+    }
+}
+
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -85,16 +96,7 @@ where
     }
 }
 
-impl<'a, S, D, A> fmt::Display for TensorDisplay<'a, S, D, A>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element + fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        format_tensor_display(f, self.tensor, self.config)
-    }
-}
+
 #[cfg(test)]
 mod tests {
     use super::*;
