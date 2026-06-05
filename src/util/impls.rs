@@ -513,8 +513,8 @@ mod tests {
         assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
     }
 
-    /// into_contiguous repacks when the input has tail padding
-    /// (storage length exceeds shape product).
+    /// into_contiguous repacks when the input has tail padding (storage
+    /// length exceeds shape product).
     #[test]
     fn test_into_contiguous_repacks_noncanonical_f_contiguous_owned() {
         use crate::dimension::Ix1;
@@ -526,8 +526,13 @@ mod tests {
         let owned = Owned::from_vec(vec![1_i32, 2, 3, 4, 99])
             .expect("from_vec");
         let shape = Ix1(4);
-        let strides = Strides::f_contiguous(&shape).expect("f_contiguous strides");
-        let flags = compute_layout_flags::<i32, Ix1>(&shape, &strides, owned.as_ptr());
+        let strides = Strides::f_contiguous(&shape)
+            .expect("f_contiguous strides");
+        let flags = compute_layout_flags::<i32, Ix1>(
+            &shape,
+            &strides,
+            owned.as_ptr()
+        );
         let padded = unsafe {
             TensorBase::new_unchecked(owned, shape, strides, 0, flags, false)
         };
