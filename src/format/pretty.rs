@@ -243,8 +243,7 @@ where
 
 /// Entry point for 1D Debug formatting.
 ///
-/// Wraps the formatter in a [`LineWriter`] and delegates to
-/// `fmt_1d_debug_into`.
+/// Wraps the formatter in a [`LineWriter`] and delegates to `fmt_1d_debug_into`.
 pub(crate) fn fmt_1d_debug<S, D, A>(
     f: &mut Formatter<'_>,
     tensor: &TensorBase<S, D>,
@@ -311,7 +310,7 @@ where
     }
 }
 
-// -- ND Display / Debug --
+// --- ND Display / Debug -----------------------------------------------------
 
 /// ND Display rendering.
 ///
@@ -332,7 +331,13 @@ where
     let truncated = total > config.threshold;
     let mut indices: Vec<usize> = Vec::with_capacity(tensor.ndim());
     let mut w = LineWriter::new(f);
-    let visible = walk_axis_display(&mut w, tensor, config, 0, &mut indices, truncated)?;
+    let visible = walk_axis_display(
+        &mut w,
+        tensor,
+        config,
+        0,
+        &mut indices, truncated
+    )?;
 
     if truncated {
         let omitted = total.saturating_sub(visible);
