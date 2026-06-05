@@ -65,7 +65,7 @@ mod tests {
             column: std::cell::Cell::new(0),
         };
         let mut s = String::new();
-        write!(&mut s, "{}", probe).unwrap();
+        let _ = write!(&mut s, "{}", probe);
         (s, probe.column.get())
     }
 
