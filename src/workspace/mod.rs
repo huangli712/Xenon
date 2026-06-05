@@ -44,7 +44,7 @@ pub use split::SplitBorrowMut;
 pub use workspace::Workspace;
 
 #[cfg(test)]
-mod compile_time_negative_assertions {
+mod tests {
     //! Compile-time verification that workspace types are `!Send + !Sync`.
 
     use super::{SplitBorrowMut, Workspace, WorkspaceBorrow, WorkspaceBorrowMut};
@@ -62,52 +62,4 @@ mod compile_time_negative_assertions {
     assert_not_impl_all!(SplitBorrowMut<'static>: Sync);
 }
 
-// ── typed-slice rejection tests ──
-#[cfg(test)]
-mod tests {
-    use crate::error::{TypedViewRejection, WorkspaceErrorCategory};
-    use crate::workspace::Workspace;
 
-    /// Exercise the reachable `TypedViewRejection` paths and the
-    /// `SplitOutOfBounds` rejection for typed views.
-    ///
-    /// **Note on `AlignmentMismatch`**: this branch cannot be reached via
-    /// the public API when the workspace satisfies `alignment >= MIN_ALIGNMENT = 8`
-    /// and Element types all have `align_of::<T>() <= 8` (bool / i32 / i64 /
-    /// f32 / f64 / Complex<f32> / Complex<f64> under `#[repr(C)]`). The
-    /// branch is instead covered by property tests under `tests/property/`
-    /// which construct misaligned sub-regions through `#[cfg(test)]`
-    /// visibility hooks.
-    #[test]
-    fn test_typed_slice_rejections() {
-        // Allocate a workspace aligned to 8 bytes (the minimum allowed).
-        let mut ws = Workspace::new(64, 8).expect("64-byte workspace");
-        let mut guard = ws.borrow_mut().expect("mutable borrow in test");
-
-        // TypedByteLengthOverflow rejection (f64 implements Element).
-        let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(usize::MAX) };
-        match result {
-            Err(crate::error::XenonError::Workspace {
-                category:
-                    WorkspaceErrorCategory::TypedViewRejected {
-                        detail: TypedViewRejection::TypedByteLengthOverflow { .. },
-                    },
-                ..
-            }) => {},
-            other => {
-                panic!("expected TypedByteLengthOverflow, got {:?}", other)
-            },
-        }
-
-        // SplitOutOfBounds (byte_len > workspace capacity) is reported via
-        // the `SplitOutOfBounds` category, not `TypedViewRejected`.
-        let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(100) };
-        assert!(matches!(
-            result,
-            Err(crate::error::XenonError::Workspace {
-                category: WorkspaceErrorCategory::SplitOutOfBounds { .. },
-                ..
-            })
-        ));
-    }
-}

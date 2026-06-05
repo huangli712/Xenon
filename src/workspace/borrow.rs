@@ -312,6 +312,7 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::error::{TypedViewRejection, WorkspaceErrorCategory};
     use crate::workspace::Workspace;
     use std::mem::MaybeUninit;
 
@@ -379,6 +380,39 @@ mod tests {
         let view = result.expect("typed slice within capacity");
         assert_eq!(view.len(), 4);
         view[0].write(1.5);
+    }
+
+    /// TypedByteLengthOverflow and SplitOutOfBounds rejections for typed views.
+    #[test]
+    fn test_workspace_borrow_mut_typed_slice_rejections() {
+        let mut ws = Workspace::new(64, 8).expect("64-byte workspace");
+        let mut guard = ws.borrow_mut().expect("mutable borrow in test");
+
+        // TypedByteLengthOverflow rejection (f64 implements Element).
+        let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(usize::MAX) };
+        match result {
+            Err(crate::error::XenonError::Workspace {
+                category:
+                    WorkspaceErrorCategory::TypedViewRejected {
+                        detail: TypedViewRejection::TypedByteLengthOverflow { .. },
+                    },
+                ..
+            }) => {},
+            other => {
+                panic!("expected TypedByteLengthOverflow, got {:?}", other)
+            },
+        }
+
+        // SplitOutOfBounds (byte_len > workspace capacity) is reported via
+        // the `SplitOutOfBounds` category, not `TypedViewRejected`.
+        let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(100) };
+        assert!(matches!(
+            result,
+            Err(crate::error::XenonError::Workspace {
+                category: WorkspaceErrorCategory::SplitOutOfBounds { .. },
+                ..
+            })
+        ));
     }
 
     /// `assume_init_typed_slice` returns a valid typed mutable view.
