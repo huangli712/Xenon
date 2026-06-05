@@ -84,7 +84,10 @@ mod tests {
         assert!(text.contains("strides="), "text = {text:?}");
         assert!(text.contains("dtype=i32"), "text = {text:?}");
         assert!(text.contains("layout=f-contiguous"), "text = {text:?}");
-        assert!(text.contains("[1, 3]") || text.contains("[1, 2]"), "text = {text:?}");
+        assert!(
+            text.contains("[1, 3]") || text.contains("[1, 2]"),
+            "text = {text:?}"
+        );
     }
 
     /// Verifies that Debug truncation does NOT append the Display-only
@@ -98,8 +101,14 @@ mod tests {
             )
         };
         let text = format!("{:?}", tensor);
-        assert!(text.contains("shape=[1001]"), "header missing; text = {text:?}");
-        assert!(!text.contains("elements omitted)  shape="), "Debug must not repeat Display's shape suffix; text = {text:?}");
+        assert!(
+            text.contains("shape=[1001]"),
+            "header missing; text = {text:?}"
+        );
+        assert!(
+            !text.contains("elements omitted)  shape="),
+            "Debug must not repeat Display's shape suffix; text = {text:?}"
+        );
     }
 
     /// Construct a tensor view via `from_raw_parts` with manually specified
