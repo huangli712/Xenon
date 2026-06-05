@@ -507,7 +507,14 @@ where
                 write_separator(w, axis, tensor.ndim(), config)?;
             }
             indices.push(i);
-            visible += walk_axis_debug(w, tensor, config, axis + 1, indices, truncated)?;
+            visible += walk_axis_debug(
+                w,
+                tensor,
+                config,
+                axis + 1,
+                indices,
+                truncated
+            )?;
             indices.pop();
         }
     } else {
@@ -516,7 +523,14 @@ where
                 write_separator(w, axis, tensor.ndim(), config)?;
             }
             indices.push(i);
-            visible += walk_axis_debug(w, tensor, config, axis + 1, indices, truncated)?;
+            visible += walk_axis_debug(
+                w,
+                tensor,
+                config,
+                axis + 1,
+                indices,
+                truncated
+            )?;
             indices.pop();
         }
         write_separator(w, axis, tensor.ndim(), config)?;
@@ -524,7 +538,14 @@ where
         for i in (axis_len - edge)..axis_len {
             write_separator(w, axis, tensor.ndim(), config)?;
             indices.push(i);
-            visible += walk_axis_debug(w, tensor, config, axis + 1, indices, truncated)?;
+            visible += walk_axis_debug(
+                w,
+                tensor,
+                config,
+                axis + 1,
+                indices,
+                truncated
+            )?;
             indices.pop();
         }
     }
@@ -537,6 +558,7 @@ where
 /// - **Outer axes** (non-innermost): always emit `,\n` followed by
 ///   indentation proportional to the current axis depth, producing
 ///   Numpy-style nested matrix layout.
+///
 /// - **Innermost axis** (`axis + 1 == ndim`): emits `, ` by default.
 ///   When the current column has reached or exceeded
 ///   [`FormatConfig::line_width`], soft-wraps at this element boundary
@@ -575,18 +597,19 @@ fn write_separator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::Ix1;
+    use crate::dimension::{Ix1, Ix2};
     use crate::layout::Strides;
+    use crate::storage::{Owned, ViewRepr};
 
     /// Internal helper: invoke `fmt_1d_display` via a type that implements
     /// `Display`, returning the formatted string.
     fn fmt_1d_display_string<A: Element + core::fmt::Display>(
-        tensor: &TensorBase<crate::storage::Owned<A>, crate::dimension::Ix1>,
+        tensor: &TensorBase<Owned<A>, Ix1>,
         config: FormatConfig,
     ) -> String {
         let mut s = String::new();
         struct Wrap<'a, A: Element>(
-            &'a TensorBase<crate::storage::Owned<A>, crate::dimension::Ix1>,
+            &'a TensorBase<Owned<A>, Ix1>,
             FormatConfig,
         );
         impl<'a, A: Element + core::fmt::Display> core::fmt::Display for Wrap<'a, A> {
@@ -652,11 +675,10 @@ mod tests {
     /// physical `[1..9]` with shape `[3,3]` → rows `[1,4,7]`, `[2,5,8]`, `[3,6,9]`.
     #[test]
     fn test_fmt_2d_logical_order() {
-        use crate::dimension::Ix2;
         let tensor = unsafe {
             TensorBase::from_raw_vec_unchecked(vec![1, 2, 3, 4, 5, 6, 7, 8, 9], Ix2(3, 3))
         };
-        struct Wrap<'a>(&'a TensorBase<crate::storage::Owned<i32>, Ix2>);
+        struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
@@ -675,10 +697,9 @@ mod tests {
     /// elements are present and the outer suffix reports 9964 omitted.
     #[test]
     fn test_fmt_large_2d_truncated() {
-        use crate::dimension::Ix2;
         let data: Vec<i32> = (1..=10_000).collect();
         let tensor = unsafe { TensorBase::from_raw_vec_unchecked(data, Ix2(100, 100)) };
-        struct Wrap<'a>(&'a TensorBase<crate::storage::Owned<i32>, Ix2>);
+        struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
@@ -697,10 +718,10 @@ mod tests {
     /// Construct a tensor view by manually assembling raw parts (shape
     /// and strides).
     unsafe fn make_view<A: Element>(
-        base: &TensorBase<crate::storage::Owned<A>, crate::dimension::Ix2>,
-        shape: crate::dimension::Ix2,
-        strides: Strides<crate::dimension::Ix2>,
-    ) -> TensorBase<crate::storage::ViewRepr<'_, A>, crate::dimension::Ix2> {
+        base: &TensorBase<Owned<A>, Ix2>,
+        shape: Ix2,
+        strides: Strides<Ix2>,
+    ) -> TensorBase<ViewRepr<'_, A>, Ix2> {
         // SAFETY: shape and strides are manually constructed from the
         // original tensor's data and known geometric transformations
         // (transpose or broadcast), keeping all logical indices within
@@ -716,10 +737,9 @@ mod tests {
     /// should produce 4 identical logical rows.
     #[test]
     fn test_fmt_broadcast_view() {
-        use crate::dimension::Ix2;
         let base = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
         let view = unsafe { make_view(&base, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
-        struct Wrap<'a>(&'a TensorBase<crate::storage::ViewRepr<'a, i32>, crate::dimension::Ix2>);
+        struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
@@ -734,14 +754,13 @@ mod tests {
     /// physical F-order storage order.
     #[test]
     fn test_fmt_transposed_view() {
-        use crate::dimension::Ix2;
         // Source: shape=[2,3] F-order, data=[1..6]
         //   logical = [[1,3,5], [2,4,6]]
         // Transposed to [3,2]: logical = [[1,2], [3,4], [5,6]]
         let base =
             unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
         let view = unsafe { make_view(&base, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
-        struct Wrap<'a>(&'a TensorBase<crate::storage::ViewRepr<'a, i32>, crate::dimension::Ix2>);
+        struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
@@ -763,7 +782,7 @@ mod tests {
         let tensor = unsafe {
             TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6, 7, 8], Ix3(2, 2, 2))
         };
-        struct Wrap<'a>(&'a TensorBase<crate::storage::Owned<i32>, Ix3>);
+        struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix3>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
