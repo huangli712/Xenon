@@ -45,9 +45,7 @@ where
     D: Dimension,
     A: Element + fmt::Debug,
 {
-    /// Manual impl: `#[derive(Debug)]` would add wrong bounds
-    /// (`S: Debug, D: Debug, A: Debug`); `TensorBase`'s `Debug` actually
-    /// requires `A: Element + fmt::Debug`, mirrored here.
+    /// Formats the wrapper as `TensorDisplay { tensor: …, config: … }`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TensorDisplay")
             .field("tensor", &self.tensor)
