@@ -1,4 +1,5 @@
 //! Column-tracking `Formatter` wrapper for the pretty-printing pipeline.
+
 use core::fmt::{self, Formatter};
 
 /// Tracks the current character-column position on the most recent line.
