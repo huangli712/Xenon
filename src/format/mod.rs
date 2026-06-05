@@ -2,11 +2,11 @@
 //!
 //! | Module | Role |
 //! |--------|------|
-//! | `config` | [`FormatConfig`][FormatConfig] — edge items, threshold, precision, line width. |
-//! | `display` | [`TensorDisplay`][TensorDisplay] — custom-config `Display` adapter. |
-//! | `impls` | `Display` + `Debug` trait impls on [`TensorBase`][crate::tensor::TensorBase]. |
+//! | `config` | [`FormatConfig`](crate::format::FormatConfig) — edge items, threshold, precision, line width. |
+//! | `display` | [`TensorDisplay`](crate::format::TensorDisplay) — custom-config `Display` adapter. |
+//! | `impls` | `Display` + `Debug` trait impls on [`TensorBase`](crate::tensor::TensorBase). |
 //! | `pretty` | Core formatting pipeline — scalar, 1D, and recursive ND walkers. |
-//! | `writer` | [`LineWriter`][crate::format::writer::LineWriter] — column tracker for soft-wrap. |
+//! | `writer` | Column-tracking `LineWriter` for soft-wrap decisions. |
 
 mod config;
 mod display;
