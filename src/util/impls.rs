@@ -507,12 +507,39 @@ mod tests {
         assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
     }
 
-    /// into_contiguous repacks non-canonical (padded/offset) input
-    /// (pending constructor).
+    /// into_contiguous repacks when the input has tail padding
+    /// (storage length exceeds shape product).
     #[test]
-    #[ignore = "needs non-canonical owned constructor (tail padding / non-zero offset, W6+W8)"]
     fn test_into_contiguous_repacks_noncanonical_f_contiguous_owned() {
-        todo!("activate after padding-aware owned constructor lands (W6+W8)");
+        use crate::dimension::Ix1;
+        use crate::layout::{Strides, compute_layout_flags};
+        use crate::storage::{Owned, RawStorage};
+        use crate::tensor::TensorBase;
+
+        // Owned storage with 5 elements, but shape [4] has product 4.
+        let owned = Owned::from_vec(vec![1_i32, 2, 3, 4, 99])
+            .expect("from_vec");
+        let shape = Ix1(4);
+        let strides = Strides::f_contiguous(&shape).expect("f_contiguous strides");
+        let flags = compute_layout_flags::<i32, Ix1>(&shape, &strides, owned.as_ptr());
+        // SAFETY: strides are F-order for shape [4]; owned storage holds 5
+        // elements so the logical access range [0..4] is in bounds.
+        let padded = unsafe {
+            TensorBase::new_unchecked(owned, shape, strides, 0, flags, false)
+        };
+        assert!(padded.is_f_contiguous());
+        assert_eq!(padded.storage_kind(), StorageKind::Owned);
+        // Tail padding: storage_len (5) != product(shape) (4)
+        assert_ne!(padded.storage_len(), padded.len());
+
+        let canonical = padded.into_contiguous();
+        assert!(canonical.is_f_contiguous());
+        assert_eq!(canonical.storage_kind(), StorageKind::Owned);
+        assert_eq!(canonical.storage_len(), canonical.len());
+        assert_eq!(
+            canonical.iter().copied().collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
     }
 
     /// into_contiguous repacks shared (Arc) input into owned F-order.
