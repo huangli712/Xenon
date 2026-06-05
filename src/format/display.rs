@@ -15,10 +15,6 @@ use super::pretty::format_tensor_display;
 ///
 /// Constructed via `TensorBase::display_with`. Implements `core::fmt::Display`
 /// so it can be used directly in `format!` / `write!` macros.
-#[expect(
-    missing_debug_implementations,
-    reason = "wrapper type; only used as a formatting adapter"
-)]
 pub struct TensorDisplay<'a, S, D, A>
 where
     S: Storage<Elem = A>,
@@ -30,14 +26,31 @@ where
     pub(crate) config: FormatConfig,
 }
 
+impl<'a, S, D, A> fmt::Debug for TensorDisplay<'a, S, D, A>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Debug,
+{
+    /// Manual impl: `#[derive(Debug)]` would add wrong bounds
+    /// (`S: Debug, D: Debug, A: Debug`); `TensorBase`'s `Debug` actually
+    /// requires `A: Element + fmt::Debug`, mirrored here.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TensorDisplay")
+            .field("tensor", &self.tensor)
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
 impl<'a, S, D, A> fmt::Display for TensorDisplay<'a, S, D, A>
 where
     S: Storage<Elem = A>,
     D: Dimension,
     A: Element + fmt::Display,
 {
-    /// Delegates to the central display formatting pipeline with the
-    /// config stored in this wrapper.
+    /// Delegates to the central display formatting pipeline with the config
+    /// stored in this wrapper.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_display(f, self.tensor, self.config)
     }
