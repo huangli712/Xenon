@@ -4,20 +4,18 @@
 //! borrowed (immutably or mutably), split into sub-spaces, and grown on demand.
 //! Borrow state is managed via atomic CAS with RAII guards.
 
-use crate::error::{Result, WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory, XenonError};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicU8;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
+
 use std::borrow::Cow;
 
+use crate::error::{Result, XenonError};
+use crate::error::{WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory};
 use super::borrow::{WorkspaceBorrow, WorkspaceBorrowMut};
 use super::split::SplitBorrowMut;
-
-// -----------------------------------------------------------------------------
-// borrow / borrow_mut on Workspace + diagnostic helper
-// -----------------------------------------------------------------------------
 
 /// Internal helper: read current borrow state in structured form for error
 /// reporting. Loads `borrow_state` and `split_count` with `Relaxed` because
