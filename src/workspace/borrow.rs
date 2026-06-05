@@ -326,8 +326,9 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 
 #[cfg(test)]
 mod tests {
+    use core::slice;
     use std::mem::MaybeUninit;
-    use crate::error::{TypedViewRejection, WorkspaceErrorCategory};
+    use crate::error::{TypedViewRejection, WorkspaceErrorCategory, XenonError};
     use crate::workspace::Workspace;
 
     // --- WorkspaceBorrow ----------------------------------------------------

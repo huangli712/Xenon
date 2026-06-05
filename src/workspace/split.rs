@@ -1,16 +1,16 @@
 //! Split borrow guard for partitioning a [`Workspace`] into sub-spaces.
 //!
-//! [`SplitBorrowMut`] represents one contiguous slice of a workspace after
-//! [`Workspace::split_at_mut`](super::Workspace::split_at_mut). Multiple
-//! split guards coexist over non-overlapping memory regions, reference-counted
-//! via an [`AtomicUsize`]. The workspace is released only when the last split
-//! guard drops.
+//! `SplitBorrowMut` represents one contiguous slice of a workspace after
+//! `Workspace::split_at_mut`. Multiple split guards coexist over non-
+//! overlapping memory regions, reference-counted via an `AtomicUsize`. The
+//! workspace is released only when the last split guard drops.
 
 use core::ptr::NonNull;
+use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use super::space::Workspace;
 use crate::error::XenonError;
+use super::space::Workspace;
 
 /// Borrow guard for a split sub-space.
 ///
@@ -21,10 +21,13 @@ use crate::error::XenonError;
 pub struct SplitBorrowMut<'a> {
     /// Start pointer of this split sub-space.
     pub(crate) ptr: NonNull<u8>,
+
     /// Length of this split sub-space in bytes.
     pub(crate) len: usize,
+    
     /// Parent workspace whose borrow state is restored when all splits drop.
     pub(crate) workspace: &'a Workspace,
+    
     /// Reference to the split count. Top-level `split_at_mut` initializes the
     /// counter to 2 (binary split); recursive `split_at_mut` `fetch_add(1)`s.
     /// Drop `fetch_sub(1)`s; only on `prev == 1` is `borrow_state` reset.
@@ -43,7 +46,7 @@ impl<'a> SplitBorrowMut<'a> {
     }
 
     /// Returns the split sub-space as possibly-uninitialized bytes.
-    pub fn as_maybe_uninit_slice(&mut self) -> &mut [core::mem::MaybeUninit<u8>] {
+    pub fn as_maybe_uninit_slice(&mut self) -> &mut [MaybeUninit<u8>] {
         // SAFETY: split guards expose scratch memory as possibly uninitialized;
         // the pointer/length range is disjoint from sibling splits and the
         // borrow is exclusive within this sub-space.
