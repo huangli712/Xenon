@@ -782,9 +782,15 @@ mod tests {
         // Source: shape=[2,3] F-order, data=[1..6]
         //   logical = [[1,3,5], [2,4,6]]
         // Transposed to [3,2]: logical = [[1,2], [3,4], [5,6]]
-        let base =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
-        let view = unsafe { make_view(&base, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
+        let base = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![1_i32, 2, 3, 4, 5, 6],
+                Ix2(2, 3)
+            )
+        };
+        let view = unsafe {
+            make_view(&base, Ix2(3, 2), Strides::new(Ix2(2, 1)))
+        };
         struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
         impl<'a> fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -805,7 +811,10 @@ mod tests {
     fn test_fmt_3d() {
         use crate::dimension::Ix3;
         let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6, 7, 8], Ix3(2, 2, 2))
+            TensorBase::from_raw_vec_unchecked(
+                vec![1_i32, 2, 3, 4, 5, 6, 7, 8],
+                Ix3(2, 2, 2)
+            )
         };
         struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix3>);
         impl<'a> fmt::Display for Wrap<'a> {
