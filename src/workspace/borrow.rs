@@ -326,9 +326,9 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::MaybeUninit;
     use crate::error::{TypedViewRejection, WorkspaceErrorCategory};
     use crate::workspace::Workspace;
-    use std::mem::MaybeUninit;
 
     // --- WorkspaceBorrow ----------------------------------------------------
 
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(guard.as_ptr(), ws.ptr.as_ptr());
     }
 
-    // --- WorkspaceBorrowMut ---
+    // --- WorkspaceBorrowMut -------------------------------------------------
 
     /// `len()` returns the workspace capacity.
     #[test]
@@ -384,7 +384,8 @@ mod tests {
         assert_eq!(unsafe { ptr.read() }, 0x42);
     }
 
-    /// `as_maybe_uninit_typed_slice` returns a typed uninit view of correct length.
+    /// `as_maybe_uninit_typed_slice` returns a typed uninit view of
+    /// correct length.
     #[test]
     fn test_borrow_mut_typed_slice_basic() {
         let mut ws = Workspace::new(64, 64).expect("workspace");
@@ -396,16 +397,19 @@ mod tests {
         view[0].write(1.5);
     }
 
-    /// TypedByteLengthOverflow and SplitOutOfBounds rejections for typed views.
+    /// TypedByteLengthOverflow and SplitOutOfBounds rejections for
+    /// typed views.
     #[test]
     fn test_borrow_mut_typed_slice_rejections() {
         let mut ws = Workspace::new(64, 8).expect("64-byte workspace");
         let mut guard = ws.borrow_mut().expect("mutable borrow in test");
 
         // TypedByteLengthOverflow rejection (f64 implements Element).
-        let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(usize::MAX) };
+        let result = unsafe {
+            guard.as_maybe_uninit_typed_slice::<f64>(usize::MAX)
+        };
         match result {
-            Err(crate::error::XenonError::Workspace {
+            Err(XenonError::Workspace {
                 category:
                     WorkspaceErrorCategory::TypedViewRejected {
                         detail: TypedViewRejection::TypedByteLengthOverflow { .. },
