@@ -312,7 +312,7 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strategy = ParallelExecStrategy::auto();
-                crate::parallel::reduce::par_dot::<_, _, A, _, _>(a, b, &strategy, guard)
+                crate::parallel::dot::par_dot::<_, _, A, _, _>(a, b, &strategy, guard)
             }
 
             #[cfg(not(feature = "parallel"))]

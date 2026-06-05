@@ -204,10 +204,10 @@ pub use crate::dispatch::{
 pub use crate::parallel::unary::par_map;
 
 #[cfg(feature = "parallel")]
-pub use crate::parallel::reduce::{
-    par_dot,
-    par_sum
-};
+pub use crate::parallel::dot::par_dot;
+
+#[cfg(feature = "parallel")]
+pub use crate::parallel::reduce::par_sum;
 
 #[cfg(test)]
 mod tests {

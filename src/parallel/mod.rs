@@ -27,7 +27,7 @@
 #[cfg(feature = "parallel")]
 pub(crate) mod binary;
 #[cfg(feature = "parallel")]
-pub(crate) mod checked;
+pub(crate) mod dot;
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;
 #[cfg(feature = "parallel")]
