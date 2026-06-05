@@ -542,7 +542,7 @@ where
 /// Output is always `bool`. W14 does not expose comparison SIMD kernels,
 /// so `ExecPath::Simd` falls through to the scalar loop.
 ///
-/// Parallel path delegates to [`crate::parallel::par_zip_map`] (W15T3)
+/// Parallel path delegates to [`crate::parallel::par_zip_checked`] (W15T3)
 /// when the `parallel` feature is enabled and `select_exec_path` returns
 /// `ExecPath::Parallel`. Otherwise falls back to scalar.
 pub(in crate::math) fn apply_compare_with_dispatch<A, S1, S2, D1, D2, F>(
@@ -577,7 +577,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::binary::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+                crate::parallel::binary::par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -641,7 +641,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::binary::par_zip_map(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+                crate::parallel::binary::par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
             {

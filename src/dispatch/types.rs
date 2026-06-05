@@ -38,7 +38,7 @@ pub enum ExecPath {
 /// Execution strategy parameters consumed by the parallel backend.
 ///
 /// Defined here; consumed by `parallel/` module functions such as
-/// `par_map`, `par_zip_map`, `par_sum`, `par_dot`. Fields are private
+/// `par_map`, `par_zip_checked`, `par_sum`, `par_dot`. Fields are private
 /// to enforce construction via `ParallelExecStrategy::new()`.
 ///
 /// Only compiled under `feature = "parallel"`: outside that feature

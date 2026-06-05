@@ -1,6 +1,6 @@
 //! Dual-input parallel element-wise map.
 //!
-//! W15T3: par_zip_map — dual-input broadcast element-wise parallel map.
+//! W15T3: par_zip_checked — dual-input broadcast element-wise parallel map.
 
 use std::borrow::Cow;
 
@@ -13,7 +13,7 @@ use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
+pub(crate) fn par_zip_checked<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
@@ -36,7 +36,7 @@ where
     let total = output_dim
         .checked_size()
         .map_err(|_| XenonError::InvalidShape {
-            operation: Cow::Borrowed("par_zip_map"),
+            operation: Cow::Borrowed("par_zip_checked"),
             shape: output_dim.slice().to_vec(),
             kind: InvalidShapeKind::ProductOverflow,
             offending_dim: None,
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn test_par_zip_map_matches_serial_add() {
+    fn test_par_zip_checked_matches_serial_add() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
@@ -158,8 +158,8 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_map(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("par_zip_map should succeed for valid test input");
+        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
+            .expect("par_zip_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 22.0, 33.0, 44.0]
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn test_par_zip_map_broadcast_rhs_scalar() {
+    fn test_par_zip_checked_broadcast_rhs_scalar() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
@@ -191,8 +191,8 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_map(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("par_zip_map should succeed for valid test input");
+        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
+            .expect("par_zip_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 12.0, 13.0, 14.0]
