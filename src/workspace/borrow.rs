@@ -263,12 +263,12 @@ impl<'a> WorkspaceBorrowMut<'a> {
     /// - the first `count` typed elements are fully initialized and valid `T`,
     /// - `count * size_of::<T>() <= self.len()`,
     /// - and the scratch region satisfies `T` alignment.
-    pub unsafe fn assume_init_typed_slice<T: crate::element::Element>(
+    pub unsafe fn assume_init_typed_slice<T: Element>(
         &mut self,
         count: usize,
     ) -> crate::error::Result<&mut [T]> {
         const OP: &str = "WorkspaceBorrowMut::assume_init_typed_slice";
-        if core::mem::size_of::<T>() == 0 {
+        if size_of::<T>() == 0 {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed(OP),
                 category: WorkspaceErrorCategory::TypedViewRejected {
@@ -279,13 +279,13 @@ impl<'a> WorkspaceBorrowMut<'a> {
         }
         let byte_len =
             count
-                .checked_mul(core::mem::size_of::<T>())
+                .checked_mul(size_of::<T>())
                 .ok_or(XenonError::Workspace {
                     operation: Cow::Borrowed(OP),
                     category: WorkspaceErrorCategory::TypedViewRejected {
                         detail: TypedViewRejection::TypedByteLengthOverflow {
                             count,
-                            elem_size: core::mem::size_of::<T>(),
+                            elem_size: size_of::<T>(),
                         },
                     },
                     
@@ -294,13 +294,13 @@ impl<'a> WorkspaceBorrowMut<'a> {
             return Err(XenonError::workspace_split_oob(OP, byte_len, self.len));
         }
         let actual_addr = self.ptr.as_ptr() as usize;
-        if !actual_addr.is_multiple_of(core::mem::align_of::<T>()) {
+        if !actual_addr.is_multiple_of(align_of::<T>()) {
             return Err(XenonError::Workspace {
                 operation: Cow::Borrowed(OP),
                 category: WorkspaceErrorCategory::TypedViewRejected {
                     detail: TypedViewRejection::AlignmentMismatch {
-                        required: core::mem::align_of::<T>(),
-                        actual: actual_addr % core::mem::align_of::<T>(),
+                        required: align_of::<T>(),
+                        actual: actual_addr % align_of::<T>(),
                     },
                 },
                 
@@ -308,10 +308,11 @@ impl<'a> WorkspaceBorrowMut<'a> {
         }
         // SAFETY: bounds and alignment checked; caller's `# Safety` covers
         // initialization. Exclusive borrow + `!Send + !Sync` forbid aliasing.
-        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count) })
+        Ok(unsafe {
+            slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count)
+        })
     }
 }
-
 
 impl<'a> Drop for WorkspaceBorrowMut<'a> {
     /// Release the exclusive borrow by resetting `borrow_state` to `BORROW_NONE`
