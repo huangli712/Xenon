@@ -1,8 +1,7 @@
 //! Utility operations: `clip`, `fill` / `try_fill`, `to_contiguous` /
 //! `into_contiguous`.
 //!
-//! Provides inherent methods on [`TensorBase`].
-//! See `docs/design/20-utility.md`.
+//! All operations are exposed as inherent methods on [`TensorBase`].
 
 use std::borrow::Cow;
 
@@ -19,7 +18,7 @@ use crate::tensor::{StorageKind, StorageSemantics, Tensor, TensorBase};
 
 /// Validate that `min <= max`; reject NaN bounds.
 ///
-/// Returns `Err(XenonError::InvalidArgument)` when `min > max` or either
+/// Returns [`XenonError::InvalidArgument`] when `min > max` or either
 /// bound is `NaN` (for floating-point types).
 fn validate_clip_bounds<A>(min: &A, max: &A) -> Result<(), XenonError>
 where
@@ -39,8 +38,11 @@ where
     Ok(())
 }
 
-/// Read-only branch: §5.3 row "View / Shared → InvalidStorageMode".
-/// `tag` is the [`StorageKindTag`] for the concrete storage in this arm.
+/// Construct an [`XenonError::InvalidStorageMode`] error for the read-only
+/// branch of `try_fill`.
+///
+/// `tag` indicates the concrete storage kind that was found
+/// ([`StorageKindTag::View`] or [`StorageKindTag::Shared`]).
 pub(crate) fn fill_try_read_only_err(tag: StorageKindTag) -> XenonError {
     XenonError::InvalidStorageMode {
         operation: Cow::Borrowed("Tensor::try_fill"),
@@ -50,13 +52,13 @@ pub(crate) fn fill_try_read_only_err(tag: StorageKindTag) -> XenonError {
     }
 }
 
-/// Crate-internal canonical predicate from `20-utility §6.3`.
+/// Check whether a tensor satisfies the canonical F-order owned predicate.
 ///
-/// Returns `true` iff **all four** conditions from `20-utility §6.3` hold:
-///   1. `is_f_contiguous()` — strides satisfy F-order pattern
-///   2. `storage_kind() == Owned` — sole-ownership
-///   3. `offset() == 0` — no head padding
-///   4. `storage_len() == product(shape)` — no tail padding
+/// Returns `true` iff all four conditions hold:
+///   1. `is_f_contiguous()` — strides satisfy F-order pattern.
+///   2. `storage_kind() == Owned` — sole-ownership, not view-derived.
+///   3. `offset() == 0` — no head padding.
+///   4. `storage_len() == product(shape)` — no tail padding.
 fn is_canonical_f_contiguous_owned<S, D, A>(t: &TensorBase<S, D>) -> bool
 where
     S: Storage<Elem = A> + StorageSemantics,
@@ -90,21 +92,15 @@ where
 {
     /// Clamp each logical element into `[min, max]`.
     ///
-    /// Per `20-utility §5.1` / §6.4:
-    /// - Bounds are validated **before** allocation.
-    /// - `NaN` input values pass through unchanged (both `< min` and `> max`
-    ///   are `false` under IEEE 754), matching NumPy `np.clip` semantics.
-    /// - `NaN` *bounds* (or `min > max`) return `InvalidArgument`.
+    /// Bounds are validated before allocation. `NaN` input values pass
+    /// through unchanged (both `< min` and `> max` are `false` under
+    /// IEEE 754), matching NumPy `np.clip` semantics. `NaN` bounds or
+    /// `min > max` return [`XenonError::InvalidArgument`].
     ///
     /// # Errors
     ///
-    /// - `XenonError::InvalidArgument` when bounds are invalid: either bound
-    ///   is `NaN`, or `min > max` (`20-utility §5.1` / §6.4). Validated before
-    ///   allocation.
-    /// - `XenonError::InvalidShape` propagated from `Tensor::from_shape_vec`
-    ///   when the shape's element count overflows `usize` (`ProductOverflow`).
-    ///   Unreachable in practice — `self` already holds a valid shape — but
-    ///   the failure mode is preserved by `?` for completeness.
+    /// Returns [`XenonError::InvalidArgument`] when either bound is `NaN`
+    /// or `min > max`.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is correct generic pattern"
@@ -135,12 +131,10 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// Fill all logical elements with `value` in place
-    /// (`20-utility §5.2`, primary public entry point).
+    /// Fill all logical elements with `value` in place.
     ///
-    /// Stride-aware: iterates via `iter_mut()` so non-contiguous layouts and
-    /// tensors with internal padding only have their logical elements
-    /// touched (`§5.4`).
+    /// Stride-aware: iterates via `iter_mut()` so only logical elements
+    /// are written, regardless of layout or internal padding.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
@@ -160,17 +154,17 @@ where
     D: Dimension + Clone,
     A: Element + Clone,
 {
-    /// Ensure the tensor's data is stored contiguously in canonical F-order
-    /// (`20-utility §5.5`). Always returns a fresh owned tensor; the input
-    /// borrow is never aliased into the result.
+    /// Produce a canonical F-order owned tensor with the same logical data.
+    ///
+    /// Always returns a fresh owned tensor; the input borrow is never
+    /// aliased into the result. If the input is already F-contiguous,
+    /// delegates to `to_owned()`.
     ///
     /// # Panics
     ///
-    /// Does not panic in practice: on the repack path, `Iter` is an
-    /// `ExactSizeIterator` whose `len()` equals `product(shape)`, which is
-    /// exactly what `from_shape_vec` requires (see `10-iterator §5.5`,
-    /// `18-construction §5.6`). A mismatch would indicate an iterator-contract
-    /// bug elsewhere in the crate.
+    /// Panics if the logical iteration length does not equal `product(shape)`.
+    /// This indicates a contract violation in the iterator and should never
+    /// occur for valid tensors.
     pub fn to_contiguous(&self) -> Tensor<A, D> {
         if self.is_f_contiguous() {
             self.to_owned()
@@ -190,16 +184,10 @@ where
     D: Dimension + Clone,
     A: Element + Clone,
 {
-    /// Consume `self` and produce an owned, canonical F-order tensor
-    /// (`20-utility §5.5`, §6.3). Reuses backing storage only when the input
-    /// is already a canonical F-contiguous `Owned` tensor (predicate below).
+    /// Consume `self` and produce a canonical F-order owned tensor.
     ///
-    /// # Panics
-    ///
-    /// Panics if `Strides::f_contiguous(&dim)` fails. This cannot happen on the
-    /// reuse path because `is_canonical_f_contiguous_owned` already
-    /// established `is_f_contiguous()`, which implies the shape's element
-    /// count fits `usize` (a construction-time invariant of `TensorBase`).
+    /// Reuses backing storage when the input is already a canonical
+    /// F-contiguous `Owned` tensor. Otherwise falls back to `into_owned()`.
     pub fn into_contiguous(self) -> Tensor<A, D> {
         if is_canonical_f_contiguous_owned(&self) {
             let dim = self.raw_dim();
@@ -224,15 +212,12 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// Fallible fill (`20-utility §5.2`, secondary entry on Owned).
-    ///
-    /// §5.3 dispatch arm: Owned → `iter_mut()` write path.
+    /// Fallible fill. On `Owned` storage, writes `value` to all elements.
     ///
     /// # Errors
     ///
-    /// Infallible: always returns `Ok(())`. The `Result` return type exists for
-    /// API uniformity with the read-only `ViewRepr` / `ArcRepr` variants of
-    /// `try_fill`, which return `XenonError::InvalidStorageMode`.
+    /// Always returns `Ok(())`. The `Result` return type exists for API
+    /// uniformity with the read-only variants.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
@@ -250,19 +235,15 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// Fallible fill (`20-utility §5.2`, secondary entry on View).
+    /// Fallible fill. On `ViewRepr` (read-only), always returns an error.
     ///
-    /// §5.3 dispatch arm: View / SharedReadOnly → `InvalidStorageMode`.
-    /// Covers BOTH the plain `ReadOnly` ViewRepr and the runtime-tagged
-    /// `SharedReadOnly` ViewRepr cases (derived_from_view_mut and zero-stride
-    /// broadcast — see W8T4 `access_semantics()`): both collapse to the
-    /// same `InvalidStorageMode` outcome here.
+    /// Covers both plain read-only views and `SharedReadOnly` views
+    /// (derived from `ViewMut` or zero-stride broadcast).
     ///
     /// # Errors
     ///
-    /// Always returns `XenonError::InvalidStorageMode` with
-    /// `storage_kind: StorageKindTag::View` — a `View` (read-only) tensor
-    /// cannot be mutated through `try_fill`.
+    /// Always returns [`XenonError::InvalidStorageMode`] with
+    /// `storage_kind: View`.
     pub fn try_fill(&mut self, _value: A) -> Result<(), XenonError> {
         Err(fill_try_read_only_err(StorageKindTag::View))
     }
@@ -273,15 +254,12 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// Fallible fill (`20-utility §5.2`, secondary entry on ViewMut).
-    ///
-    /// §5.3 dispatch arm: ViewMut → `iter_mut()` write path.
+    /// Fallible fill. On `ViewMutRepr`, writes `value` to all elements.
     ///
     /// # Errors
     ///
-    /// Infallible: always returns `Ok(())`. The `Result` return type exists for
-    /// API uniformity with the read-only `ViewRepr` / `ArcRepr` variants of
-    /// `try_fill`, which return `XenonError::InvalidStorageMode`.
+    /// Always returns `Ok(())`. The `Result` return type exists for API
+    /// uniformity with the read-only variants.
     #[expect(
         clippy::clone_on_copy,
         reason = "generic over Clone (not Copy); .clone() is the correct generic pattern"
@@ -299,29 +277,28 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// Fallible fill (`20-utility §5.2`, secondary entry on Arc).
-    ///
-    /// §5.3 dispatch arm: Shared (read-only) → `InvalidStorageMode`.
+    /// Fallible fill. On `ArcRepr` (shared, read-only), always returns an
+    /// error.
     ///
     /// # Errors
     ///
-    /// Always returns `XenonError::InvalidStorageMode` with
-    /// `storage_kind: StorageKindTag::Shared` — an `ArcRepr` (shared,
-    /// read-only) tensor cannot be mutated through `try_fill`.
+    /// Always returns [`XenonError::InvalidStorageMode`] with
+    /// `storage_kind: Shared`.
     pub fn try_fill(&mut self, _value: A) -> Result<(), XenonError> {
         Err(fill_try_read_only_err(StorageKindTag::Shared))
     }
 }
 
-// ── Unit tests (§8.2) ──
+// ── Unit tests ──
 
 #[cfg(test)]
 mod tests {
     use crate::error::XenonError;
     use crate::tensor::{StorageKind, Tensor1, Tensor2};
 
-    // ── clip tests (§8.2 / §7 T2) ──
+    // ── clip tests ──
 
+    /// Values outside [min, max] are clamped; values within pass through.
     #[test]
     fn test_clip_basic() {
         let tensor = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0])
@@ -331,6 +308,7 @@ mod tests {
         assert_eq!(values, vec![0.0, 0.5, 1.0, 2.0, 2.0]);
     }
 
+    /// All values within bounds: output equals input.
     #[test]
     fn test_clip_no_change() {
         let tensor = Tensor1::from_shape_vec([3], vec![0.5, 1.0, 1.5])
@@ -340,6 +318,7 @@ mod tests {
         assert_eq!(values, vec![0.5, 1.0, 1.5]);
     }
 
+    /// NaN input values pass through unchanged.
     #[test]
     fn test_clip_nan() {
         let tensor = Tensor1::from_shape_vec([3], vec![1.0_f64, f64::NAN, 3.0])
@@ -351,6 +330,7 @@ mod tests {
         assert_eq!(values[2], 3.0);
     }
 
+    /// NaN as min or max bound returns [`XenonError::InvalidArgument`].
     #[test]
     fn test_clip_nan_bound() {
         let tensor =
@@ -365,6 +345,7 @@ mod tests {
         ));
     }
 
+    /// clip works correctly on integer element types.
     #[test]
     fn test_clip_integers() {
         let tensor = Tensor1::from_shape_vec([4], vec![-5_i32, 0, 5, 10])
@@ -374,6 +355,7 @@ mod tests {
         assert_eq!(values, vec![0, 0, 5, 7]);
     }
 
+    /// clip works correctly on a transposed (non-contiguous) tensor.
     #[test]
     fn test_clip_non_contiguous() {
         let tensor = Tensor2::from_shape_vec([2, 3], vec![1.0_f64, 4.0, 2.0, 5.0, 3.0, 6.0])
@@ -391,8 +373,9 @@ mod tests {
         assert_eq!(values, vec![2.0, 2.0, 3.0, 4.0, 5.0, 5.0]);
     }
 
-    // ── fill tests (§8.2 / §7 T1) ──
+    // ── fill tests ──
 
+    /// fill writes the given value to all elements.
     #[test]
     fn test_fill_basic() {
         let mut tensor = Tensor1::<f64>::zeros([3]).expect("zeros(valid shape)");
@@ -403,6 +386,7 @@ mod tests {
         );
     }
 
+    /// try_fill on a read-only view returns [`XenonError::InvalidStorageMode`].
     #[test]
     fn test_try_fill_read_only_returns_error() {
         let tensor =
@@ -412,6 +396,7 @@ mod tests {
         assert!(matches!(error, XenonError::InvalidStorageMode { .. }));
     }
 
+    /// try_fill on read-only storage returns InvalidStorageMode.
     #[test]
     fn test_try_fill_read_only_returns_read_only_storage() {
         let tensor =
@@ -421,18 +406,21 @@ mod tests {
         assert!(matches!(error, XenonError::InvalidStorageMode { .. }));
     }
 
+    /// fill works on non-contiguous writable layouts (pending constructor).
     #[test]
     #[ignore = "needs writable non-contiguous view primitive"]
     fn test_fill_non_contiguous() {
         todo!("activate after writable non-contiguous view constructor lands");
     }
 
+    /// fill does not touch padding elements (pending constructor).
     #[test]
     #[ignore = "needs writable strided sub-view primitive"]
     fn test_fill_padded_writes_logical_only() {
         todo!("activate after writable strided slice constructor lands");
     }
 
+    /// try_fill on writable storage produces the same result as fill.
     #[test]
     fn test_try_fill_writable_matches_fill() {
         let mut t1 = Tensor1::<f64>::zeros([3]).expect("zeros(valid shape)");
@@ -444,13 +432,15 @@ mod tests {
         assert_eq!(v1, v2);
     }
 
+    /// fill on an empty tensor is a no-op.
     #[test]
     fn test_fill_empty() {
         let mut tensor = Tensor1::<f64>::zeros([0]).expect("zeros(empty)");
-        tensor.fill(1.0); // must not panic
+        tensor.fill(1.0);
         assert_eq!(tensor.len(), 0);
     }
 
+    /// After fill(v), every element equals v.
     #[test]
     fn test_fill_invariant_all_equal_value() {
         for &n in &[1_usize, 2, 3, 5, 8, 13] {
@@ -460,8 +450,9 @@ mod tests {
         }
     }
 
-    // ── contiguous tests (§8.2) ──
+    // ── contiguous tests ──
 
+    /// to_contiguous on an F-contiguous input preserves element values.
     #[test]
     fn test_to_contiguous_f_order() {
         let tensor = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
@@ -474,6 +465,7 @@ mod tests {
         assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
     }
 
+    /// to_contiguous on a transposed input produces F-order output.
     #[test]
     fn test_to_contiguous_transposed_becomes_f() {
         let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
@@ -489,6 +481,7 @@ mod tests {
         assert_eq!(*contiguous.get(&[2, 1]).expect("valid index"), 6);
     }
 
+    /// into_contiguous preserves element data for canonical owned input.
     #[test]
     fn test_into_contiguous_reuses_canonical_owned_data() {
         let tensor = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
@@ -502,12 +495,15 @@ mod tests {
         assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
     }
 
+    /// into_contiguous repacks non-canonical (padded/offset) input
+    /// (pending constructor).
     #[test]
     #[ignore = "needs non-canonical owned constructor (tail padding / non-zero offset, W6+W8)"]
     fn test_into_contiguous_repacks_noncanonical_f_contiguous_owned() {
         todo!("activate after padding-aware owned constructor lands (W6+W8)");
     }
 
+    /// into_contiguous repacks shared (Arc) input into owned F-order.
     #[test]
     fn test_into_contiguous_repacks_arc_input() {
         let tensor = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
@@ -522,6 +518,7 @@ mod tests {
         assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
     }
 
+    /// to_contiguous on a non-contiguous tensor produces canonical F-order.
     #[test]
     fn test_to_contiguous_non_contiguous() {
         let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
