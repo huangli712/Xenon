@@ -1,9 +1,9 @@
 //! Immutable and mutable borrow guards for [`Workspace`] scratch regions.
 //!
-//! - [`WorkspaceBorrow`]: read-only guard — at most one active at a time,
-//!   enforced by an [`AtomicU8`](core::sync::atomic::AtomicU8) CAS in
-//!   [`Workspace::borrow`](super::Workspace::borrow).
-//! - [`WorkspaceBorrowMut`]: exclusive mutable guard — compile-time
+//! - `WorkspaceBorrow`: read-only guard — at most one active at a time,
+//!   enforced by an `AtomicU8` CAS in `Workspace::borrow`.
+//!
+//! - `WorkspaceBorrowMut`: exclusive mutable guard — compile-time
 //!   exclusivity via `&mut self`, with CAS as defense-in-depth.
 //!
 //! Both guards release the borrow state on [`Drop`] via `Release` ordering,
