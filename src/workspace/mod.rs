@@ -32,7 +32,6 @@
 //! ```
 
 mod borrow;
-mod expand;
 mod split;
 #[expect(
     clippy::module_inception,
