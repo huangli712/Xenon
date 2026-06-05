@@ -12,8 +12,10 @@ All notable changes to this project are documented in this file.
 - Consolidated `util/` module from 4 files to 1 (`impls.rs` + `mod.rs`).
 - `into_contiguous` repack path now iterates logical F-order instead of using `into_owned()`.
 - Tail padding and non-zero offset are correctly stripped in the `into_contiguous` repack path.
-- Extracted free functions to top of `impls.rs` (`validate_clip_bounds`, `fill_try_read_only_err`, `is_canonical_f_contiguous_owned`).
-- Reordered impl blocks: clip → fill → to_contiguous → into_contiguous → try_fill.
+- Extracted `validate_clip_bounds` to top of `impls.rs` as a free function.
+- Extracted `fill_try_read_only_err` to top of `impls.rs` as a free function.
+- Extracted `is_canonical_f_contiguous_owned` to top of `impls.rs` as a free function.
+- Reordered impl blocks to: clip → fill → to_contiguous → into_contiguous → try_fill.
 - Standardized section header style to `---` format.
 - Simplified `#[expect(clippy::clone_on_copy)]` by removing `reason` attributes.
 - Improved `util/mod.rs` doc comment with operation table and intra-doc links.
