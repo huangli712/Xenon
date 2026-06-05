@@ -19,10 +19,11 @@
 //! - Custom formatter registration.
 
 mod config;
+mod display;
 mod impls;
 mod pretty;
 mod writer;
 
 pub use config::FormatConfig;
-pub use impls::TensorDisplay;
+pub use display::TensorDisplay;
 
