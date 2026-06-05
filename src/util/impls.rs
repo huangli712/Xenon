@@ -356,7 +356,8 @@ mod tests {
     fn test_clip_integers() {
         let tensor = Tensor1::from_shape_vec([4], vec![-5_i32, 0, 5, 10])
             .expect("from_shape_vec matching shape");
-        let clipped = tensor.clip(0, 7).expect("valid clip bounds");
+        let clipped = tensor.clip(0, 7)
+            .expect("valid clip bounds");
         let values: Vec<i32> = clipped.iter().copied().collect();
         assert_eq!(values, vec![0, 0, 5, 7]);
     }
