@@ -328,7 +328,8 @@ mod tests {
     fn test_clip_nan() {
         let tensor = Tensor1::from_shape_vec([3], vec![1.0_f64, f64::NAN, 3.0])
             .expect("from_shape_vec matching shape");
-        let clipped = tensor.clip(0.0, 4.0).expect("valid clip bounds");
+        let clipped = tensor.clip(0.0, 4.0)
+            .expect("valid clip bounds");
         let values: Vec<f64> = clipped.iter().copied().collect();
         assert_eq!(values[0], 1.0);
         assert!(values[1].is_nan());
@@ -338,8 +339,8 @@ mod tests {
     /// NaN as min or max bound returns [`XenonError::InvalidArgument`].
     #[test]
     fn test_clip_nan_bound() {
-        let tensor =
-            Tensor1::from_shape_vec([1], vec![1.0_f64]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([1], vec![1.0_f64])
+            .expect("from_shape_vec matching shape");
         assert!(matches!(
             tensor.clip(f64::NAN, 2.0),
             Err(XenonError::InvalidArgument { .. })
