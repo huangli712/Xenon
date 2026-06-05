@@ -16,6 +16,9 @@ where
     A: Element,
 {
     /// Returns a display wrapper that formats this tensor with the given config.
+    ///
+    /// The returned [`TensorDisplay`] implements [`core::fmt::Display`], so
+    /// it can be used directly in `format!` / `write!` macros.
     pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
         TensorDisplay {
             tensor: self,
@@ -30,6 +33,9 @@ where
     D: Dimension,
     A: Element + fmt::Debug,
 {
+    /// Writes a header line with shape, strides, dtype, and layout
+    /// metadata, followed by the tensor data rendered in logical
+    /// index order using Debug formatting for each element.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_debug(f, self, FormatConfig::default())
     }
@@ -41,6 +47,9 @@ where
     D: Dimension,
     A: Element + fmt::Display,
 {
+    /// Renders the tensor data in logical index order using Display
+    /// formatting. Zero-dimension tensors get an explicit `Tensor0(...)`
+    /// marker. Truncation is controlled by [`FormatConfig::default()`].
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_display(f, self, FormatConfig::default())
     }
@@ -53,29 +62,31 @@ mod tests {
     use crate::layout::Strides;
     use crate::element::element_type_of;
 
+    /// Verifies that Debug output contains the expected header fields
+    /// (shape, strides, dtype, layout) and data section.
     #[test]
     fn test_debug_tensor() {
         let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4], Ix2(2, 2)) };
         let text = format!("{:?}", tensor);
-        // §5.4 line 287-301 + §5.5 line 328-334 header.
         assert!(text.contains("shape=[2, 2]"), "text = {text:?}");
         assert!(text.contains("strides="), "text = {text:?}");
         assert!(text.contains("dtype=i32"), "text = {text:?}");
         assert!(text.contains("layout=f-contiguous"), "text = {text:?}");
-        // Data section present.
         assert!(text.contains("[1, 3]") || text.contains("[1, 2]"), "text = {text:?}");
     }
 
+    /// Verifies that Debug truncation does NOT append the Display-only
+    /// trailing shape suffix (` ... (N omitted)  shape=[...]`).
     #[test]
     fn test_debug_truncated_does_not_repeat_shape_suffix() {
-        // §5.6 line 391 — Debug must NOT append "... shape=[...]".
         let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![0_i32; 1001], Ix1(1001)) };
         let text = format!("{:?}", tensor);
         assert!(text.contains("shape=[1001]"), "header missing; text = {text:?}");
         assert!(!text.contains("elements omitted)  shape="), "Debug must not repeat Display's shape suffix; text = {text:?}");
     }
 
-    /// Construct a tensor view via from_raw_parts.
+    /// Construct a tensor view via `from_raw_parts` with manually specified
+    /// shape and strides.
     unsafe fn make_view<A: Element>(
         base: &TensorBase<crate::storage::Owned<A>, Ix2>,
         shape: Ix2,
@@ -89,9 +100,10 @@ mod tests {
         }
     }
 
+    /// Verifies that a transposed view reports `layout=non-contiguous` in
+    /// the Debug header and renders elements in logical row order.
     #[test]
     fn test_debug_transposed_view() {
-        // §5.5 line 333 + §5.4 line 258: transposed view → layout=non-contiguous.
         // Source: shape=[2, 3] F-order, data=[1, 2, 3, 4, 5, 6]
         //   logical = [[1, 3, 5], [2, 4, 6]]
         // Transposed to shape=[3, 2]:
@@ -101,18 +113,17 @@ mod tests {
         // Transposed: shape=[3,2], strides=[2,1]
         let view = unsafe { make_view(&tensor, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
         let text = format!("{:?}", view);
-        // Header: layout classification.
         assert!(text.contains("layout=non-contiguous"), "text = {text:?}");
         assert!(text.contains("shape=[3, 2]"), "text = {text:?}");
-        // Data section: logical row order, not physical storage order.
         assert!(text.contains("[1, 2]"), "text = {text:?}");
         assert!(text.contains("[3, 4]"), "text = {text:?}");
         assert!(text.contains("[5, 6]"), "text = {text:?}");
     }
 
+    /// Verifies that a broadcast view (zero stride on an axis) reports
+    /// `layout=broadcast` in the Debug header.
     #[test]
     fn test_debug_broadcast_view() {
-        // §5.5 line 332 + §5.4 line 258: broadcast view (zero stride) → layout=broadcast.
         let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
         // Broadcast: shape=[4,3], strides=[0,1]
         let view = unsafe { make_view(&tensor, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
@@ -120,10 +131,10 @@ mod tests {
         assert!(text.contains("layout=broadcast"), "text = {text:?}");
     }
 
+    /// Verifies that `element_type_of::<A>().name()` returns the correct
+    /// human-readable dtype name for each supported element type.
     #[test]
     fn test_debug_dtype_complex() {
-        // §6.2 line 600-601: Complex<f32> / Complex<f64> dtype name format.
-        // Statically assert dtype_name dispatch via monomorphization.
         fn check<A: Element>() -> &'static str {
             element_type_of::<A>().name()
         }
@@ -132,6 +143,5 @@ mod tests {
         assert_eq!(check::<f32>(), "f32");
         assert_eq!(check::<f64>(), "f64");
         assert_eq!(check::<bool>(), "bool");
-        // Complex<f32> / Complex<f64> verified via integration test.
     }
 }

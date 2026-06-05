@@ -8,7 +8,7 @@ use crate::tensor::TensorBase;
 use super::config::FormatConfig;
 use super::pretty::format_tensor_display;
 
-/// A wrapper that formats a tensor with a specific [`FormatConfig`](crate::format::FormatConfig).
+/// A wrapper that formats a tensor with a specific [`FormatConfig`].
 ///
 /// Constructed via [`TensorBase::display_with`]. Implements [`core::fmt::Display`]
 /// so it can be used directly in `format!` / `write!` macros.
@@ -21,7 +21,9 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
+    /// Borrowed reference to the underlying tensor.
     pub(crate) tensor: &'a TensorBase<S, D>,
+    /// Configuration for formatting: edge_items, threshold, precision, etc.
     pub(crate) config: FormatConfig,
 }
 
@@ -31,6 +33,8 @@ where
     D: Dimension,
     A: Element + fmt::Display,
 {
+    /// Delegates to the central display formatting pipeline with the
+    /// config stored in this wrapper.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_display(f, self.tensor, self.config)
     }
@@ -49,6 +53,8 @@ mod tests {
         assert_eq!(format!("{}", tensor), "[1, 2, 3]");
     }
 
+    /// Verifies that `FormatConfig::precision` controls the number of
+    /// decimal places in float Display output.
     #[test]
     fn test_fmt_float_precision() {
         let tensor = unsafe {
@@ -61,17 +67,16 @@ mod tests {
         assert_eq!(format!("{}", tensor.display_with(config)), "[1.23]");
     }
 
+    /// Verifies that a scalar tensor (zero dimensions) renders with the
+    /// explicit `Tensor0(...)` marker, not just the bare value.
     #[test]
     fn test_fmt_zero_dim() {
-        // 18-construction.md §5 — scalar tensor constructed via raw parts.
         let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
         assert_eq!(format!("{}", tensor), "Tensor0(42)");
     }
 
-    /// 22-output.md §8.2 line 681 (medium priority) — Complex default formatting
-    /// (positive imaginary part). Verifies W5T7 `Complex<T>::Display`
-    /// reaches tensor output via W26T4 routing and still respects
-    /// §6.1 line 502-515 concatenation rules.
+    /// Verifies that Complex values with a positive imaginary part render
+    /// with a `+` separator (e.g. `1+2j`).
     #[test]
     fn test_display_complex_f64() {
         let tensor = unsafe {
@@ -83,13 +88,11 @@ mod tests {
                 crate::dimension::Ix1(2),
             )
         };
-        // Rust f64 Display: `1.0_f64` defaults to "1"; Complex Display uses
-        // "+" separator when im ≥ 0 (§6.1 line 504 row).
         assert_eq!(format!("{}", tensor), "[1+2j, 3+4j]");
     }
 
-    /// 22-output.md §8.2 line 682 (medium priority) — Complex negative imag part.
-    /// Verifies §6.1 line 507 row: when im < 0, `is_sign_negative()` selects "-".
+    /// Verifies that Complex values with a negative imaginary part render
+    /// with a `-` separator (e.g. `1-2j`).
     #[test]
     fn test_display_complex_negative_imag() {
         let tensor = unsafe {
@@ -101,15 +104,11 @@ mod tests {
                 crate::dimension::Ix1(2),
             )
         };
-        // im=-2 selects "-", mag=|im|=2 outputs "2" (f64 Display default).
-        // im=-4 same. §6.1 line 514-515: `im.abs()` unifies magnitude.
         assert_eq!(format!("{}", tensor), "[1-2j, -3-4j]");
     }
 
-    /// 22-output.md §8.3 line 703 — NaN/Inf boundary scenario.
-    /// Verifies that float special values pass through W26T3
-    /// `fmt_scalar_display` delegating to Rust's default
-    /// `f64::Display`: NaN→"NaN", ±∞→"±inf" (§6.1 line 378).
+    /// Verifies that f64 special values (NaN, ±∞) pass through the Display
+    /// pipeline correctly — `f64::Display` produces `"NaN"`, `"inf"`, `"-inf"`.
     #[test]
     fn test_display_nan_inf_f64() {
         let tensor = unsafe {
