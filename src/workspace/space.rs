@@ -177,7 +177,7 @@ impl Workspace {
     /// [`WorkspaceErrorCategory::BorrowConflict`] (`requested: Shared`) if
     /// the workspace already has an active borrow (shared or exclusive). At
     /// most one active read guard is allowed by design.
-    pub fn borrow(&self) -> crate::error::Result<WorkspaceBorrow<'_>> {
+    pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
             Self::BORROW_READ,
@@ -211,7 +211,7 @@ impl Workspace {
     /// the internal `AtomicU8` CAS observes a non-`None` borrow state. In
     /// practice this branch is unreachable while `&mut self` is held, but the
     /// check remains as defense-in-depth.
-    pub fn borrow_mut(&mut self) -> crate::error::Result<WorkspaceBorrowMut<'_>> {
+    pub fn borrow_mut(&mut self) -> Result<WorkspaceBorrowMut<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
             Self::BORROW_EXCLUSIVE,
