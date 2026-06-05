@@ -22,6 +22,7 @@ mod config;
 mod debug;
 mod display;
 mod pretty;
+mod writer;
 
 pub use config::FormatConfig;
 pub use display::TensorDisplay;
