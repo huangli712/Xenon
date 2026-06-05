@@ -13,7 +13,7 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use std::borrow::Cow;
 
-use super::workspace::Workspace;
+use super::space::Workspace;
 use crate::error::{
     TypedViewRejection, WorkspaceErrorCategory,
     XenonError,

@@ -33,12 +33,11 @@
 
 mod borrow;
 mod split;
-#[expect(clippy::module_inception)]
-mod workspace;
+mod space;
 
 pub use borrow::{WorkspaceBorrow, WorkspaceBorrowMut};
 pub use split::SplitBorrowMut;
-pub use workspace::Workspace;
+pub use space::Workspace;
 
 
 

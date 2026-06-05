@@ -9,7 +9,7 @@
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use super::workspace::Workspace;
+use super::space::Workspace;
 use crate::error::XenonError;
 
 /// Borrow guard for a split sub-space.
