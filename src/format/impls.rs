@@ -140,10 +140,16 @@ mod tests {
         //   logical = [[1, 3, 5], [2, 4, 6]]
         // Transposed to shape=[3, 2]:
         //   logical = [[1, 2], [3, 4], [5, 6]]
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![1_i32, 2, 3, 4, 5, 6],
+                Ix2(2, 3)
+            )
+        };
         // Transposed: shape=[3,2], strides=[2,1]
-        let view = unsafe { make_view(&tensor, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
+        let view = unsafe {
+            make_view(&tensor, Ix2(3, 2), Strides::new(Ix2(2, 1)))
+        };
         let text = format!("{:?}", view);
         assert!(text.contains("layout=non-contiguous"), "text = {text:?}");
         assert!(text.contains("shape=[3, 2]"), "text = {text:?}");
