@@ -1,6 +1,6 @@
 //! Column-tracking `Formatter` wrapper for the pretty-printing pipeline.
 
-use core::fmt::{self, Formatter};
+use core::fmt::{Formatter, Write, Result};
 
 /// Tracks the current character-column position on the most recent line.
 ///
@@ -11,8 +11,9 @@ use core::fmt::{self, Formatter};
 pub(crate) struct LineWriter<'a, 'b> {
     /// The underlying formatter that performs the actual I/O.
     inner: &'a mut Formatter<'b>,
+
     /// Current column position — number of Unicode scalar values since
-    /// the most recent `'\n'`.  Counted in `char` units, not bytes or
+    /// the most recent `'\n'`. Counted in `char` units, not bytes or
     /// grapheme clusters, consistent with `line_width` being a
     /// per-character budget.
     column: usize,
@@ -32,14 +33,14 @@ impl<'a, 'b> LineWriter<'a, 'b> {
     }
 }
 
-impl fmt::Write for LineWriter<'_, '_> {
+impl Write for LineWriter<'_, '_> {
     /// Writes the string slice to the underlying formatter and updates
     /// the column counter.
     ///
     /// If the inner formatter fails partway through writing, the column
     /// may be left inconsistent — there is no rollback API in `fmt::Write`.
     /// This is the same trade-off every `Write` implementation makes.
-    fn write_str(&mut self, s: &str) -> fmt::Result {
+    fn write_str(&mut self, s: &str) -> Result {
         self.inner.write_str(s)?;
         // Reset column after the last '\n'; otherwise accumulate.
         match s.rfind('\n') {
@@ -53,29 +54,34 @@ impl fmt::Write for LineWriter<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::fmt::Write;
+    use std::fmt::Display;
+    use std::cell::Cell;
 
     /// Drive a `LineWriter` through a `Display` impl and return both the
     /// formatted output string and the final column position.
-    fn run_probe(ops: impl Fn(&mut LineWriter<'_, '_>) -> fmt::Result) -> (String, usize) {
+    fn run_probe(
+        ops: impl Fn(&mut LineWriter<'_, '_>
+    ) -> Result) -> (String, usize) {
         struct Probe<F> {
             ops: F,
-            column: std::cell::Cell<usize>,
+            column: Cell<usize>,
         }
-        impl<F: Fn(&mut LineWriter<'_, '_>) -> fmt::Result> fmt::Display for Probe<F> {
-            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        //
+        impl<F: Fn(&mut LineWriter<'_, '_>) -> Result> Display for Probe<F> {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result {
                 let mut w = LineWriter::new(f);
                 (self.ops)(&mut w)?;
                 self.column.set(w.column());
                 Ok(())
             }
         }
+        //
         let probe = Probe {
             ops,
-            column: std::cell::Cell::new(0),
+            column: Cell::new(0),
         };
         let mut s = String::new();
-        let _ = write!(&mut s, "{}", probe);
+        write!(&mut s, "{}", probe).expect("writing to String is infallible");
         (s, probe.column.get())
     }
 
@@ -141,7 +147,7 @@ mod tests {
     /// correctly.
     #[test]
     fn test_line_writer_multi_write_accumulation() {
-        let col_after_first = std::cell::Cell::new(0usize);
+        let col_after_first = Cell::new(0usize);
         let (output, final_col) = run_probe(|w| {
             w.write_str("ab")?;
             col_after_first.set(w.column());
