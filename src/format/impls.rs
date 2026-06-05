@@ -6,6 +6,7 @@ use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
 use super::config::FormatConfig;
+use super::display::TensorDisplay;
 use super::pretty::{
     read_logical,
     fmt_1d_debug, fmt_nd_debug, fmt_scalar_debug,
@@ -52,6 +53,20 @@ where
     }
 }
 
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element,
+{
+    /// Returns a display wrapper that formats this tensor with the given config.
+    pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
+        TensorDisplay {
+            tensor: self,
+            config,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

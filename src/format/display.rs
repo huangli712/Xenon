@@ -21,8 +21,8 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    tensor: &'a TensorBase<S, D>,
-    config: FormatConfig,
+    pub(crate) tensor: &'a TensorBase<S, D>,
+    pub(crate) config: FormatConfig,
 }
 
 impl<'a, S, D, A> fmt::Display for TensorDisplay<'a, S, D, A>
@@ -33,21 +33,6 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format_tensor_display(f, self.tensor, self.config)
-    }
-}
-
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element,
-{
-    /// Returns a display wrapper that formats this tensor with the given config.
-    pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
-        TensorDisplay {
-            tensor: self,
-            config,
-        }
     }
 }
 
