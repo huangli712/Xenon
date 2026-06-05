@@ -21,8 +21,10 @@ use super::space::Workspace;
 pub struct WorkspaceBorrow<'a> {
     /// Raw pointer to the start of data in the scratch region.
     pub(crate) ptr: NonNull<u8>,
+    
     /// Length of the borrow in bytes.
     pub(crate) len: usize,
+    
     /// Reference to the parent workspace (guarantees `!Send + !Sync`).
     pub(crate) workspace: &'a Workspace,
 }
