@@ -1,4 +1,6 @@
-//! Tensor output configuration — truncation thresholds, precision, and line-wrap parameters.
+//! Tensor output configuration — truncation thresholds, precision, and
+//! line-wrap parameters.
+
 /// Formatting output configuration.
 ///
 /// Controls truncation behavior and display parameters for large arrays.
@@ -51,6 +53,8 @@ impl Default for FormatConfig {
 mod tests {
     use super::*;
 
+    /// Verify all four default values match the spec: `edge_items=3`,
+    /// `threshold=1000`, `precision=None`, `line_width=80`.
     #[test]
     fn test_format_config_default() {
         let config = FormatConfig::default();
@@ -60,6 +64,8 @@ mod tests {
         assert_eq!(config.line_width, 80);
     }
 
+    /// `edge_items=0` normalizes to 1 so truncation always shows
+    /// at least one head and one tail element.
     #[test]
     fn test_format_config_edge_items_zero_normalizes_to_one() {
         let config = FormatConfig {
@@ -69,6 +75,8 @@ mod tests {
         assert_eq!(config.normalized_edge_items(), 1);
     }
 
+    /// Non-zero `edge_items` values pass through `normalized_edge_items`
+    /// unchanged (no clamping when already ≥ 1).
     #[test]
     fn test_format_config_edge_items_passthrough() {
         // Non-zero values pass through unchanged.
