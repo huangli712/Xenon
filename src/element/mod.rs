@@ -45,6 +45,7 @@ mod numeric;
 mod real;
 mod complex;
 
+#[allow(unused_imports)]
 pub(crate) use types::{ElementType, element_type_of};
 pub(crate) use order::OrderedCompareElement;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
