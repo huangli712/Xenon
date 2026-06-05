@@ -461,7 +461,7 @@ mod tests {
         // alignment not a power of two → InvalidLayout
         let err = Workspace::new(1024, 7).expect_err("invalid alignment");
         match err {
-            crate::error::XenonError::Workspace {
+            XenonError::Workspace {
                 category:
                     WorkspaceErrorCategory::InvalidLayout {
                         size: 1024,
