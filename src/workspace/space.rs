@@ -5,12 +5,12 @@
 //! Borrow state is managed via atomic CAS with RAII guards.
 
 use core::marker::PhantomData;
-use core::ptr::NonNull;
+use core::ptr::{NonNull, copy_nonoverlapping};
 use core::sync::atomic::AtomicU8;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
-use std::alloc::{Layout, alloc};
+use std::alloc::{Layout, alloc, dealloc};
 use std::borrow::Cow;
 
 use crate::error::{Result, XenonError};
@@ -313,7 +313,7 @@ impl Workspace {
         // reallocation; the scratch region must be treated as unspecified.
         // SAFETY: src and dst are non-overlapping; copy min(old, new) bytes.
         unsafe {
-            core::ptr::copy_nonoverlapping(
+            copy_nonoverlapping(
                 self.ptr.as_ptr(),
                 new_ptr.as_ptr(),
                 self.capacity.min(new_capacity),
@@ -323,9 +323,11 @@ impl Workspace {
         // Free old memory.
         // SAFETY: old layout was valid at allocation time and unchanged.
         unsafe {
-            let old_layout =
-                std::alloc::Layout::from_size_align_unchecked(self.capacity, self.alignment);
-            std::alloc::dealloc(self.ptr.as_ptr(), old_layout);
+            let old_layout = Layout::from_size_align_unchecked(
+                self.capacity,
+                self.alignment
+            );
+            dealloc(self.ptr.as_ptr(), old_layout);
         }
 
         self.ptr = new_ptr;
