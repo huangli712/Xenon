@@ -475,7 +475,7 @@ mod tests {
         // alignment below MIN_ALIGNMENT → InvalidLayout
         let err = Workspace::new(1024, 4).expect_err("below min alignment");
         match err {
-            crate::error::XenonError::Workspace {
+            XenonError::Workspace {
                 category:
                     WorkspaceErrorCategory::InvalidLayout {
                         size: 1024,
@@ -587,13 +587,13 @@ mod tests {
         // because `workspace.rs` declares `borrow_state` as `pub(crate)`.
         workspace
             .borrow_state
-            .store(Workspace::BORROW_EXCLUSIVE, core::sync::atomic::Ordering::Release);
+            .store(Workspace::BORROW_EXCLUSIVE, Ordering::Release);
         let err = workspace.ensure_capacity(256);
         assert!(err.is_err());
         // Restore so Drop is balanced.
         workspace
             .borrow_state
-            .store(Workspace::BORROW_NONE, core::sync::atomic::Ordering::Release);
+            .store(Workspace::BORROW_NONE, Ordering::Release);
     }
 
     /// Basic binary split produces correct sub-space lengths.
