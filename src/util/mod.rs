@@ -4,6 +4,5 @@
 //! All public entry points are exposed as inherent methods on `TensorBase`
 //! in the submodules below; this module root only wires them into the crate.
 
-mod clip;
 mod contiguous;
 mod fill;
