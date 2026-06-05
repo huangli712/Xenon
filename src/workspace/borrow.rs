@@ -330,7 +330,7 @@ mod tests {
     use crate::workspace::Workspace;
     use std::mem::MaybeUninit;
 
-    // ── WorkspaceBorrow ──
+    // --- WorkspaceBorrow ----------------------------------------------------
 
     /// `len()` returns the workspace capacity.
     #[test]
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(guard.as_ptr(), ws.ptr.as_ptr());
     }
 
-    // ── WorkspaceBorrowMut ──
+    // --- WorkspaceBorrowMut ---
 
     /// `len()` returns the workspace capacity.
     #[test]

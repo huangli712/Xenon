@@ -15,9 +15,9 @@ use std::borrow::Cow;
 use super::borrow::{WorkspaceBorrow, WorkspaceBorrowMut};
 use super::split::SplitBorrowMut;
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // borrow / borrow_mut on Workspace + diagnostic helper
-// =============================================================================
+// -----------------------------------------------------------------------------
 
 /// Internal helper: read current borrow state in structured form for error
 /// reporting. Loads `borrow_state` and `split_count` with `Relaxed` because
