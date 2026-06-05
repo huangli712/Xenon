@@ -13,11 +13,8 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use std::borrow::Cow;
 
+use crate::error::{TypedViewRejection, WorkspaceErrorCategory, XenonError};
 use super::space::Workspace;
-use crate::error::{
-    TypedViewRejection, WorkspaceErrorCategory,
-    XenonError,
-};
 
 /// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
