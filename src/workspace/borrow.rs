@@ -142,7 +142,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
         // SAFETY: same as `WorkspaceBorrow::as_maybe_uninit_slice`, mut variant.
         unsafe {
             slice::from_raw_parts_mut(
-                self.ptr.as_ptr() as *mut core::mem::MaybeUninit<u8>,
+                self.ptr.as_ptr() as *mut MaybeUninit<u8>,
                 self.len,
             )
         }
