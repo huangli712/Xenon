@@ -78,13 +78,16 @@ impl Workspace {
 
     /// No active borrow.
     pub(crate) const BORROW_NONE: u8 = 0;
+    
     /// One shared (immutable) borrow.
     pub(crate) const BORROW_READ: u8 = 1;
+    
     /// One exclusive (mutable / split) borrow.
     pub(crate) const BORROW_EXCLUSIVE: u8 = 2;
 
     /// Growth multiplier numerator (×1.5 factor).
     pub(crate) const GROWTH_FACTOR_NUMERATOR: usize = 3;
+    
     /// Growth multiplier denominator.
     pub(crate) const GROWTH_FACTOR_DENOMINATOR: usize = 2;
 
