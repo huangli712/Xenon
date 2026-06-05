@@ -320,7 +320,7 @@ mod tests {
 
     /// `len()` returns the workspace capacity.
     #[test]
-    fn test_workspace_borrow_len() {
+    fn test_borrow_len() {
         let ws = Workspace::new(128, 64).expect("workspace");
         let guard = ws.borrow().expect("borrow");
         assert_eq!(guard.len(), 128);
@@ -328,7 +328,7 @@ mod tests {
 
     /// `is_empty()` returns false for non-zero-capacity workspace.
     #[test]
-    fn test_workspace_borrow_is_empty() {
+    fn test_borrow_is_empty() {
         let ws = Workspace::new(64, 64).expect("workspace");
         let guard = ws.borrow().expect("borrow");
         assert!(!guard.is_empty());
@@ -336,7 +336,7 @@ mod tests {
 
     /// `as_ptr()` returns the workspace base address.
     #[test]
-    fn test_workspace_borrow_as_ptr() {
+    fn test_borrow_as_ptr() {
         let ws = Workspace::new(64, 64).expect("workspace");
         let guard = ws.borrow().expect("borrow");
         assert_eq!(guard.as_ptr(), ws.ptr.as_ptr());
@@ -346,7 +346,7 @@ mod tests {
 
     /// `len()` returns the workspace capacity.
     #[test]
-    fn test_workspace_borrow_mut_len() {
+    fn test_borrow_mut_len() {
         let mut ws = Workspace::new(128, 64).expect("workspace");
         let guard = ws.borrow_mut().expect("borrow_mut");
         assert_eq!(guard.len(), 128);
@@ -354,7 +354,7 @@ mod tests {
 
     /// `is_empty()` returns false for non-zero-capacity workspace.
     #[test]
-    fn test_workspace_borrow_mut_is_empty() {
+    fn test_borrow_mut_is_empty() {
         let mut ws = Workspace::new(64, 64).expect("workspace");
         let guard = ws.borrow_mut().expect("borrow_mut");
         assert!(!guard.is_empty());
@@ -362,7 +362,7 @@ mod tests {
 
     /// `as_mut_ptr()` returns a writable pointer.
     #[test]
-    fn test_workspace_borrow_mut_as_mut_ptr() {
+    fn test_borrow_mut_as_mut_ptr() {
         let mut ws = Workspace::new(64, 64).expect("workspace");
         let mut guard = ws.borrow_mut().expect("borrow_mut");
         let ptr = guard.as_mut_ptr();
@@ -372,7 +372,7 @@ mod tests {
 
     /// `as_maybe_uninit_typed_slice` returns a typed uninit view of correct length.
     #[test]
-    fn test_workspace_borrow_mut_typed_slice_basic() {
+    fn test_borrow_mut_typed_slice_basic() {
         let mut ws = Workspace::new(64, 64).expect("workspace");
         let mut guard = ws.borrow_mut().expect("borrow_mut");
         let result = unsafe { guard.as_maybe_uninit_typed_slice::<f64>(4) };
@@ -384,7 +384,7 @@ mod tests {
 
     /// TypedByteLengthOverflow and SplitOutOfBounds rejections for typed views.
     #[test]
-    fn test_workspace_borrow_mut_typed_slice_rejections() {
+    fn test_borrow_mut_typed_slice_rejections() {
         let mut ws = Workspace::new(64, 8).expect("64-byte workspace");
         let mut guard = ws.borrow_mut().expect("mutable borrow in test");
 
@@ -417,7 +417,7 @@ mod tests {
 
     /// `assume_init_typed_slice` returns a valid typed mutable view.
     #[test]
-    fn test_workspace_borrow_mut_assume_init_typed_basic() {
+    fn test_borrow_mut_assume_init_typed_basic() {
         let mut ws = Workspace::new(64, 64).expect("workspace");
         let mut guard = ws.borrow_mut().expect("borrow_mut");
         {
@@ -439,7 +439,7 @@ mod tests {
 
     /// Drop releases the borrow state so workspace is re-borrowable.
     #[test]
-    fn test_workspace_borrow_mut_drop_releases() {
+    fn test_borrow_mut_drop_releases() {
         let mut ws = Workspace::new(64, 64).expect("workspace");
         {
             let _guard = ws.borrow_mut().expect("borrow_mut");
