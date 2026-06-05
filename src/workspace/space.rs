@@ -10,7 +10,7 @@ use core::sync::atomic::AtomicU8;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
-use std::alloc::Layout;
+use std::alloc::{Layout, alloc};
 use std::borrow::Cow;
 
 use crate::error::{Result, XenonError};
@@ -134,15 +134,14 @@ impl Workspace {
             NonNull::dangling()
         } else {
             // SAFETY: layout has non-zero size and valid alignment.
-            let raw = unsafe { std::alloc::alloc(layout) };
+            let raw = unsafe { alloc(layout) };
             NonNull::new(raw).ok_or({
-                crate::error::XenonError::Workspace {
+                XenonError::Workspace {
                     operation: Cow::Borrowed("Workspace::new"),
                     category: WorkspaceErrorCategory::AllocFailed {
                         size,
                         align: alignment,
                     },
-                    
                 }
             })?
         };
