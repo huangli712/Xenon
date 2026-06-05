@@ -287,26 +287,24 @@ impl Workspace {
     }
 
     /// Internal reallocation. Not part of the public API.
-    fn reallocate(&mut self, new_capacity: usize) -> crate::error::Result<()> {
-        let new_layout = std::alloc::Layout::from_size_align(new_capacity, self.alignment)
+    fn reallocate(&mut self, new_capacity: usize) -> Result<()> {
+        let new_layout = Layout::from_size_align(new_capacity, self.alignment)
             .map_err(|_| XenonError::Workspace {
                 operation: Cow::Borrowed("Workspace::reallocate"),
                 category: WorkspaceErrorCategory::InvalidLayout {
                     size: new_capacity,
                     align: self.alignment,
                 },
-                
             })?;
 
         // SAFETY: layout is valid (checked above).
-        let new_ptr = unsafe { std::alloc::alloc(new_layout) };
-        let new_ptr = core::ptr::NonNull::new(new_ptr).ok_or(XenonError::Workspace {
+        let new_ptr = unsafe { alloc(new_layout) };
+        let new_ptr = NonNull::new(new_ptr).ok_or(XenonError::Workspace {
             operation: Cow::Borrowed("Workspace::reallocate"),
             category: WorkspaceErrorCategory::AllocFailed {
                 size: new_capacity,
                 align: self.alignment,
             },
-            
         })?;
 
         // Implementation detail: bytes MAY be copied during growth, but this
