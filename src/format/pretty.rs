@@ -867,8 +867,12 @@ mod tests {
     /// one, while keeping the element set and ordering identical.
     #[test]
     fn test_line_width_narrow() {
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![10_i32, 20, 30, 40, 50, 60], Ix1(6)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![10_i32, 20, 30, 40, 50, 60],
+                Ix1(6)
+            )
+        };
         let wide = FormatConfig {
             line_width: 200,
             ..Default::default()
@@ -884,7 +888,8 @@ mod tests {
         let narrow_nl = narrow_text.matches('\n').count();
         assert!(
             narrow_nl > wide_nl,
-            "narrow must wrap more; wide={wide_nl}, narrow={narrow_nl}, text={narrow_text:?}"
+            "narrow must wrap more; wide={wide_nl}, \
+            narrow={narrow_nl}, text={narrow_text:?}"
         );
         for v in [10, 20, 30, 40, 50, 60] {
             assert!(
