@@ -20,6 +20,7 @@ All notable changes to this project are documented in this file.
 ### Test
 
 - Implemented `test_into_contiguous_repacks_noncanonical_f_contiguous_owned` for tail-padded owned tensor.
+
 ## [v0.0.26] — 2026-06-04
 
 ### Removed
