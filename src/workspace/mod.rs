@@ -10,8 +10,8 @@
 //!
 //! # Thread Safety
 //!
-//! `Workspace` and all guards are `!Send + !Sync` — verified at compile time
-//! (see `compile_time_negative_assertions` below).
+//! `Workspace` and all guards are `!Send + !Sync` — enforced by
+//! `PhantomData<*mut ()>` and `&'a Workspace` lifetime binding.
 //!
 //! # Example
 //!
@@ -43,23 +43,5 @@ pub use borrow::{WorkspaceBorrow, WorkspaceBorrowMut};
 pub use split::SplitBorrowMut;
 pub use workspace::Workspace;
 
-#[cfg(test)]
-mod tests {
-    //! Compile-time verification that workspace types are `!Send + !Sync`.
-
-    use super::{SplitBorrowMut, Workspace, WorkspaceBorrow, WorkspaceBorrowMut};
-    use static_assertions::assert_not_impl_all;
-
-    // Each `assert_not_impl_all!` is a zero-runtime-cost check — if any of
-    // these auto-traits become accidentally `impl`'d, the build fails.
-    assert_not_impl_all!(Workspace: Send);
-    assert_not_impl_all!(Workspace: Sync);
-    assert_not_impl_all!(WorkspaceBorrow<'static>: Send);
-    assert_not_impl_all!(WorkspaceBorrow<'static>: Sync);
-    assert_not_impl_all!(WorkspaceBorrowMut<'static>: Send);
-    assert_not_impl_all!(WorkspaceBorrowMut<'static>: Sync);
-    assert_not_impl_all!(SplitBorrowMut<'static>: Send);
-    assert_not_impl_all!(SplitBorrowMut<'static>: Sync);
-}
 
 

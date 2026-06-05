@@ -141,3 +141,82 @@ impl<'a> Drop for SplitBorrowMut<'a> {
 }
 
 
+
+#[cfg(test)]
+mod tests {
+    use crate::workspace::Workspace;
+
+    /// is_empty() returns true when split produces a zero-length sub-space.
+    #[test]
+    fn test_split_is_empty() {
+        let mut ws = Workspace::new(100, 64).expect("workspace");
+
+        // Split at 0 → left empty, right full.
+        let (left, right) = ws.split_at_mut(0).expect("split at 0");
+        assert!(left.is_empty());
+        assert!(!right.is_empty());
+        assert_eq!(left.len(), 0);
+        assert_eq!(right.len(), 100);
+    }
+
+    /// as_maybe_uninit_slice() returns correct length and is writable.
+    #[test]
+    fn test_split_as_maybe_uninit_slice() {
+        let mut ws = Workspace::new(64, 64).expect("workspace");
+        let (mut guard, _right) = ws.split_at_mut(32).expect("split");
+
+        let view = guard.as_maybe_uninit_slice();
+        assert_eq!(view.len(), 32);
+
+        // Write through the view to verify it is truly writable.
+        for slot in view.iter_mut() {
+            slot.write(0x42u8);
+        }
+    }
+
+    /// split_at_mut() at boundaries: mid=0 (empty left) and mid=self.len (empty right).
+    #[test]
+    fn test_split_at_mut_boundary() {
+        let mut ws = Workspace::new(100, 64).expect("workspace");
+        let (left, right) = ws.split_at_mut(50).expect("split");
+
+        // mid = 0: left child empty, right child inherits all bytes.
+        let (left_a, left_b) = left.split_at_mut(0).expect("split at 0");
+        assert!(left_a.is_empty());
+        assert_eq!(left_a.len(), 0);
+        assert_eq!(left_b.len(), 50);
+
+        // mid = self.len: right child empty.
+        let (right_a, right_b) = right.split_at_mut(50).expect("split at len");
+        assert_eq!(right_a.len(), 50);
+        assert!(right_b.is_empty());
+        assert_eq!(right_b.len(), 0);
+    }
+
+    /// split_at_mut() with mid > self.len must return an error.
+    #[test]
+    fn test_split_at_mut_oob() {
+        let mut ws = Workspace::new(100, 64).expect("workspace");
+        let (guard, _right) = ws.split_at_mut(50).expect("split");
+
+        // guard has len=50, so mid=51 is out of bounds.
+        let err = guard.split_at_mut(51);
+        assert!(err.is_err());
+    }
+
+    /// After split, child guards must cover non-overlapping memory regions.
+    #[test]
+    fn test_split_non_overlapping() {
+        let mut ws = Workspace::new(100, 64).expect("workspace");
+        let (left, right) = ws.split_at_mut(50).expect("split");
+
+        // Right pointer must equal left pointer + left length.
+        let left_end = unsafe { left.ptr.as_ptr().add(left.len()) };
+        assert_eq!(left_end, right.ptr.as_ptr());
+
+        // Recursive split must also produce contiguous, non-overlapping regions.
+        let (right_a, right_b) = right.split_at_mut(25).expect("split");
+        let right_a_end = unsafe { right_a.ptr.as_ptr().add(right_a.len()) };
+        assert_eq!(right_a_end, right_b.ptr.as_ptr());
+    }
+}
