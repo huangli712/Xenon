@@ -2,7 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.28] — 2026-06-05
+
+### Added
+
+- `Debug` impl for `TensorDisplay` (removed `missing_debug_implementations` suppression).
+- `LayoutState::as_str()` method.
+- Unit tests for `LineWriter` column tracking and error semantics.
+
+### Changed
+
+- Extracted `LineWriter` from `pretty.rs` into a dedicated `writer` module.
+- Merged `debug` module into `display` module, then renamed to `impls`.
+- Extracted `TensorDisplay` and `display_with` into a dedicated `display` module.
+- Extracted `format_tensor_debug` to `pretty.rs`, symmetric to `format_tensor_display`.
+- Replaced `dtype_name` helper with `element_type_of::<A>().name()`.
+- Replaced `layout_name` helper with new `LayoutState::as_str()` method.
+- Consolidated `Display` tests into `impls.rs` alongside the trait impl.
+- Tightened imports in `writer.rs` (direct names over module-qualified paths).
+- Rewrote `format` module documentation; removed all design-doc cross-references.
+- Added module-level doc comments to all `format` submodules.
+- Added field-level docs to `LineWriter`.
+- Replaced Unicode `─` section separators with ASCII `--` in `pretty.rs`.
+- Wrapped long lines across `pretty.rs`, `impls.rs`, and `writer.rs` tests.
+
 ## [v0.0.27] — 2026-06-05
+
+### Removed
+
+- `src/util/clip.rs` (merged into `impls.rs`).
+- `src/util/contiguous.rs` (merged into `impls.rs`).
+- `src/util/fill.rs` (merged into `impls.rs`).
+- Empty module-root compilation test in `src/util/mod.rs`.
 
 ### Changed
 
@@ -19,13 +50,6 @@ All notable changes to this project are documented in this file.
 - Standardized section header style to `---` format.
 - Simplified `#[expect(clippy::clone_on_copy)]` by removing `reason` attributes.
 - Improved `util/mod.rs` doc comment with operation table and intra-doc links.
-
-### Removed
-
-- `src/util/clip.rs` (merged into `impls.rs`).
-- `src/util/contiguous.rs` (merged into `impls.rs`).
-- `src/util/fill.rs` (merged into `impls.rs`).
-- Empty module-root compilation test in `src/util/mod.rs`.
 
 ### Test
 
