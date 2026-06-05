@@ -33,10 +33,7 @@
 
 mod borrow;
 mod split;
-#[expect(
-    clippy::module_inception,
-    reason = "intentional: workspace::workspace holds the Workspace type definition"
-)]
+#[expect(clippy::module_inception)]
 mod workspace;
 
 pub use borrow::{WorkspaceBorrow, WorkspaceBorrowMut};

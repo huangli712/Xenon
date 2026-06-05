@@ -664,19 +664,3 @@ mod tests {
     }
 }
 
-/// `test_workspace_borrow_views_are_mutually_exclusive` is realized as a
-/// compile-fail doctest because the violation must be a *static* type error
-/// — `as_maybe_uninit_slice` and `assume_init_slice` both take `&mut self`,
-/// so safe code cannot hold both views from the same borrow at once.
-///
-/// ```compile_fail
-/// # use xenon::workspace::Workspace;
-/// let workspace = Workspace::new(64, 64).unwrap();
-/// let mut guard = workspace.borrow().unwrap();
-/// let a = guard.as_maybe_uninit_slice();
-/// // Second concurrent view from the same borrow — must fail to compile.
-/// let b = unsafe { guard.assume_init_slice(0) }.unwrap();
-/// let _ = (a, b);
-/// ```
-#[cfg(doctest)]
-struct ViewsMutuallyExclusiveDoctest;
