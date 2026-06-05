@@ -75,7 +75,7 @@ where
     }
 }
 
-// -- Scalar helpers --
+// --- Scalar helpers ---------------------------------------------------------
 
 /// Display-mode scalar rendering.
 ///
@@ -85,7 +85,11 @@ where
 /// Generic over `W: fmt::Write` so it accepts both `&mut Formatter<'_>`
 /// (used by 0D entries) and `&mut LineWriter<'_, '_>` (used by 1D/ND
 /// walkers to track column positions for line_width-based soft-wrapping).
-pub(crate) fn fmt_scalar_display<W, A>(w: &mut W, value: &A, config: FormatConfig) -> fmt::Result
+pub(crate) fn fmt_scalar_display<W, A>(
+    w: &mut W,
+    value: &A,
+    config: FormatConfig
+) -> fmt::Result
 where
     W: fmt::Write,
     A: fmt::Display,
@@ -100,7 +104,11 @@ where
 ///
 /// `FormatConfig::precision` does NOT apply to Debug output — precision
 /// is a Display-only concern.
-pub(crate) fn fmt_scalar_debug<W, A>(w: &mut W, value: &A, _config: FormatConfig) -> fmt::Result
+pub(crate) fn fmt_scalar_debug<W, A>(
+    w: &mut W,
+    value: &A,
+    _config: FormatConfig
+) -> fmt::Result
 where
     W: fmt::Write,
     A: fmt::Debug,
