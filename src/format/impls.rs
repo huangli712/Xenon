@@ -23,7 +23,9 @@ where
     ///
     /// The returned `TensorDisplay` implements `core::fmt::Display`, so
     /// it can be used directly in `format!` / `write!` macros.
-    pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
+    pub fn display_with(
+        &self, config: FormatConfig
+    ) -> TensorDisplay<'_, S, D, A> {
         TensorDisplay {
             tensor: self,
             config,
