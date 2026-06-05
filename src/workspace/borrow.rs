@@ -91,7 +91,9 @@ impl<'a> WorkspaceBorrow<'a> {
         }
         // SAFETY: bounded by the check above; caller's `# Safety` precondition
         // covers initialization. `!Send + !Sync` precludes aliasing.
-        Ok(unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len) })
+        Ok(unsafe {
+            slice::from_raw_parts(self.ptr.as_ptr(), initialized_len)
+        })
     }
 }
 
