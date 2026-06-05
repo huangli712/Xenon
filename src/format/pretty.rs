@@ -10,6 +10,30 @@ use super::config::FormatConfig;
 
 use super::writer::LineWriter;
 
+/// Internal Display dispatch: 0D → `Tensor0(...)`; 1D → `fmt_1d_display`;
+/// ND (n ≥ 2) → `fmt_nd_display`. Mirrors `22-output §5.3` line 235-249.
+pub(crate) fn format_tensor_display<S, D, A>(
+    f: &mut Formatter<'_>,
+    tensor: &TensorBase<S, D>,
+    config: FormatConfig,
+) -> fmt::Result
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Display,
+{
+    match tensor.ndim() {
+        0 => {
+            // §5.3 line 237-242 + Decision 3 line 793-799: explicit Tensor0(...) marker.
+            write!(f, "Tensor0(")?;
+            fmt_scalar_display(f, read_logical(tensor, &[]), config)?;
+            write!(f, ")")
+        },
+        1 => fmt_1d_display(f, tensor, config),
+        _ => fmt_nd_display(f, tensor, config),
+    }
+}
+
 /// Display-mode scalar rendering. Honors `precision` for types that
 /// support `{:.N}`; types that do not (e.g. `bool`, integers) ignore it.
 ///
@@ -451,30 +475,6 @@ fn write_separator(
     } else {
         // Outer axis — always newline + indent by depth.
         outer_break(w, axis)
-    }
-}
-
-/// Internal Display dispatch: 0D → `Tensor0(...)`; 1D → `fmt_1d_display`;
-/// ND (n ≥ 2) → `fmt_nd_display`. Mirrors `22-output §5.3` line 235-249.
-pub(crate) fn format_tensor_display<S, D, A>(
-    f: &mut Formatter<'_>,
-    tensor: &TensorBase<S, D>,
-    config: FormatConfig,
-) -> fmt::Result
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element + fmt::Display,
-{
-    match tensor.ndim() {
-        0 => {
-            // §5.3 line 237-242 + Decision 3 line 793-799: explicit Tensor0(...) marker.
-            write!(f, "Tensor0(")?;
-            fmt_scalar_display(f, read_logical(tensor, &[]), config)?;
-            write!(f, ")")
-        },
-        1 => fmt_1d_display(f, tensor, config),
-        _ => fmt_nd_display(f, tensor, config),
     }
 }
 
