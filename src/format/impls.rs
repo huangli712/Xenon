@@ -1,3 +1,5 @@
+//! `Debug` and `Display` trait implementations for [`TensorBase`](crate::tensor::TensorBase),
+//! plus the `display_with` constructor method.
 use core::fmt;
 
 use crate::dimension::Dimension;

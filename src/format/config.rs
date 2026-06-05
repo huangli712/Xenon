@@ -1,3 +1,4 @@
+//! Tensor output configuration — truncation thresholds, precision, and line-wrap parameters.
 /// Formatting output configuration.
 ///
 /// Controls truncation behavior and display parameters for large arrays.
