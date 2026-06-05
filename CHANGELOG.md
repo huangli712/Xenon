@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+
+## [v0.0.29] — 2026-06-05
+
+### Added
+
+- Borrow guard method tests (`WorkspaceBorrow`/`WorkspaceBorrowMut`) in `borrow.rs`.
+- Split guard method tests (`is_empty`, `as_maybe_uninit_slice`, boundary, non-overlapping) in `split.rs`.
+- Module-level doc comments to `borrow.rs`, `split.rs`, `workspace.rs`.
+- Field doc comments to `WorkspaceBorrow`, `WorkspaceBorrowMut`, `SplitBorrowMut`, `Workspace`.
+
+### Removed
+
+- `expand.rs` file (ensure_capacity/reallocate inlined into `workspace.rs`).
+- Compile-fail doctest for mutually exclusive borrow views.
+- Compile-time `!Send + !Sync` assertions from `mod.rs`.
+- `is_borrowed()` dead-code helper from `Workspace`.
+
+### Changed
+
+- Renamed `workspace.rs` to `space.rs` to avoid clippy `module_inception`.
+- Consolidated borrow/expand/split logic from their respective files into `workspace.rs`.
+- Swapped `WorkspaceBorrow`/`WorkspaceBorrowMut` declaration order for logical grouping.
+- Consolidated all disjoint `impl Workspace` blocks into one contiguous block.
+- Moved `current_borrow_state` helper before struct definition.
+- Moved typed-slice rejection test from `mod.rs` into `borrow.rs`.
+- Shortened `workspace_` prefix in borrow tests function names in `borrow.rs`.
+- Replaced fully-qualified paths with imported names across all workspace module files.
+- Simplified intra-doc links and module doc comments.
+- Normalized ASCII separators (`// ----`) across `borrow.rs`, `space.rs`.
+- Reordered imports (core before std before crate) in `borrow.rs`, `split.rs`, `space.rs`.
+- Added blank-line separators between field/const doc comments.
+
 ## [v0.0.28] — 2026-06-05
 
 ### Added
