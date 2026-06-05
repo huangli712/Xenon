@@ -638,8 +638,12 @@ mod tests {
     /// with an ellipsis and a trailing shape suffix.
     #[test]
     fn test_fmt_1d_truncated() {
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3, 4, 5, 6, 7], Ix1(7)) };
+        let tensor = unsafe {
+            TensorBase::from_raw_vec_unchecked(
+                vec![1, 2, 3, 4, 5, 6, 7],
+                Ix1(7)
+            )
+        };
         let config = FormatConfig {
             edge_items: 2,
             threshold: 4,
