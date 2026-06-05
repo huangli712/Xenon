@@ -34,6 +34,40 @@ where
     }
 }
 
+/// Internal Debug dispatch: writes a header line then routes the data section
+/// through the same ndim-dispatch as Display, using Debug helpers.
+pub(crate) fn format_tensor_debug<S, D, A>(
+    f: &mut Formatter<'_>,
+    tensor: &TensorBase<S, D>,
+    config: FormatConfig,
+) -> fmt::Result
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Debug,
+{
+    // Header: §5.4 line 287-301, §5.5 line 328-334
+    writeln!(
+        f,
+        "Tensor(shape={:?}, strides={:?}, dtype={}, layout={})",
+        tensor.shape(),
+        tensor.strides(),
+        dtype_name::<A>(),
+        layout_name(tensor),
+    )?;
+    // Data section: route through W26T3 debug helpers.
+    // §5.6 line 391 — Debug data omits Display's trailing shape suffix.
+    match tensor.ndim() {
+        0 => {
+            write!(f, "Tensor0(")?;
+            fmt_scalar_debug(f, read_logical(tensor, &[]), config)?;
+            write!(f, ")")
+        },
+        1 => fmt_1d_debug(f, tensor, config),
+        _ => fmt_nd_debug(f, tensor, config),
+    }
+}
+
 /// Display-mode scalar rendering. Honors `precision` for types that
 /// support `{:.N}`; types that do not (e.g. `bool`, integers) ignore it.
 ///

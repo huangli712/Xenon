@@ -7,11 +7,7 @@ use crate::tensor::TensorBase;
 
 use super::config::FormatConfig;
 use super::display::TensorDisplay;
-use super::pretty::{
-    read_logical,
-    fmt_1d_debug, fmt_nd_debug, fmt_scalar_debug,
-    dtype_name, layout_name, format_tensor_display,
-};
+use super::pretty::{format_tensor_display, format_tensor_debug};
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -35,27 +31,7 @@ where
     A: Element + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Header: §5.4 line 287-301, §5.5 line 328-334
-        writeln!(
-            f,
-            "Tensor(shape={:?}, strides={:?}, dtype={}, layout={})",
-            self.shape(),
-            self.strides(),
-            dtype_name::<A>(),
-            layout_name(self),
-        )?;
-        // Data section: route through W26T3 debug helpers.
-        // §5.6 line 391 — Debug data omits Display's trailing shape suffix.
-        let config = FormatConfig::default();
-        match self.ndim() {
-            0 => {
-                write!(f, "Tensor0(")?;
-                fmt_scalar_debug(f, read_logical(self, &[]), config)?;
-                write!(f, ")")
-            },
-            1 => fmt_1d_debug(f, self, config),
-            _ => fmt_nd_debug(f, self, config),
-        }
+        format_tensor_debug(f, self, FormatConfig::default())
     }
 }
 
@@ -75,6 +51,7 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix1, Ix2};
     use crate::layout::Strides;
+    use crate::format::pretty::dtype_name;
 
     #[test]
     fn test_debug_tensor() {
