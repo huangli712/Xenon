@@ -9,6 +9,68 @@ use crate::tensor::TensorBase;
 use super::config::FormatConfig;
 use super::pretty::{fmt_1d_display, fmt_nd_display, fmt_scalar_display, read_logical, fmt_1d_debug, fmt_nd_debug, fmt_scalar_debug};
 
+/// dtype display name. Implements `22-output §6.2` line 587-604 via the
+/// closed `ElementType` enum (no `core::any::TypeId`, no `'static` bound,
+/// no fallback path).
+fn dtype_name<A: Element>() -> &'static str {
+    match A::ELEMENT_TYPE {
+        ElementType::I32 => "i32",
+        ElementType::I64 => "i64",
+        ElementType::F32 => "f32",
+        ElementType::F64 => "f64",
+        ElementType::Complex32 => "Complex<f32>",
+        ElementType::Complex64 => "Complex<f64>",
+        ElementType::Bool => "bool",
+    }
+}
+
+/// Layout category. Implements `22-output §5.4` line 258: distinguishes
+/// `f-contiguous`, `broadcast` (any zero stride), and `non-contiguous`
+/// (transposed / sliced without zero strides). Delegates to
+/// `TensorBase::layout_state()` for the authoritative classification.
+fn layout_name<S, D>(tensor: &TensorBase<S, D>) -> &'static str
+where
+    S: crate::storage::RawStorage,
+    D: Dimension,
+{
+    match tensor.layout_state() {
+        LayoutState::FContiguous => "f-contiguous",
+        LayoutState::BroadcastView => "broadcast",
+        LayoutState::NonContiguous => "non-contiguous",
+    }
+}
+
+impl<S, D, A> fmt::Debug for TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Header: §5.4 line 287-301, §5.5 line 328-334
+        writeln!(
+            f,
+            "Tensor(shape={:?}, strides={:?}, dtype={}, layout={})",
+            self.shape(),
+            self.strides(),
+            dtype_name::<A>(),
+            layout_name(self),
+        )?;
+        // Data section: route through W26T3 debug helpers.
+        // §5.6 line 391 — Debug data omits Display's trailing shape suffix.
+        let config = FormatConfig::default();
+        match self.ndim() {
+            0 => {
+                write!(f, "Tensor0(")?;
+                fmt_scalar_debug(f, read_logical(self, &[]), config)?;
+                write!(f, ")")
+            },
+            1 => fmt_1d_debug(f, self, config),
+            _ => fmt_nd_debug(f, self, config),
+        }
+    }
+}
+
 /// A wrapper that formats a tensor with a specific [`FormatConfig`](crate::format::FormatConfig).
 ///
 /// Constructed via [`TensorBase::display_with`]. Implements [`core::fmt::Display`]
@@ -253,67 +315,5 @@ mod tests {
         assert_eq!(check::<f64>(), "f64");
         assert_eq!(check::<bool>(), "bool");
         // Complex<f32> / Complex<f64> verified via integration test.
-    }
-}
-
-/// dtype display name. Implements `22-output §6.2` line 587-604 via the
-/// closed `ElementType` enum (no `core::any::TypeId`, no `'static` bound,
-/// no fallback path).
-fn dtype_name<A: Element>() -> &'static str {
-    match A::ELEMENT_TYPE {
-        ElementType::I32 => "i32",
-        ElementType::I64 => "i64",
-        ElementType::F32 => "f32",
-        ElementType::F64 => "f64",
-        ElementType::Complex32 => "Complex<f32>",
-        ElementType::Complex64 => "Complex<f64>",
-        ElementType::Bool => "bool",
-    }
-}
-
-/// Layout category. Implements `22-output §5.4` line 258: distinguishes
-/// `f-contiguous`, `broadcast` (any zero stride), and `non-contiguous`
-/// (transposed / sliced without zero strides). Delegates to
-/// `TensorBase::layout_state()` for the authoritative classification.
-fn layout_name<S, D>(tensor: &TensorBase<S, D>) -> &'static str
-where
-    S: crate::storage::RawStorage,
-    D: Dimension,
-{
-    match tensor.layout_state() {
-        LayoutState::FContiguous => "f-contiguous",
-        LayoutState::BroadcastView => "broadcast",
-        LayoutState::NonContiguous => "non-contiguous",
-    }
-}
-
-impl<S, D, A> fmt::Debug for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element + fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Header: §5.4 line 287-301, §5.5 line 328-334
-        writeln!(
-            f,
-            "Tensor(shape={:?}, strides={:?}, dtype={}, layout={})",
-            self.shape(),
-            self.strides(),
-            dtype_name::<A>(),
-            layout_name(self),
-        )?;
-        // Data section: route through W26T3 debug helpers.
-        // §5.6 line 391 — Debug data omits Display's trailing shape suffix.
-        let config = FormatConfig::default();
-        match self.ndim() {
-            0 => {
-                write!(f, "Tensor0(")?;
-                fmt_scalar_debug(f, read_logical(self, &[]), config)?;
-                write!(f, ")")
-            },
-            1 => fmt_1d_debug(f, self, config),
-            _ => fmt_nd_debug(f, self, config),
-        }
     }
 }
