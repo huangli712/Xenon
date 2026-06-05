@@ -1,3 +1,11 @@
+//! Split borrow guard for partitioning a [`Workspace`] into sub-spaces.
+//!
+//! [`SplitBorrowMut`] represents one contiguous slice of a workspace after
+//! [`Workspace::split_at_mut`](super::Workspace::split_at_mut). Multiple
+//! split guards coexist over non-overlapping memory regions, reference-counted
+//! via an [`AtomicUsize`]. The workspace is released only when the last split
+//! guard drops.
+
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 

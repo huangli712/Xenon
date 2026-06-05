@@ -1,3 +1,9 @@
+//! Temporary aligned scratch buffer with borrow-state tracking.
+//!
+//! [`Workspace`] provides a pre-allocated, aligned memory region that can be
+//! borrowed (immutably or mutably), split into sub-spaces, and grown on demand.
+//! Borrow state is managed via atomic CAS with RAII guards.
+
 use crate::error::{Result, WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory, XenonError};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
