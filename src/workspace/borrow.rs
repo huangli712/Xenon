@@ -8,14 +8,6 @@ use crate::error::{
     XenonError,
 };
 
-/// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
-#[derive(Debug)]
-pub struct WorkspaceBorrow<'a> {
-    pub(crate) ptr: NonNull<u8>,
-    pub(crate) len: usize,
-    pub(crate) workspace: &'a Workspace,
-}
-
 /// Mutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
 #[derive(Debug)]
 pub struct WorkspaceBorrowMut<'a> {
@@ -23,10 +15,6 @@ pub struct WorkspaceBorrowMut<'a> {
     pub(crate) len: usize,
     pub(crate) workspace: &'a Workspace,
 }
-
-// =============================================================================
-// WorkspaceBorrow methods
-// =============================================================================
 
 impl<'a> WorkspaceBorrow<'a> {
     /// Returns the borrow length in bytes.
@@ -92,9 +80,21 @@ impl<'a> WorkspaceBorrow<'a> {
     }
 }
 
-// =============================================================================
-// WorkspaceBorrowMut methods
-// =============================================================================
+impl<'a> Drop for WorkspaceBorrow<'a> {
+    fn drop(&mut self) {
+        self.workspace
+            .borrow_state
+            .store(Workspace::BORROW_NONE, Ordering::Release);
+    }
+}
+
+/// Immutable borrow guard — `!Send + !Sync` via `&'a Workspace`.
+#[derive(Debug)]
+pub struct WorkspaceBorrow<'a> {
+    pub(crate) ptr: NonNull<u8>,
+    pub(crate) len: usize,
+    pub(crate) workspace: &'a Workspace,
+}
 
 impl<'a> WorkspaceBorrowMut<'a> {
     /// Returns the borrow length in bytes.
@@ -284,17 +284,6 @@ impl<'a> WorkspaceBorrowMut<'a> {
     }
 }
 
-// =============================================================================
-// Drop impls — release the exclusive/shared borrow on the workspace.
-// =============================================================================
-
-impl<'a> Drop for WorkspaceBorrow<'a> {
-    fn drop(&mut self) {
-        self.workspace
-            .borrow_state
-            .store(Workspace::BORROW_NONE, Ordering::Release);
-    }
-}
 
 impl<'a> Drop for WorkspaceBorrowMut<'a> {
     fn drop(&mut self) {

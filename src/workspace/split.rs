@@ -1,9 +1,8 @@
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use super::workspace::current_borrow_state;
 use super::workspace::Workspace;
-use crate::error::{WorkspaceBorrowKind, XenonError};
+use crate::error::XenonError;
 
 /// Borrow guard for a split sub-space.
 ///
@@ -13,91 +12,15 @@ use crate::error::{WorkspaceBorrowKind, XenonError};
 #[derive(Debug)]
 pub struct SplitBorrowMut<'a> {
     /// Start pointer of this split sub-space.
-    ptr: NonNull<u8>,
+    pub(crate) ptr: NonNull<u8>,
     /// Length of this split sub-space in bytes.
-    len: usize,
+    pub(crate) len: usize,
     /// Parent workspace whose borrow state is restored when all splits drop.
-    workspace: &'a Workspace,
+    pub(crate) workspace: &'a Workspace,
     /// Reference to the split count. Top-level `split_at_mut` initializes the
     /// counter to 2 (binary split); recursive `split_at_mut` `fetch_add(1)`s.
     /// Drop `fetch_sub(1)`s; only on `prev == 1` is `borrow_state` reset.
-    split_count: &'a AtomicUsize,
-}
-
-impl Workspace {
-    /// Split the workspace mutably at the specified position into two sub-spaces.
-    ///
-    /// # Complexity
-    ///
-    /// O(1) — pointer arithmetic only, no memory allocation.
-    ///
-    /// # RAII Behavior
-    ///
-    /// Dropping **the last** `SplitBorrowMut` releases the workspace for
-    /// re-use. Reference counting ensures the workspace is not re-borrowable
-    /// until ALL sub-spaces (including those from recursive `split_at_mut`
-    /// calls) are dropped.
-    ///
-    /// # Errors
-    ///
-    /// - `XenonError::Workspace { SplitOutOfBounds }` — `mid > capacity`
-    /// - `XenonError::Workspace { BorrowConflict }` — already borrowed
-    pub fn split_at_mut(
-        &mut self,
-        mid: usize,
-    ) -> crate::error::Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>)> {
-        // 1. Bounds check FIRST — must not leave borrow_state in a partially
-        //    transitioned state if mid is out of range.
-        if mid > self.capacity {
-            return Err(XenonError::workspace_split_oob(
-                "Workspace::split_at_mut",
-                mid,
-                self.capacity,
-            ));
-        }
-
-        // 2. CAS to acquire exclusive borrow.
-        if self
-            .borrow_state
-            .compare_exchange(
-                Self::BORROW_NONE,
-                Self::BORROW_EXCLUSIVE,
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            )
-            .is_err()
-        {
-            return Err(XenonError::workspace_borrow_conflict(
-                "Workspace::split_at_mut",
-                WorkspaceBorrowKind::Split,
-                current_borrow_state(self),
-            ));
-        }
-
-        // 3. Initialize split_count to 2 (two sub-spaces about to be created).
-        //    `Release` so subsequent guard Drops see the initialization.
-        self.split_count.store(2, Ordering::Release);
-
-        let left_ptr = self.ptr;
-        // SAFETY: mid <= capacity (checked above), so ptr + mid is within
-        // the allocation.
-        let right_ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(mid)) };
-
-        Ok((
-            SplitBorrowMut {
-                ptr: left_ptr,
-                len: mid,
-                workspace: self,
-                split_count: &self.split_count,
-            },
-            SplitBorrowMut {
-                ptr: right_ptr,
-                len: self.capacity - mid,
-                workspace: self,
-                split_count: &self.split_count,
-            },
-        ))
-    }
+    pub(crate) split_count: &'a AtomicUsize,
 }
 
 impl<'a> SplitBorrowMut<'a> {
@@ -209,74 +132,4 @@ impl<'a> Drop for SplitBorrowMut<'a> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::workspace::Workspace;
 
-    #[test]
-    fn test_split_at_mut_basic() {
-        let mut workspace = Workspace::new(100, 64).expect("workspace in test");
-        let (left, right) = workspace.split_at_mut(40).expect("split in test");
-        assert_eq!(left.len(), 40);
-        assert_eq!(right.len(), 60);
-    }
-
-    #[test]
-    fn test_split_at_mut_recursive() {
-        let mut workspace = Workspace::new(100, 64).expect("workspace in test");
-        let (left, right) = workspace.split_at_mut(40).expect("split in test");
-        let (right_a, right_b) = right.split_at_mut(30).expect("split in test");
-        assert_eq!(left.len(), 40);
-        assert_eq!(right_a.len(), 30);
-        assert_eq!(right_b.len(), 30);
-    }
-
-    #[test]
-    fn test_split_at_mut_oob() {
-        let mut workspace = Workspace::new(8, 64).expect("workspace in test");
-        // Bounds check happens BEFORE CAS, so borrow_state must remain
-        // BORROW_NONE and a subsequent borrow must succeed.
-        assert!(workspace.split_at_mut(9).is_err());
-        assert!(workspace.borrow().is_ok());
-    }
-
-    /// Drop ordering is irrelevant to correctness: regardless of which sibling
-    /// drops last, the workspace must be re-usable only AFTER the last sibling
-    /// drops.
-    #[test]
-    fn test_recursive_split_drop_order_independent() {
-        // Scenario A: drop in [left, right_a, right_b] order.
-        {
-            let mut workspace = Workspace::new(100, 64).expect("workspace in test");
-            let (left, right) = workspace.split_at_mut(40).expect("split in test");
-            let (right_a, right_b) = right.split_at_mut(30).expect("split in test");
-            drop(left);
-            // Workspace still has 2 active guards — must not be re-borrowable.
-            drop(right_a);
-            // Still 1 active guard.
-            drop(right_b);
-            // All guards dropped — must be re-borrowable.
-            assert!(workspace.borrow().is_ok());
-        }
-        // Scenario B: drop in [right_b, right_a, left] order.
-        {
-            let mut workspace = Workspace::new(100, 64).expect("workspace in test");
-            let (left, right) = workspace.split_at_mut(40).expect("split in test");
-            let (right_a, right_b) = right.split_at_mut(30).expect("split in test");
-            drop(right_b);
-            drop(right_a);
-            drop(left);
-            assert!(workspace.borrow().is_ok());
-        }
-        // Scenario C: drop in [right_a, left, right_b] order — interleaved.
-        {
-            let mut workspace = Workspace::new(100, 64).expect("workspace in test");
-            let (left, right) = workspace.split_at_mut(40).expect("split in test");
-            let (right_a, right_b) = right.split_at_mut(30).expect("split in test");
-            drop(right_a);
-            drop(left);
-            drop(right_b);
-            assert!(workspace.borrow().is_ok());
-        }
-    }
-}
