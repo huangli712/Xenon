@@ -1,6 +1,7 @@
 //! Pretty-printing pipeline — 0D / 1D / ND display and debug formatters,
 //! scalar rendering helpers, and the recursive axis walkers that produce
 //! Numpy-style nested-bracket output.
+
 use core::fmt::{self, Formatter, Write as _};
 
 use crate::dimension::Dimension;
@@ -9,10 +10,9 @@ use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
 use super::config::FormatConfig;
-
 use super::writer::LineWriter;
 
-// -- Top-level dispatch --
+// --- Top-level dispatch -----------------------------------------------------
 
 /// Internal Display dispatch.
 ///
