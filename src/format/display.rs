@@ -26,6 +26,19 @@ where
     pub(crate) config: FormatConfig,
 }
 
+impl<'a, S, D, A> fmt::Display for TensorDisplay<'a, S, D, A>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + fmt::Display,
+{
+    /// Delegates to the central display formatting pipeline with the config
+    /// stored in this wrapper.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        format_tensor_display(f, self.tensor, self.config)
+    }
+}
+
 impl<'a, S, D, A> fmt::Debug for TensorDisplay<'a, S, D, A>
 where
     S: Storage<Elem = A>,
@@ -40,19 +53,6 @@ where
             .field("tensor", &self.tensor)
             .field("config", &self.config)
             .finish()
-    }
-}
-
-impl<'a, S, D, A> fmt::Display for TensorDisplay<'a, S, D, A>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element + fmt::Display,
-{
-    /// Delegates to the central display formatting pipeline with the config
-    /// stored in this wrapper.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        format_tensor_display(f, self.tensor, self.config)
     }
 }
 
