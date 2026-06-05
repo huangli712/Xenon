@@ -617,7 +617,8 @@ mod tests {
                 fmt_1d_display(f, self.0, self.1)
             }
         }
-        write!(&mut s, "{}", Wrap(tensor, config)).expect("formatting to String is infallible");
+        write!(&mut s, "{}", Wrap(tensor, config))
+            .expect("formatting to String is infallible");
         s
     }
 
