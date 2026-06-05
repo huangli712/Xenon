@@ -603,7 +603,7 @@ mod tests {
 
     /// Internal helper: invoke `fmt_1d_display` via a type that implements
     /// `Display`, returning the formatted string.
-    fn fmt_1d_display_string<A: Element + core::fmt::Display>(
+    fn fmt_1d_display_string<A: Element + fmt::Display>(
         tensor: &TensorBase<Owned<A>, Ix1>,
         config: FormatConfig,
     ) -> String {
@@ -612,8 +612,8 @@ mod tests {
             &'a TensorBase<Owned<A>, Ix1>,
             FormatConfig,
         );
-        impl<'a, A: Element + core::fmt::Display> core::fmt::Display for Wrap<'a, A> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<'a, A: Element + fmt::Display> fmt::Display for Wrap<'a, A> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt_1d_display(f, self.0, self.1)
             }
         }
@@ -679,8 +679,8 @@ mod tests {
             TensorBase::from_raw_vec_unchecked(vec![1, 2, 3, 4, 5, 6, 7, 8, 9], Ix2(3, 3))
         };
         struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix2>);
-        impl<'a> core::fmt::Display for Wrap<'a> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<'a> fmt::Display for Wrap<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
             }
         }
@@ -700,8 +700,8 @@ mod tests {
         let data: Vec<i32> = (1..=10_000).collect();
         let tensor = unsafe { TensorBase::from_raw_vec_unchecked(data, Ix2(100, 100)) };
         struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix2>);
-        impl<'a> core::fmt::Display for Wrap<'a> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<'a> fmt::Display for Wrap<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
             }
         }
@@ -740,8 +740,8 @@ mod tests {
         let base = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
         let view = unsafe { make_view(&base, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
         struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
-        impl<'a> core::fmt::Display for Wrap<'a> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<'a> fmt::Display for Wrap<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
             }
         }
@@ -761,8 +761,8 @@ mod tests {
             unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
         let view = unsafe { make_view(&base, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
         struct Wrap<'a>(&'a TensorBase<ViewRepr<'a, i32>, Ix2>);
-        impl<'a> core::fmt::Display for Wrap<'a> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<'a> fmt::Display for Wrap<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
             }
         }
@@ -783,8 +783,8 @@ mod tests {
             TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6, 7, 8], Ix3(2, 2, 2))
         };
         struct Wrap<'a>(&'a TensorBase<Owned<i32>, Ix3>);
-        impl<'a> core::fmt::Display for Wrap<'a> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl<'a> fmt::Display for Wrap<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
             }
         }
