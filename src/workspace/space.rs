@@ -441,7 +441,8 @@ mod tests {
     /// Verify custom-sized workspace allocation.
     #[test]
     fn test_workspace_new() {
-        let ws = Workspace::new(1024, 64).expect("1024-byte workspace");
+        let ws = Workspace::new(1024, 64)
+            .expect("1024-byte workspace");
         assert_eq!(ws.capacity(), 1024);
         assert_eq!(ws.alignment(), 64);
     }
