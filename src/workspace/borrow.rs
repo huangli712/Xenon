@@ -172,7 +172,9 @@ impl<'a> WorkspaceBorrowMut<'a> {
             ));
         }
         // SAFETY: bounded by the check above; caller asserts initialization.
-        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len) })
+        Ok(unsafe {
+            slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len)
+        })
     }
 
     /// Typed access to possibly-uninitialized scratch memory.
