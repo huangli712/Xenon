@@ -13,6 +13,7 @@ use core::slice;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
+
 use std::borrow::Cow;
 
 use crate::error::{TypedViewRejection, WorkspaceErrorCategory, XenonError};
@@ -98,6 +99,8 @@ impl<'a> WorkspaceBorrow<'a> {
 }
 
 impl<'a> Drop for WorkspaceBorrow<'a> {
+    /// Release the shared borrow by resetting `borrow_state` to `BORROW_NONE`
+    /// with `Release` ordering, making the workspace re-borrowable.
     fn drop(&mut self) {
         self.workspace
             .borrow_state
@@ -110,8 +113,10 @@ impl<'a> Drop for WorkspaceBorrow<'a> {
 pub struct WorkspaceBorrowMut<'a> {
     /// Raw pointer to the start of data in the scratch region.
     pub(crate) ptr: NonNull<u8>,
+    
     /// Length of the borrow in bytes.
     pub(crate) len: usize,
+    
     /// Reference to the parent workspace (guarantees `!Send + !Sync`).
     pub(crate) workspace: &'a Workspace,
 }
@@ -133,10 +138,10 @@ impl<'a> WorkspaceBorrowMut<'a> {
     }
 
     /// Returns the mutable scratch region as possibly-uninitialized bytes.
-    pub fn as_maybe_uninit_slice(&mut self) -> &mut [core::mem::MaybeUninit<u8>] {
+    pub fn as_maybe_uninit_slice(&mut self) -> &mut [MaybeUninit<u8>] {
         // SAFETY: same as `WorkspaceBorrow::as_maybe_uninit_slice`, mut variant.
         unsafe {
-            core::slice::from_raw_parts_mut(
+            slice::from_raw_parts_mut(
                 self.ptr.as_ptr() as *mut core::mem::MaybeUninit<u8>,
                 self.len,
             )
@@ -306,6 +311,8 @@ impl<'a> WorkspaceBorrowMut<'a> {
 
 
 impl<'a> Drop for WorkspaceBorrowMut<'a> {
+    /// Release the exclusive borrow by resetting `borrow_state` to `BORROW_NONE`
+    /// with `Release` ordering, making the workspace re-borrowable.
     fn drop(&mut self) {
         self.workspace
             .borrow_state
