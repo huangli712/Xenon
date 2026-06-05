@@ -9,6 +9,8 @@
 //! Both guards release the borrow state on [`Drop`] via `Release` ordering,
 //! making the workspace re-borrowable.
 
+use core::slice;
+use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use std::borrow::Cow;
@@ -50,12 +52,12 @@ impl<'a> WorkspaceBorrow<'a> {
     /// Takes `&mut self` so that the `MaybeUninit<u8>` view and the
     /// initialized `&[u8]` view are mutually exclusive at the borrow-guard
     /// level — safe code cannot hold both simultaneously.
-    pub fn as_maybe_uninit_slice(&mut self) -> &[core::mem::MaybeUninit<u8>] {
+    pub fn as_maybe_uninit_slice(&mut self) -> &[MaybeUninit<u8>] {
         // SAFETY: `MaybeUninit<u8>` permits uninitialized bytes; the
         // pointer/length range is owned by the workspace whose guard we hold.
         unsafe {
-            core::slice::from_raw_parts(
-                self.ptr.as_ptr() as *const core::mem::MaybeUninit<u8>,
+            slice::from_raw_parts(
+                self.ptr.as_ptr() as *const MaybeUninit<u8>,
                 self.len,
             )
         }
