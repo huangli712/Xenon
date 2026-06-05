@@ -211,7 +211,13 @@ where
                 )
             }
         } else {
-            self.into_owned()
+            // Repack: into_owned() cannot be used because for Owned
+            // storage it is O(1) and preserves tail padding / non-zero
+            // offset. Always iterate logical F-order instead.
+            let dim = self.raw_dim();
+            let values: Vec<A> = self.iter().cloned().collect();
+            Tensor::from_shape_vec(dim, values)
+                .expect("logical iteration length equals shape product")
         }
     }
 }
@@ -522,14 +528,11 @@ mod tests {
         let shape = Ix1(4);
         let strides = Strides::f_contiguous(&shape).expect("f_contiguous strides");
         let flags = compute_layout_flags::<i32, Ix1>(&shape, &strides, owned.as_ptr());
-        // SAFETY: strides are F-order for shape [4]; owned storage holds 5
-        // elements so the logical access range [0..4] is in bounds.
         let padded = unsafe {
             TensorBase::new_unchecked(owned, shape, strides, 0, flags, false)
         };
         assert!(padded.is_f_contiguous());
         assert_eq!(padded.storage_kind(), StorageKind::Owned);
-        // Tail padding: storage_len (5) != product(shape) (4)
         assert_ne!(padded.storage_len(), padded.len());
 
         let canonical = padded.into_contiguous();

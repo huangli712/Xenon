@@ -199,8 +199,9 @@ fn test_into_contiguous_reuses_owned_data() {
 
 #[test]
 fn test_into_contiguous_materializes_view() {
-    // The view is non-contiguous; into_contiguous() copies raw physical storage
-    // (StorageIntoOwned for ViewRepr) and wraps with canonical F-order strides.
+    // The view is non-contiguous; into_contiguous() iterates logical
+    // F-order and produces a canonical F-order owned tensor with the
+    // same logical values.
     let tensor = xenon::tensor::Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
         .expect("valid construction");
     let view = tensor.transpose(); // shape [3, 2], non-contiguous.
@@ -208,12 +209,13 @@ fn test_into_contiguous_materializes_view() {
     let contiguous = view.into_contiguous();
     assert!(contiguous.is_f_contiguous());
     assert_eq!(contiguous.shape(), &[3, 2]);
-    // Physical storage is [1, 2, 3, 4, 5, 6]; canonical F-order strides for [3,2] are [1, 3].
-    // Logical F-order matrix: [[1, 4], [2, 5], [3, 6]]
+    // Logical values preserved from the transposed view:
+    //   [[1, 2], [3, 4], [5, 6]]
+    // Canonical F-order physical form: [1, 3, 5, 2, 4, 6].
     assert_eq!(*contiguous.try_at((0, 0)).expect("valid index"), 1);
-    assert_eq!(*contiguous.try_at((0, 1)).expect("valid index"), 4);
-    assert_eq!(*contiguous.try_at((1, 0)).expect("valid index"), 2);
-    assert_eq!(*contiguous.try_at((1, 1)).expect("valid index"), 5);
-    assert_eq!(*contiguous.try_at((2, 0)).expect("valid index"), 3);
+    assert_eq!(*contiguous.try_at((1, 0)).expect("valid index"), 3);
+    assert_eq!(*contiguous.try_at((2, 0)).expect("valid index"), 5);
+    assert_eq!(*contiguous.try_at((0, 1)).expect("valid index"), 2);
+    assert_eq!(*contiguous.try_at((1, 1)).expect("valid index"), 4);
     assert_eq!(*contiguous.try_at((2, 1)).expect("valid index"), 6);
 }
