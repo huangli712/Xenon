@@ -365,10 +365,12 @@ mod tests {
     /// clip works correctly on a transposed (non-contiguous) tensor.
     #[test]
     fn test_clip_non_contiguous() {
-        let tensor = Tensor2::from_shape_vec([2, 3], vec![1.0_f64, 4.0, 2.0, 5.0, 3.0, 6.0])
-            .expect("from_shape_vec matching shape");
+        let tensor = Tensor2::from_shape_vec(
+            [2, 3], vec![1.0_f64, 4.0, 2.0, 5.0, 3.0, 6.0]
+        ).expect("from_shape_vec matching shape");
         let transposed = tensor.transpose();
-        let clipped = transposed.clip(2.0, 5.0).expect("valid clip bounds");
+        let clipped = transposed.clip(2.0, 5.0)
+            .expect("valid clip bounds");
         assert_eq!(clipped.shape(), &[3, 2]);
         assert_eq!(*clipped.get(&[0, 0]).expect("valid index"), 2.0);
         assert_eq!(*clipped.get(&[0, 1]).expect("valid index"), 4.0);
