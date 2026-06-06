@@ -228,7 +228,7 @@ mod tests {
 
     /// `par_map` produces correct results with a single worker.
     #[test]
-    fn test_parallel_feature_matrix_single_worker() {
+    fn test_par_map_single_worker() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let data = [1.0f64, 2.0, 3.0, 4.0];
@@ -246,7 +246,7 @@ mod tests {
 
     /// `par_map` produces correct results with the default worker count.
     #[test]
-    fn test_parallel_feature_matrix_default_workers() {
+    fn test_par_map_default_workers() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let data = [1.0f64, 2.0, 3.0, 4.0];
@@ -258,70 +258,6 @@ mod tests {
             result.as_slice().expect("valid F-order test output"),
             &[2.0, 4.0, 6.0, 8.0]
         );
-        reset_parallel_threshold();
-    }
-
-    /// `par_map_checked` matches the serial result when the closure succeeds.
-    #[test]
-    fn test_par_map_checked_matches_serial() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let tensor = unsafe { view_1d_f64(&data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&tensor);
-        let result = par_map_checked(&tensor, &strategy, guard, |v| Ok(v * 2.0))
-            .expect("par_map_checked should succeed for valid test input");
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[2.0, 4.0, 6.0, 8.0]
-        );
-        reset_parallel_threshold();
-    }
-
-    /// `par_map_checked` propagates a closure `Err` as an overall `Err`.
-    #[test]
-    fn test_parallel_error_propagation() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let tensor = unsafe { view_1d_f64(&data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&tensor);
-        let result = par_map_checked(&tensor, &strategy, guard, |v| {
-            if *v == 3.0 {
-                Err(XenonError::InvalidArgument {
-                    operation: Cow::Borrowed("test"),
-                    kind: InvalidArgumentKind::NumericOutOfRange {
-                        argument: Cow::Borrowed("v"),
-                        domain: Cow::Borrowed("[0, 2]"),
-                        actual: Cow::Borrowed("3"),
-                    },
-                })
-            } else {
-                Ok(v * 2.0)
-            }
-        });
-        assert!(result.is_err());
-        reset_parallel_threshold();
-    }
-
-    /// `par_map_checked` propagates a worker panic as a panic.
-    #[test]
-    #[should_panic]
-    fn test_parallel_panic_propagation() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let tensor = unsafe { view_1d_f64(&data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&tensor);
-        let _ = par_map_checked(&tensor, &strategy, guard, |v| {
-            if *v == 3.0 {
-                panic!("panic in worker");
-            }
-            Ok(v * 2.0)
-        });
         reset_parallel_threshold();
     }
 
@@ -355,6 +291,70 @@ mod tests {
         let guard = acquire_parallel_guard(&one);
         let result = par_map(&tensor_empty, &strategy, guard, |v| v * 2.0);
         assert_eq!(result.len(), 0);
+        reset_parallel_threshold();
+    }
+
+    /// `par_map_checked` matches the serial result when the closure succeeds.
+    #[test]
+    fn test_par_map_checked_matches_serial() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let tensor = unsafe { view_1d_f64(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&tensor);
+        let result = par_map_checked(&tensor, &strategy, guard, |v| Ok(v * 2.0))
+            .expect("par_map_checked should succeed for valid test input");
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[2.0, 4.0, 6.0, 8.0]
+        );
+        reset_parallel_threshold();
+    }
+
+    /// `par_map_checked` propagates a closure `Err` as an overall `Err`.
+    #[test]
+    fn test_par_map_checked_error_propagation() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let tensor = unsafe { view_1d_f64(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&tensor);
+        let result = par_map_checked(&tensor, &strategy, guard, |v| {
+            if *v == 3.0 {
+                Err(XenonError::InvalidArgument {
+                    operation: Cow::Borrowed("test"),
+                    kind: InvalidArgumentKind::NumericOutOfRange {
+                        argument: Cow::Borrowed("v"),
+                        domain: Cow::Borrowed("[0, 2]"),
+                        actual: Cow::Borrowed("3"),
+                    },
+                })
+            } else {
+                Ok(v * 2.0)
+            }
+        });
+        assert!(result.is_err());
+        reset_parallel_threshold();
+    }
+
+    /// `par_map_checked` propagates a worker panic as a panic.
+    #[test]
+    #[should_panic]
+    fn test_par_map_checked_panic_propagation() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let tensor = unsafe { view_1d_f64(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&tensor);
+        let _ = par_map_checked(&tensor, &strategy, guard, |v| {
+            if *v == 3.0 {
+                panic!("panic in worker");
+            }
+            Ok(v * 2.0)
+        });
         reset_parallel_threshold();
     }
 

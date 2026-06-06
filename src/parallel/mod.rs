@@ -108,7 +108,7 @@ mod feature_matrix_tests {
 
     /// Single-worker and multi-worker `par_sum` agree with the serial sum.
     #[test]
-    fn test_parallel_single_and_multi_worker_results_agree() {
+    fn test_par_sum_single_and_multi_worker_agree() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
         let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();

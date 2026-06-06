@@ -83,7 +83,7 @@ mod tests {
     /// `par_sum` matches the serial sum and returns the identity (0) for an
     /// empty tensor.
     #[test]
-    fn test_par_sum_serial_match_and_empty_identity() {
+    fn test_par_sum_matches_serial_and_empty_identity() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
 
