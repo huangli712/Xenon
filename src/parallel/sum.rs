@@ -40,6 +40,7 @@ mod tests {
     use crate::layout::Strides;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
+    use crate::complex::Complex;
 
     /// Force the parallel path (via `set_parallel_threshold(1)`) and return
     /// its guard. Panics if a contaminated `IN_PARALLEL` TLS prevents the
@@ -106,6 +107,82 @@ mod tests {
             assert_eq!(result, 0.0f64);
         }
 
+        reset_parallel_threshold();
+    }
+
+    /// Build a 1-D F-order view over `data` for test inputs (any element type).
+    unsafe fn view_1d<'a, A: Element>(data: &'a [A]) -> TensorView<'a, A, Ix1> {
+        // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
+        unsafe {
+            TensorView::<A, Ix1>::from_raw_parts(
+                data.as_ptr(),
+                data.len(),
+                Ix1(data.len()),
+                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                0,
+            )
+            .expect("valid F-order 1-D view")
+        }
+    }
+
+    /// `par_sum` works for `f32`.
+    #[test]
+    fn test_par_sum_f32() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = [1.0f32, 2.0, 3.0, 4.0];
+        let tensor = unsafe { view_1d(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&tensor);
+        let result = par_sum(&tensor, &strategy, guard);
+        assert_eq!(result, 10.0f32);
+        reset_parallel_threshold();
+    }
+
+    /// `par_sum` works for `i32`.
+    #[test]
+    fn test_par_sum_i32() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = [1i32, 2, 3, 4, 5, 6, 7, 8];
+        let tensor = unsafe { view_1d(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&tensor);
+        let result = par_sum(&tensor, &strategy, guard);
+        assert_eq!(result, 36i32);
+        reset_parallel_threshold();
+    }
+
+    /// `par_sum` works for `i64`.
+    #[test]
+    fn test_par_sum_i64() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = [1i64, 2, 3, 4, 5, 6, 7, 8];
+        let tensor = unsafe { view_1d(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&tensor);
+        let result = par_sum(&tensor, &strategy, guard);
+        assert_eq!(result, 36i64);
+        reset_parallel_threshold();
+    }
+
+    /// `par_sum` works for `Complex<f64>` (component-wise addition).
+    #[test]
+    fn test_par_sum_complex_f64() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = [
+            Complex::new(1.0f64, 2.0),
+            Complex::new(3.0, 4.0),
+            Complex::new(5.0, 6.0),
+            Complex::new(7.0, 8.0),
+        ];
+        let tensor = unsafe { view_1d(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&tensor);
+        let result = par_sum(&tensor, &strategy, guard);
+        assert_eq!(result, Complex::new(16.0f64, 20.0));
         reset_parallel_threshold();
     }
 }

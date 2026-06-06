@@ -57,4 +57,11 @@ mod chunk_tests {
         // → returns 31_250
         assert_eq!(compute_safe_chunks(1_000_000, 8), 31_250);
     }
+
+    /// `total == num_workers` is the boundary of the `total <= workers`
+    /// rule and still collapses to one element per worker.
+    #[test]
+    fn test_compute_safe_chunks_total_equals_workers() {
+        assert_eq!(compute_safe_chunks(8, 8), 1);
+    }
 }

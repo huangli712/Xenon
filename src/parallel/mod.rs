@@ -21,6 +21,27 @@
 //! let _ = par_sum(&t, &ParallelExecStrategy::auto(), g.unwrap());
 //! // ^^^^^^^ trait bound `bool: Numeric` is not satisfied
 //! ```
+//!
+//! The same constraint applies to `par_dot`:
+//!
+//! ```compile_fail
+//! use xenon::tensor::TensorBase;
+//! use xenon::storage::Owned;
+//! use xenon::dimension::Ix1;
+//! use xenon::dispatch::{select_exec_path, ParallelExecStrategy};
+//! use xenon::par_dot;
+//! let a: TensorBase<Owned<bool>, Ix1> = TensorBase::from_shape_vec(
+//!     Ix1(2), vec![true, false],
+//! ).unwrap();
+//! let b: TensorBase<Owned<bool>, Ix1> = TensorBase::from_shape_vec(
+//!     Ix1(2), vec![true, false],
+//! ).unwrap();
+//! let (_p, g) = select_exec_path(
+//!     a.len(), a.is_f_contiguous(), a.is_aligned(),
+//! );
+//! let _ = par_dot(&a, &b, &ParallelExecStrategy::auto(), g.unwrap());
+//! // ^^^^^^^ trait bound `bool: Numeric` is not satisfied
+//! ```
 
 /// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
 #[cfg(feature = "parallel")]

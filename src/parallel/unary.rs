@@ -327,4 +327,54 @@ mod tests {
         });
         reset_parallel_threshold();
     }
+
+    /// `par_map` supports a type-changing closure `f64 -> i64`.
+    #[test]
+    fn test_par_map_type_changing_closure() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data = [1.5f64, 2.5, 3.5, 4.5];
+        let tensor = unsafe { view_1d_f64(&data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&tensor);
+        let result = par_map(&tensor, &strategy, guard, |v| *v as i64);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[1i64, 2, 3, 4]
+        );
+        reset_parallel_threshold();
+    }
+
+    /// `par_map` returns an empty tensor for an empty input.
+    #[test]
+    fn test_par_map_empty() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let empty: Vec<f64> = Vec::new();
+        let tensor_empty = unsafe { view_1d_f64(&empty) };
+        let one_data = vec![0.0f64];
+        let one = unsafe { view_1d_f64(&one_data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&one);
+        let result = par_map(&tensor_empty, &strategy, guard, |v| v * 2.0);
+        assert_eq!(result.len(), 0);
+        reset_parallel_threshold();
+    }
+
+    /// `par_map_checked` returns an empty tensor for an empty input.
+    #[test]
+    fn test_par_map_checked_empty() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let empty: Vec<f64> = Vec::new();
+        let tensor_empty = unsafe { view_1d_f64(&empty) };
+        let one_data = vec![0.0f64];
+        let one = unsafe { view_1d_f64(&one_data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&one);
+        let result = par_map_checked(&tensor_empty, &strategy, guard, |v| Ok(v * 2.0))
+            .expect("empty par_map_checked should succeed");
+        assert_eq!(result.len(), 0);
+        reset_parallel_threshold();
+    }
 }
