@@ -158,17 +158,14 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
-    use crate::dimension::Ix1;
-    use crate::dispatch::ThresholdTestGuard;
-    use crate::dispatch::{
-        ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
-        set_parallel_threshold,
-    };
+    use std::borrow::Cow;
     use crate::error::InvalidArgumentKind;
+    use crate::dimension::Ix1;
     use crate::layout::Strides;
     use crate::tensor::TensorView;
-    use std::borrow::Cow;
-
+    use crate::dispatch::{ThresholdTestGuard, ExecPath, ParallelExecStrategy};
+    use crate::dispatch::{reset_parallel_threshold, select_exec_path, set_parallel_threshold};
+    
     /// Force the parallel path and return its guard, asserting the parallel
     /// path was actually selected.
     fn acquire_parallel_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
