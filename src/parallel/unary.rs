@@ -213,10 +213,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D f64 view")
+            ).expect("valid F-order 1-D f64 view")
         }
     }
 
@@ -232,13 +232,16 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(4),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order [4] view");
-        let (path, guard_opt) =
-            select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
+        }.expect("valid F-order [4] view");
+        let (path, guard_opt) = select_exec_path(
+            tensor.len(),
+            tensor.is_f_contiguous(),
+            tensor.is_aligned()
+        );
         assert_eq!(path, ExecPath::Parallel);
         let guard = guard_opt.expect("Parallel implies Some(guard)");
 
@@ -259,8 +262,8 @@ mod tests {
         set_parallel_threshold(1);
         let data = [1.0f64, 2.0, 3.0, 4.0];
         let tensor = unsafe { view_1d_f64(&data) };
-        let strategy =
-            ParallelExecStrategy::new(None, Some(1)).expect("valid strategy with max_workers=1");
+        let strategy = ParallelExecStrategy::new(None, Some(1))
+            .expect("valid strategy with max_workers=1");
         let guard = acquire_parallel_guard(&tensor);
         let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
         assert_eq!(
@@ -329,8 +332,12 @@ mod tests {
         let tensor = unsafe { view_1d_f64(&data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&tensor);
-        let result = par_map_checked(&tensor, &strategy, guard, |v| Ok(v * 2.0))
-            .expect("par_map_checked should succeed for valid test input");
+        let result = par_map_checked(
+            &tensor,
+            &strategy,
+            guard,
+            |v| Ok(v * 2.0)
+        ).expect("par_map_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[2.0, 4.0, 6.0, 8.0]
@@ -395,8 +402,12 @@ mod tests {
         let one = unsafe { view_1d_f64(&one_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&one);
-        let result = par_map_checked(&tensor_empty, &strategy, guard, |v| Ok(v * 2.0))
-            .expect("empty par_map_checked should succeed");
+        let result = par_map_checked(
+            &tensor_empty,
+            &strategy,
+            guard,
+            |v| Ok(v * 2.0)
+        ).expect("empty par_map_checked should succeed");
         assert_eq!(result.len(), 0);
         reset_parallel_threshold();
     }
