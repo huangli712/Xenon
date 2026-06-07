@@ -78,7 +78,9 @@ where
     //   - output_data.len() == total == checked_size(tensor.raw_dim())
     //     (collect_into_vec on an IndexedParallelIterator with len() = total)
     //   - F-order index alignment guaranteed by IndexedParallelIterator
-    unsafe { Tensor::from_raw_vec_unchecked(output_data, tensor.raw_dim()) }
+    unsafe {
+        Tensor::from_raw_vec_unchecked(output_data, tensor.raw_dim())
+    }
 }
 
 /// Fallible parallel element-wise map.
@@ -114,6 +116,12 @@ where
     B: Element + Send,
     F: Fn(&A) -> Result<B, XenonError> + Send + Sync,
 {
+    use rayon::iter::{
+        IndexedParallelIterator,
+        IntoParallelRefIterator,
+        ParallelIterator
+    };
+
     let total = tensor.len();
     let num_threads = strategy
         .max_workers()
@@ -125,8 +133,6 @@ where
     let src_slice = tensor
         .as_slice()
         .expect("par_map_checked caller must ensure F-contiguous + non-broadcast");
-
-    use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
     // Phase 1: error probe via try_for_each. If any element returns Err,
     // bail without scheduling the second collect pass. Rayon does NOT
@@ -161,7 +167,9 @@ where
     //   - out.len() == total == checked_size(tensor.raw_dim())
     //     (IndexedParallelIterator len + collect_into_vec)
     //   - F-order alignment guaranteed by IndexedParallelIterator
-    Ok(unsafe { Tensor::from_raw_vec_unchecked(out, tensor.raw_dim()) })
+    Ok(unsafe {
+        Tensor::from_raw_vec_unchecked(out, tensor.raw_dim())
+    })
 }
 
 #[cfg(all(test, feature = "parallel"))]
