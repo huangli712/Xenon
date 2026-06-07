@@ -175,11 +175,14 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
+
     use std::borrow::Cow;
+
     use crate::error::InvalidArgumentKind;
     use crate::dimension::Ix1;
     use crate::layout::Strides;
     use crate::tensor::TensorView;
+
     use crate::dispatch::{ThresholdTestGuard, ExecPath, ParallelExecStrategy};
     use crate::dispatch::{reset_parallel_threshold, select_exec_path, set_parallel_threshold};
     
