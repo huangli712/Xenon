@@ -1,16 +1,16 @@
 //! Parallel backend module. Only compiled with the `parallel` feature.
 
-/// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
-#[cfg(feature = "parallel")]
-pub(crate) mod binary;
-
 /// Chunk-size computation for parallel splitting.
 #[cfg(feature = "parallel")]
 pub(crate) mod chunks;
 
-/// Parallel dot product (`par_dot`).
+/// Single-input parallel element-wise maps (`par_map`, `par_map_checked`).
 #[cfg(feature = "parallel")]
-pub(crate) mod dot;
+pub(crate) mod unary;
+
+/// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
+#[cfg(feature = "parallel")]
+pub(crate) mod binary;
 
 /// Parallel reduction skeleton (`par_reduce_impl`).
 #[cfg(feature = "parallel")]
@@ -20,9 +20,9 @@ pub(crate) mod reduce;
 #[cfg(feature = "parallel")]
 pub(crate) mod sum;
 
-/// Single-input parallel element-wise maps (`par_map`, `par_map_checked`).
+/// Parallel dot product (`par_dot`).
 #[cfg(feature = "parallel")]
-pub(crate) mod unary;
+pub(crate) mod dot;
 
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
