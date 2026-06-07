@@ -94,7 +94,11 @@ mod tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
+        let (path, g) = select_exec_path(
+            t.len(),
+            t.is_f_contiguous(),
+            t.is_aligned()
+        );
         assert_eq!(path, ExecPath::Parallel);
         g.expect("Parallel implies Some(guard)")
     }
@@ -107,10 +111,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D f64 view")
+            ).expect("valid F-order 1-D f64 view")
         }
     }
 
@@ -121,13 +125,23 @@ mod tests {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
 
-        let data: Vec<f64> = (0..2048).map(|i| (i as f64 * 7.0) % 101.0).collect();
+        let data: Vec<f64> = (0..2048)
+            .map(|i| (i as f64 * 7.0) % 101.0)
+            .collect();
         let tensor = unsafe { view_1d_f64(&data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_guard(&tensor);
-        let par_max =
-            par_reduce_impl(&tensor, &strategy, guard, || f64::NEG_INFINITY, |a, b| a.max(b));
-        let serial_max = data.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let par_max = par_reduce_impl(
+            &tensor,
+            &strategy,
+            guard,
+            || f64::NEG_INFINITY,
+            |a, b| a.max(b)
+        );
+        let serial_max = data
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
         assert_eq!(par_max, serial_max);
 
         reset_parallel_threshold();
