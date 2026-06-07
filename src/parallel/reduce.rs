@@ -4,11 +4,13 @@
 //! that concrete reductions (e.g. sum) are built on top of.
 
 use crate::dimension::Dimension;
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::element::Element;
-use super::chunks::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
+
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+use crate::dispatch::{with_parallel_worker_context};
+use super::chunks::compute_safe_chunks;
 
 /// Generic parallel reduction over a tensor's elements.
 ///
@@ -37,6 +39,12 @@ where
     F: Fn(A, A) -> A + Send + Sync,
     ID: Fn() -> A + Send + Sync + Clone,
 {
+    use rayon::iter::{
+        IndexedParallelIterator,
+        IntoParallelRefIterator,
+        ParallelIterator
+    };
+
     let total = tensor.len();
     if total == 0 {
         return identity();
@@ -52,8 +60,6 @@ where
     let src_slice = tensor
         .as_slice()
         .expect("par_reduce_impl caller must ensure F-contiguous + non-broadcast");
-
-    use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
     src_slice
         .par_iter()
