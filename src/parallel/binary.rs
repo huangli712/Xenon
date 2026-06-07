@@ -267,6 +267,141 @@ mod tests {
         }
     }
 
+    /// `par_zip` matches the serial element-wise add.
+    #[test]
+    fn test_par_zip_matches_serial_add() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let rhs_data = vec![10.0f64, 20.0, 30.0, 40.0];
+        let lhs = unsafe { view_1d(&lhs_data) };
+        let rhs = unsafe { view_1d(&rhs_data) };
+        let output_dim = Ix1(4);
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&lhs);
+        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[11.0, 22.0, 33.0, 44.0]
+        );
+        reset_parallel_threshold();
+    }
+
+    /// `par_zip` broadcasts a length-1 rhs against the lhs.
+    #[test]
+    fn test_par_zip_broadcast_rhs_scalar() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
+        // Length-1 broadcasted to length-4. The math layer normally
+        // produces this via broadcast_to; here we construct an explicit
+        // stride-0 view over a single-element backing buffer.
+        let rhs_data = [10.0f64];
+        let lhs = unsafe { view_1d(&lhs_data) };
+        // SAFETY: shape [4], stride [0], storage_len 1 = broadcast view.
+        let rhs = unsafe {
+            TensorView::<f64, Ix1>::from_raw_parts(
+                rhs_data.as_ptr(),
+                rhs_data.len(),
+                Ix1(4),
+                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+                0,
+            )
+        }
+        .expect("valid broadcast view");
+        let output_dim = Ix1(4);
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&lhs);
+        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[11.0, 12.0, 13.0, 14.0]
+        );
+        reset_parallel_threshold();
+    }
+
+    /// `par_zip` exercises the F-order index -> multi-dim coord path with a
+    /// 2-D broadcast: `[3,1]` + `[1,4]` -> `[3,4]`.
+    #[test]
+    fn test_par_zip_multidim_broadcast() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        // lhs: shape [3,1], F-order strides [1,3]
+        let lhs_data = [1.0f64, 2.0, 3.0];
+        let lhs = unsafe {
+            TensorView::<f64, Ix2>::from_raw_parts(
+                lhs_data.as_ptr(),
+                lhs_data.len(),
+                Ix2(3, 1),
+                Strides::from_slice(&[1_usize, 3]).expect("valid F-order strides for test"),
+                0,
+            )
+        }
+        .expect("valid F-order [3,1] view");
+        // rhs: shape [1,4], F-order strides [1,1]
+        let rhs_data = [10.0f64, 20.0, 30.0, 40.0];
+        let rhs = unsafe {
+            TensorView::<f64, Ix2>::from_raw_parts(
+                rhs_data.as_ptr(),
+                rhs_data.len(),
+                Ix2(1, 4),
+                Strides::from_slice(&[1_usize, 1]).expect("valid F-order strides for test"),
+                0,
+            )
+        }
+        .expect("valid F-order [1,4] view");
+        let output_dim = Ix2(3, 4);
+        let one_data = vec![0.0f64];
+        let one = unsafe { view_1d(&one_data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&one);
+        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        // F-order [3,4]: slot(i,j) at i + 3*j; result[i,j] = lhs[i] + rhs[j].
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[11.0, 12.0, 13.0, 21.0, 22.0, 23.0, 31.0, 32.0, 33.0, 41.0, 42.0, 43.0]
+        );
+        reset_parallel_threshold();
+    }
+
+    /// `par_zip` supports a type-changing closure `(f64, f64) -> bool`.
+    #[test]
+    fn test_par_zip_type_changing_closure() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let rhs_data = vec![4.0f64, 3.0, 2.0, 1.0];
+        let lhs = unsafe { view_1d(&lhs_data) };
+        let rhs = unsafe { view_1d(&rhs_data) };
+        let output_dim = Ix1(4);
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&lhs);
+        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| *a > *b);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[false, false, true, true]
+        );
+        reset_parallel_threshold();
+    }
+
+    /// `par_zip` returns an empty tensor for empty inputs.
+    #[test]
+    fn test_par_zip_empty() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let empty: Vec<f64> = Vec::new();
+        let lhs = unsafe { view_1d(&empty) };
+        let rhs = unsafe { view_1d(&empty) };
+        let one_data = vec![0.0f64];
+        let one = unsafe { view_1d(&one_data) };
+        let output_dim = Ix1(0);
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_parallel_guard(&one);
+        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        assert_eq!(result.len(), 0);
+        reset_parallel_threshold();
+    }
+
     /// `par_zip_checked` matches the serial element-wise add.
     #[test]
     fn test_par_zip_checked_matches_serial_add() {
@@ -322,55 +457,43 @@ mod tests {
         reset_parallel_threshold();
     }
 
-    /// `par_zip` matches the serial element-wise add.
+    /// `par_zip_checked` exercises the same 2-D broadcast coord path.
     #[test]
-    fn test_par_zip_matches_serial_add() {
+    fn test_par_zip_checked_multidim_broadcast() {
         let _threshold_guard = ThresholdTestGuard::new();
         set_parallel_threshold(1);
-        let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let rhs_data = vec![10.0f64, 20.0, 30.0, 40.0];
-        let lhs = unsafe { view_1d(&lhs_data) };
-        let rhs = unsafe { view_1d(&rhs_data) };
-        let output_dim = Ix1(4);
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[11.0, 22.0, 33.0, 44.0]
-        );
-        reset_parallel_threshold();
-    }
-
-    /// `par_zip` broadcasts a length-1 rhs against the lhs.
-    #[test]
-    fn test_par_zip_broadcast_rhs_scalar() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
-        // Length-1 broadcasted to length-4. The math layer normally
-        // produces this via broadcast_to; here we construct an explicit
-        // stride-0 view over a single-element backing buffer.
-        let rhs_data = [10.0f64];
-        let lhs = unsafe { view_1d(&lhs_data) };
-        // SAFETY: shape [4], stride [0], storage_len 1 = broadcast view.
-        let rhs = unsafe {
-            TensorView::<f64, Ix1>::from_raw_parts(
-                rhs_data.as_ptr(),
-                rhs_data.len(),
-                Ix1(4),
-                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+        let lhs_data = [1.0f64, 2.0, 3.0];
+        let lhs = unsafe {
+            TensorView::<f64, Ix2>::from_raw_parts(
+                lhs_data.as_ptr(),
+                lhs_data.len(),
+                Ix2(3, 1),
+                Strides::from_slice(&[1_usize, 3]).expect("valid F-order strides for test"),
                 0,
             )
         }
-        .expect("valid broadcast view");
-        let output_dim = Ix1(4);
+        .expect("valid F-order [3,1] view");
+        let rhs_data = [10.0f64, 20.0, 30.0, 40.0];
+        let rhs = unsafe {
+            TensorView::<f64, Ix2>::from_raw_parts(
+                rhs_data.as_ptr(),
+                rhs_data.len(),
+                Ix2(1, 4),
+                Strides::from_slice(&[1_usize, 1]).expect("valid F-order strides for test"),
+                0,
+            )
+        }
+        .expect("valid F-order [1,4] view");
+        let output_dim = Ix2(3, 4);
+        let one_data = vec![0.0f64];
+        let one = unsafe { view_1d(&one_data) };
         let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        let guard = acquire_parallel_guard(&one);
+        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
+            .expect("par_zip_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
-            &[11.0, 12.0, 13.0, 14.0]
+            &[11.0, 12.0, 13.0, 21.0, 22.0, 23.0, 31.0, 32.0, 33.0, 41.0, 42.0, 43.0]
         );
         reset_parallel_threshold();
     }
@@ -424,129 +547,6 @@ mod tests {
             }
             Ok(a + b)
         });
-        reset_parallel_threshold();
-    }
-
-    /// `par_zip` exercises the F-order index -> multi-dim coord path with a
-    /// 2-D broadcast: `[3,1]` + `[1,4]` -> `[3,4]`.
-    #[test]
-    fn test_par_zip_multidim_broadcast() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        // lhs: shape [3,1], F-order strides [1,3]
-        let lhs_data = [1.0f64, 2.0, 3.0];
-        let lhs = unsafe {
-            TensorView::<f64, Ix2>::from_raw_parts(
-                lhs_data.as_ptr(),
-                lhs_data.len(),
-                Ix2(3, 1),
-                Strides::from_slice(&[1_usize, 3]).expect("valid F-order strides for test"),
-                0,
-            )
-        }
-        .expect("valid F-order [3,1] view");
-        // rhs: shape [1,4], F-order strides [1,1]
-        let rhs_data = [10.0f64, 20.0, 30.0, 40.0];
-        let rhs = unsafe {
-            TensorView::<f64, Ix2>::from_raw_parts(
-                rhs_data.as_ptr(),
-                rhs_data.len(),
-                Ix2(1, 4),
-                Strides::from_slice(&[1_usize, 1]).expect("valid F-order strides for test"),
-                0,
-            )
-        }
-        .expect("valid F-order [1,4] view");
-        let output_dim = Ix2(3, 4);
-        let one_data = vec![0.0f64];
-        let one = unsafe { view_1d(&one_data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&one);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
-        // F-order [3,4]: slot(i,j) at i + 3*j; result[i,j] = lhs[i] + rhs[j].
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[11.0, 12.0, 13.0, 21.0, 22.0, 23.0, 31.0, 32.0, 33.0, 41.0, 42.0, 43.0]
-        );
-        reset_parallel_threshold();
-    }
-
-    /// `par_zip_checked` exercises the same 2-D broadcast coord path.
-    #[test]
-    fn test_par_zip_checked_multidim_broadcast() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let lhs_data = [1.0f64, 2.0, 3.0];
-        let lhs = unsafe {
-            TensorView::<f64, Ix2>::from_raw_parts(
-                lhs_data.as_ptr(),
-                lhs_data.len(),
-                Ix2(3, 1),
-                Strides::from_slice(&[1_usize, 3]).expect("valid F-order strides for test"),
-                0,
-            )
-        }
-        .expect("valid F-order [3,1] view");
-        let rhs_data = [10.0f64, 20.0, 30.0, 40.0];
-        let rhs = unsafe {
-            TensorView::<f64, Ix2>::from_raw_parts(
-                rhs_data.as_ptr(),
-                rhs_data.len(),
-                Ix2(1, 4),
-                Strides::from_slice(&[1_usize, 1]).expect("valid F-order strides for test"),
-                0,
-            )
-        }
-        .expect("valid F-order [1,4] view");
-        let output_dim = Ix2(3, 4);
-        let one_data = vec![0.0f64];
-        let one = unsafe { view_1d(&one_data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&one);
-        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("par_zip_checked should succeed for valid test input");
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[11.0, 12.0, 13.0, 21.0, 22.0, 23.0, 31.0, 32.0, 33.0, 41.0, 42.0, 43.0]
-        );
-        reset_parallel_threshold();
-    }
-
-    /// `par_zip` supports a type-changing closure `(f64, f64) -> bool`.
-    #[test]
-    fn test_par_zip_type_changing_closure() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let lhs_data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let rhs_data = vec![4.0f64, 3.0, 2.0, 1.0];
-        let lhs = unsafe { view_1d(&lhs_data) };
-        let rhs = unsafe { view_1d(&rhs_data) };
-        let output_dim = Ix1(4);
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| *a > *b);
-        assert_eq!(
-            result.as_slice().expect("valid F-order test output"),
-            &[false, false, true, true]
-        );
-        reset_parallel_threshold();
-    }
-
-    /// `par_zip` returns an empty tensor for empty inputs.
-    #[test]
-    fn test_par_zip_empty() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let empty: Vec<f64> = Vec::new();
-        let lhs = unsafe { view_1d(&empty) };
-        let rhs = unsafe { view_1d(&empty) };
-        let one_data = vec![0.0f64];
-        let one = unsafe { view_1d(&one_data) };
-        let output_dim = Ix1(0);
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_parallel_guard(&one);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
-        assert_eq!(result.len(), 0);
         reset_parallel_threshold();
     }
 
