@@ -36,6 +36,7 @@ mod feature_matrix_tests {
     use crate::dispatch::{ExecPath, select_exec_path};
     use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
     use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
+
     use super::sum::par_sum;
 
     /// Force the parallel path and return its guard, panicking if the
