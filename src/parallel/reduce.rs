@@ -160,8 +160,12 @@ mod tests {
         let one = unsafe { view_1d_f64(&one_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_guard(&one);
-        let result =
-            par_reduce_impl(&tensor_empty, &strategy, guard, || f64::NEG_INFINITY, |a, b| a.max(b));
+        let result = par_reduce_impl(
+            &tensor_empty,
+            &strategy, guard,
+            || f64::NEG_INFINITY,
+            |a, b| a.max(b)
+        );
         assert_eq!(result, f64::NEG_INFINITY);
 
         reset_parallel_threshold();
