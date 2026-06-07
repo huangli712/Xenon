@@ -553,18 +553,24 @@ mod tests {
                 rhs_data.as_ptr(),
                 rhs_data.len(),
                 Ix2(1, 4),
-                Strides::from_slice(&[1_usize, 1]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize, 1])
+                    .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order [1,4] view");
+        }.expect("valid F-order [1,4] view");
         let output_dim = Ix2(3, 4);
         let one_data = vec![0.0f64];
         let one = unsafe { view_1d(&one_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&one);
-        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("par_zip_checked should succeed for valid test input");
+        let result = par_zip_checked(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| Ok(a + b)
+        ).expect("par_zip_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 12.0, 13.0, 21.0, 22.0, 23.0, 31.0, 32.0, 33.0, 41.0, 42.0, 43.0]
