@@ -374,11 +374,11 @@ mod tests {
                 lhs_data.as_ptr(),
                 lhs_data.len(),
                 Ix2(3, 1),
-                Strides::from_slice(&[1_usize, 3]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize, 3])
+                    .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order [3,1] view");
+        }.expect("valid F-order [3,1] view");
         // rhs: shape [1,4], F-order strides [1,1]
         let rhs_data = [10.0f64, 20.0, 30.0, 40.0];
         let rhs = unsafe {
@@ -386,17 +386,24 @@ mod tests {
                 rhs_data.as_ptr(),
                 rhs_data.len(),
                 Ix2(1, 4),
-                Strides::from_slice(&[1_usize, 1]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize, 1])
+                    .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order [1,4] view");
+        }.expect("valid F-order [1,4] view");
         let output_dim = Ix2(3, 4);
         let one_data = vec![0.0f64];
         let one = unsafe { view_1d(&one_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&one);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        let result = par_zip(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| a + b
+        );
         // F-order [3,4]: slot(i,j) at i + 3*j; result[i,j] = lhs[i] + rhs[j].
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
