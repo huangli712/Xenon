@@ -120,7 +120,9 @@ where
     //   - output_data.len() == total == output_dim.checked_size() (validated above)
     //   - F-order alignment: (0..total).into_par_iter() + collect_into_vec
     //     preserves index -> slot mapping
-    unsafe { Tensor::from_raw_vec_unchecked(output_data, output_dim.clone()) }
+    unsafe {
+        Tensor::from_raw_vec_unchecked(output_data, output_dim.clone())
+    }
 }
 
 /// Fallible dual-input broadcast element-wise parallel map.
@@ -163,6 +165,12 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
+    use rayon::iter::{
+        IndexedParallelIterator,
+        IntoParallelIterator,
+        ParallelIterator
+    };
+
     // checked_size overflow -> InvalidShape with ProductOverflow
     let total = output_dim
         .checked_size()
@@ -184,10 +192,12 @@ where
     // already broadcast against output_dim.
     let lhs_view = lhs
         .broadcast_to(output_dim.clone())
-        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
+        .expect("math layer ensures broadcast compatibility; \
+                violation is an internal bug");
     let rhs_view = rhs
         .broadcast_to(output_dim.clone())
-        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
+        .expect("math layer ensures broadcast compatibility; \
+                 violation is an internal bug");
 
     // Pre-compute output shape for F-order index -> multi-dim coord conversion.
     let out_shape = output_dim.slice();
@@ -196,8 +206,6 @@ where
     for k in 1..ndim {
         strides_f[k] = strides_f[k - 1] * out_shape[k - 1];
     }
-
-    use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
     let mut output_data: Vec<Result<C, XenonError>> = Vec::with_capacity(total);
     (0..total)
@@ -235,7 +243,9 @@ where
     //   - succeeded.len() == total == output_dim.checked_size() (validated above)
     //   - F-order alignment: (0..total).into_par_iter() + collect_into_vec
     //     preserves index -> slot mapping
-    Ok(unsafe { Tensor::from_raw_vec_unchecked(succeeded, output_dim.clone()) })
+    Ok(unsafe {
+        Tensor::from_raw_vec_unchecked(succeeded, output_dim.clone())
+    })
 }
 
 #[cfg(all(test, feature = "parallel"))]
