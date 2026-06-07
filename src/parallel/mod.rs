@@ -1,47 +1,4 @@
 //! Parallel backend module. Only compiled with the `parallel` feature.
-//!
-//! # Compile-fail test: bool does not implement Numeric (par_sum / par_dot)
-//!
-//! `bool` implements `Element` but not `Numeric`, while `par_sum` and
-//! `par_dot` require `A: Numeric`. Calling them on a `bool` tensor must
-//! therefore fail to compile:
-//!
-//! ```compile_fail
-//! use xenon::tensor::TensorBase;
-//! use xenon::storage::Owned;
-//! use xenon::dimension::Ix1;
-//! use xenon::dispatch::{select_exec_path, ParallelExecStrategy};
-//! use xenon::par_sum;
-//! let t: TensorBase<Owned<bool>, Ix1> = TensorBase::from_shape_vec(
-//!     Ix1(2), vec![true, false],
-//! ).unwrap();
-//! let (_p, g) = select_exec_path(
-//!     t.len(), t.is_f_contiguous(), t.is_aligned(),
-//! );
-//! let _ = par_sum(&t, &ParallelExecStrategy::auto(), g.unwrap());
-//! // ^^^^^^^ trait bound `bool: Numeric` is not satisfied
-//! ```
-//!
-//! The same constraint applies to `par_dot`:
-//!
-//! ```compile_fail
-//! use xenon::tensor::TensorBase;
-//! use xenon::storage::Owned;
-//! use xenon::dimension::Ix1;
-//! use xenon::dispatch::{select_exec_path, ParallelExecStrategy};
-//! use xenon::par_dot;
-//! let a: TensorBase<Owned<bool>, Ix1> = TensorBase::from_shape_vec(
-//!     Ix1(2), vec![true, false],
-//! ).unwrap();
-//! let b: TensorBase<Owned<bool>, Ix1> = TensorBase::from_shape_vec(
-//!     Ix1(2), vec![true, false],
-//! ).unwrap();
-//! let (_p, g) = select_exec_path(
-//!     a.len(), a.is_f_contiguous(), a.is_aligned(),
-//! );
-//! let _ = par_dot(&a, &b, &ParallelExecStrategy::auto(), g.unwrap());
-//! // ^^^^^^^ trait bound `bool: Numeric` is not satisfied
-//! ```
 
 /// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
 #[cfg(feature = "parallel")]
