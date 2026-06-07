@@ -266,8 +266,8 @@ mod tests {
         let b = unsafe { view_1d(&b_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_guard(&a);
-        let result =
-            par_dot(&a, &b, &strategy, guard).expect("par_dot should succeed for valid input");
+        let result = par_dot(&a, &b, &strategy, guard)
+            .expect("par_dot should succeed for valid input");
         assert_eq!(result, 70.0f32); // 5+12+21+32
         reset_parallel_threshold();
     }
