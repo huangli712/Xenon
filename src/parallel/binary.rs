@@ -424,7 +424,14 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| *a > *b);
+        let result = par_zip(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| *a > *b
+        );
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[false, false, true, true]
@@ -445,7 +452,14 @@ mod tests {
         let output_dim = Ix1(0);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&one);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        let result = par_zip(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| a + b
+        );
         assert_eq!(result.len(), 0);
         reset_parallel_threshold();
     }
@@ -462,8 +476,14 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("par_zip_checked should succeed for valid test input");
+        let result = par_zip_checked(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| Ok(a + b)
+        ).expect("par_zip_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 22.0, 33.0, 44.0]
@@ -488,11 +508,11 @@ mod tests {
                 rhs_data.as_ptr(),
                 rhs_data.len(),
                 Ix1(4),
-                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+                Strides::from_slice(&[0_usize])
+                    .expect("valid broadcast strides for test"),
                 0,
             )
-        }
-        .expect("valid broadcast view");
+        }.expect("valid broadcast view");
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
