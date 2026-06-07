@@ -657,8 +657,14 @@ mod tests {
         let output_dim = Ix1(0);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&one);
-        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("empty par_zip_checked should succeed");
+        let result = par_zip_checked(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| Ok(a + b)
+        ).expect("empty par_zip_checked should succeed");
         assert_eq!(result.len(), 0);
         reset_parallel_threshold();
     }
