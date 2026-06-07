@@ -287,10 +287,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D view")
+            ).expect("valid F-order 1-D view")
         }
     }
 
@@ -306,7 +306,14 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        let result = par_zip(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| a + b
+        );
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 22.0, 33.0, 44.0]
@@ -331,15 +338,22 @@ mod tests {
                 rhs_data.as_ptr(),
                 rhs_data.len(),
                 Ix1(4),
-                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+                Strides::from_slice(&[0_usize])
+                    .expect("valid broadcast strides for test"),
                 0,
             )
-        }
-        .expect("valid broadcast view");
+        }.expect("valid broadcast view");
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| a + b);
+        let result = par_zip(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| a + b
+        );
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 12.0, 13.0, 14.0]
