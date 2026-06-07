@@ -10,7 +10,8 @@ use crate::element::Element;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+use crate::dispatch::{with_parallel_worker_context};
 use super::chunks::compute_safe_chunks;
 
 /// Infallible parallel element-wise map.
