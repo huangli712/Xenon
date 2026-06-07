@@ -27,16 +27,16 @@ pub(crate) mod dot;
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
     use crate::dimension::{Dimension, Ix1};
-    use crate::dispatch::ThresholdTestGuard;
-    use crate::dispatch::{
-        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
-        set_parallel_threshold,
-    };
     use crate::element::Element;
     use crate::layout::Strides;
-    use crate::parallel::sum::par_sum;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
+
+    use crate::dispatch::ThresholdTestGuard;
+    use crate::dispatch::{ExecPath, select_exec_path};
+    use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+    use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
+    use crate::parallel::sum::par_sum;
 
     /// Force the parallel path and return its guard, panicking if the
     /// parallel path was not selected.
