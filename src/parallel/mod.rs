@@ -81,8 +81,8 @@ mod feature_matrix_tests {
         let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
         let tensor = unsafe { view_1d_f64(&data) };
 
-        let strategy_single =
-            ParallelExecStrategy::new(None, Some(1)).expect("valid strategy with max_workers=1");
+        let strategy_single = ParallelExecStrategy::new(None, Some(1))
+            .expect("valid strategy with max_workers=1");
         let guard_single = acquire_parallel_guard(&tensor);
         let sum_single = par_sum(&tensor, &strategy_single, guard_single);
 
