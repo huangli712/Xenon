@@ -628,12 +628,19 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let _ = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| {
-            if *a == 3.0 {
-                panic!("panic in worker");
+        let _ = par_zip_checked(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| {
+                if *a == 3.0 {
+                    panic!("panic in worker");
+                }
+                Ok(a + b)
             }
-            Ok(a + b)
-        });
+        );
         reset_parallel_threshold();
     }
 
