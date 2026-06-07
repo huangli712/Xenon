@@ -82,22 +82,25 @@ where
 
 /// Fallible parallel element-wise map.
 ///
-/// The single-input counterpart of `par_zip_checked`: `f` may return `Err`,
-/// in which case at least one error is propagated and no result tensor is
-/// produced. Worker panics propagate as panics. Uses a two-pass strategy —
-/// an error probe followed by an indexed collect — so success results land
-/// in logical order regardless of worker completion order.
+/// The single-input counterpart of `par_zip_checked`: `f` may return `Err`.
+/// Uses a two-pass strategy — an error probe followed by an indexed collect —
+/// so success results land in logical order regardless of worker completion
+/// order. Public (rather than `pub(crate)`) so integration tests can exercise
+/// the kernel directly; re-exported through the crate prelude.
+///
+/// # Errors
+///
+/// Returns an `Err` from `f` if any element produces one (rayon does not
+/// guarantee which error is returned when multiple elements fail); no result
+/// tensor is produced in that case.
+///
+/// # Panics
+///
+/// Panics if `tensor` is not F-contiguous (callers must route non-contiguous
+/// or broadcast inputs to the serial path), or if a worker closure `f` panics
+/// (the panic propagates out of the parallel region).
 #[cfg(feature = "parallel")]
-#[allow(
-    dead_code,
-    reason = "Reserved fallible-map kernel. Implementation and tests are \
-              complete; no production caller yet (no operation currently \
-              needs a fallible element mapper). Remove this attribute when a \
-              caller is wired in. (`allow` rather than `expect` because \
-              dead_code only fires without `--tests`; test-mode use suppresses \
-              the lint, so `expect` would be unfulfilled.)"
-)]
-pub(crate) fn par_map_checked<S, A, B, D, F>(
+pub fn par_map_checked<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,
     _guard: ParallelGuard,

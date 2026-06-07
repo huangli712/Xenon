@@ -19,7 +19,9 @@ use crate::tensor::{Tensor, TensorBase};
 /// The dual-input counterpart of `par_map`: the closure cannot fail
 /// (`Fn(&A, &B) -> C`), so results are collected directly into `Vec<C>`
 /// without the per-element `Result` buffering and second aggregation pass
-/// that `par_zip_checked` performs.
+/// that `par_zip_checked` performs. Public (rather than `pub(crate)`) so
+/// integration tests can exercise the kernel directly; re-exported through
+/// the crate prelude.
 ///
 /// # Panics
 ///
@@ -27,18 +29,7 @@ use crate::tensor::{Tensor, TensorBase};
 /// input is not broadcast-compatible with `output_dim`. Both are caller
 /// (math layer) preconditions; a violation is an internal bug.
 #[cfg(feature = "parallel")]
-#[allow(
-    dead_code,
-    reason = "Infallible dual-input kernel, symmetric counterpart to `par_map`; \
-              the eventual default for infallible binary ops. No production \
-              caller yet — math binary helpers still route through \
-              `par_zip_checked` with an Ok-wrapping closure; wiring them over \
-              is a separate change. Tests exercise it. Remove this attribute \
-              when a production caller adopts it. (`allow` not `expect`: \
-              dead_code only fires without `--tests`, so test-mode use would \
-              leave an `expect` unfulfilled.)"
-)]
-pub(crate) fn par_zip<SL, SR, A, B, C, DL, DR, DO, F>(
+pub fn par_zip<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
@@ -126,12 +117,26 @@ where
 
 /// Fallible dual-input broadcast element-wise parallel map.
 ///
-/// Like `par_zip` but the closure may return `Err`, in which case at least
-/// one error is propagated and no result tensor is produced. Worker panics
-/// propagate as panics. Results are buffered per element and aggregated in
-/// logical order on the success path.
+/// Like `par_zip` but the closure may return `Err`. Results are buffered per
+/// element and aggregated in logical order on the success path. Public
+/// (rather than `pub(crate)`) so integration tests can exercise the kernel
+/// directly; re-exported through the crate prelude.
+///
+/// # Errors
+///
+/// Returns [`XenonError::InvalidShape`] if `output_dim.checked_size()`
+/// overflows `usize`, or an `Err` from `f` if any element produces one
+/// (rayon does not guarantee which error is returned when multiple elements
+/// fail); no result tensor is produced in either case.
+///
+/// # Panics
+///
+/// Panics if either input is not broadcast-compatible with `output_dim`
+/// (a math-layer precondition; a violation is an internal bug), or if a
+/// worker closure `f` panics (the panic propagates out of the parallel
+/// region).
 #[cfg(feature = "parallel")]
-pub(crate) fn par_zip_checked<SL, SR, A, B, C, DL, DR, DO, F>(
+pub fn par_zip_checked<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
