@@ -65,7 +65,7 @@ where
         .par_iter()
         .with_min_len(chunk_size)
         .map(|element| {
-            #[allow(clippy::clone_on_copy, reason = "A: Clone but not necessarily Copy")]
+            #[allow(clippy::clone_on_copy)]
             with_parallel_worker_context(|| element.clone())
         })
         .reduce(identity, op)
@@ -74,16 +74,17 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
+
     use crate::dimension::{Dimension, Ix1};
-    use crate::dispatch::ThresholdTestGuard;
-    use crate::dispatch::{
-        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
-        set_parallel_threshold,
-    };
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
+
+    use crate::dispatch::ThresholdTestGuard;
+    use crate::dispatch::{ExecPath, select_exec_path};
+    use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+    use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
 
     /// Force the parallel path (via `set_parallel_threshold(1)`) and return
     /// its guard, asserting the parallel path was actually selected.
