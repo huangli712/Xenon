@@ -356,8 +356,7 @@ mod tests {
                     .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order 2x2 view");
+        }.expect("valid F-order 2x2 view");
         let b_1d_data = vec![1.0f64, 2.0, 3.0, 4.0];
         let b_1d = unsafe { view_1d_f64(&b_1d_data) };
         let guard = acquire_guard(&b_1d);
@@ -406,11 +405,11 @@ mod tests {
                 a_backing.as_ptr(),
                 a_backing.len(),
                 Ix1(4),
-                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+                Strides::from_slice(&[0_usize])
+                    .expect("valid broadcast strides for test"),
                 0,
             )
-        }
-        .expect("valid broadcast view");
+        }.expect("valid broadcast view");
         let b_data = vec![1.0f64, 2.0, 3.0, 4.0];
         let b = unsafe { view_1d_f64(&b_data) };
         let guard = acquire_guard(&b);
@@ -435,11 +434,11 @@ mod tests {
                 b_backing.as_ptr(),
                 b_backing.len(),
                 Ix1(4),
-                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+                Strides::from_slice(&[0_usize])
+                    .expect("valid broadcast strides for test"),
                 0,
             )
-        }
-        .expect("valid broadcast view");
+        }.expect("valid broadcast view");
         let guard = acquire_guard(&a);
         let result = par_dot(&a, &b_bc, &strategy, guard);
         assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
