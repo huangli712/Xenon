@@ -251,16 +251,16 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
-    use crate::dimension::Ix1;
-    use crate::dispatch::ThresholdTestGuard;
-    use crate::dispatch::{
-        ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
-        set_parallel_threshold,
-    };
+
+    use crate::error::InvalidArgumentKind;
+    use crate::dimension::{Ix1, Ix2};
     use crate::layout::Strides;
     use crate::tensor::TensorView;
-    use crate::dimension::Ix2;
-    use crate::error::InvalidArgumentKind;
+    
+    use crate::dispatch::ThresholdTestGuard;
+    use crate::dispatch::{ExecPath, select_exec_path};
+    use crate::dispatch::{ParallelExecStrategy};
+    use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
 
     /// Force the parallel path and return its guard, asserting the parallel
     /// path was actually selected.
