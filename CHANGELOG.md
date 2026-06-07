@@ -3,6 +3,35 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.30] — 2026-06-07
+
+### Added
+
+- Infallible `par_zip` parallel kernel for dual-input map.
+- `# Errors`/`# Panics` docs on all public parallel kernels.
+- `par_map_checked`, `par_zip`, `par_zip_checked` re-exported from prelude.
+- Expanded parallel test coverage (+559 lines).
+
+### Removed
+
+- `compile_fail` doc tests from parallel module docs.
+
+### Changed
+
+- Split `parallel::map` into `unary` and `binary` modules.
+- Extracted `par_dot` into a dedicated `dot` module.
+- Extracted `compute_safe_chunks` and `par_sum` into separate modules.
+- Renamed `par_zip_map` to `par_zip_checked`.
+- Made parallel kernels public.
+- Reordered parallel module declarations by dependency.
+- Standardized test names to `test_<fn>_<scenario>` pattern.
+- Split `par_dot` error cases into individual tests.
+- Grouped `par_zip` tests ahead of `par_zip_checked`.
+- Preferred `super::` paths for sibling imports.
+- Documented `par_dot` invariants.
+- Reorganized imports and wrapped long calls across all parallel modules.
+- Dropped nightly-only clippy `reason` attribute.
+
 ## [v0.0.29] — 2026-06-05
 
 ### Added
