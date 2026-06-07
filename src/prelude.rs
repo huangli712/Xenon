@@ -201,7 +201,10 @@ pub use crate::dispatch::{
 };
 
 #[cfg(feature = "parallel")]
-pub use crate::parallel::unary::par_map;
+pub use crate::parallel::unary::{par_map, par_map_checked};
+
+#[cfg(feature = "parallel")]
+pub use crate::parallel::binary::{par_zip, par_zip_checked};
 
 #[cfg(feature = "parallel")]
 pub use crate::parallel::dot::par_dot;
