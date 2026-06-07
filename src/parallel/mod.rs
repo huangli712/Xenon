@@ -3,18 +3,23 @@
 /// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
 #[cfg(feature = "parallel")]
 pub(crate) mod binary;
+
 /// Chunk-size computation for parallel splitting.
 #[cfg(feature = "parallel")]
 pub(crate) mod chunks;
+
 /// Parallel dot product (`par_dot`).
 #[cfg(feature = "parallel")]
 pub(crate) mod dot;
+
 /// Parallel reduction skeleton (`par_reduce_impl`).
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;
+
 /// Parallel sum reduction (`par_sum`).
 #[cfg(feature = "parallel")]
 pub(crate) mod sum;
+
 /// Single-input parallel element-wise maps (`par_map`, `par_map_checked`).
 #[cfg(feature = "parallel")]
 pub(crate) mod unary;
