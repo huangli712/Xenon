@@ -283,8 +283,8 @@ mod tests {
         let b = unsafe { view_1d(&b_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_guard(&a);
-        let result =
-            par_dot(&a, &b, &strategy, guard).expect("par_dot should succeed for valid input");
+        let result = par_dot(&a, &b, &strategy, guard)
+            .expect("par_dot should succeed for valid input");
         assert_eq!(result, 70i32);
         reset_parallel_threshold();
     }
@@ -302,8 +302,8 @@ mod tests {
         let b = unsafe { view_1d(&b_data) };
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_guard(&a);
-        let result =
-            par_dot(&a, &b, &strategy, guard).expect("par_dot should succeed for valid input");
+        let result = par_dot(&a, &b, &strategy, guard)
+            .expect("par_dot should succeed for valid input");
         // conj(1+2i)*(5+6i) + conj(3+4i)*(7+8i)
         // = (1-2i)*(5+6i) + (3-4i)*(7+8i)
         // = (17-4i) + (53-4i) = 70 - 8i
@@ -352,7 +352,8 @@ mod tests {
                 a_2d_data.as_ptr(),
                 a_2d_data.len(),
                 Ix2(2, 2),
-                Strides::from_slice(&[1_usize, 2]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize, 2])
+                    .expect("valid F-order strides for test"),
                 0,
             )
         }
