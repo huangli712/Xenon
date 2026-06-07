@@ -227,101 +227,6 @@ mod tests {
         reset_parallel_threshold();
     }
 
-    /// `par_dot` rejects shape mismatch, non-1-D rank, and broadcast views
-    /// with the appropriate errors.
-    #[test]
-    fn test_par_dot_error_cases() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let strategy = ParallelExecStrategy::auto();
-
-        // Shape mismatch — needs a guard for the signature but par_dot
-        // returns Err before using any parallel state.
-        let a_data = vec![1.0f64, 2.0, 3.0];
-        let b_data = vec![1.0f64, 2.0];
-        let a = unsafe { view_1d_f64(&a_data) };
-        let b = unsafe { view_1d_f64(&b_data) };
-        {
-            let guard = acquire_guard(&a);
-            let result = par_dot(&a, &b, &strategy, guard);
-            match result {
-                Err(XenonError::ShapeMismatch {
-                    left_shape,
-                    right_shape,
-                    ..
-                }) => {
-                    assert_eq!(left_shape, vec![3]);
-                    assert_eq!(right_shape, vec![2]);
-                },
-                _ => panic!("expected ShapeMismatch, got {:?}", result),
-            }
-        }
-
-        // Rank mismatch (2-D lhs)
-        let a_2d_data = [1.0f64, 2.0, 3.0, 4.0];
-        let a_2d = unsafe {
-            TensorView::<f64, Ix2>::from_raw_parts(
-                a_2d_data.as_ptr(),
-                a_2d_data.len(),
-                Ix2(2, 2),
-                Strides::from_slice(&[1_usize, 2]).expect("valid F-order strides for test"),
-                0,
-            )
-        }
-        .expect("valid F-order 2x2 view");
-        let b_1d_data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let b_1d = unsafe { view_1d_f64(&b_1d_data) };
-        {
-            let guard = acquire_guard(&b_1d);
-            let result = par_dot(&a_2d, &b_1d, &strategy, guard);
-            assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
-        }
-
-        // Broadcast view rejection
-        let a_bc_data = vec![1.0f64, 2.0, 3.0, 4.0];
-        let a_bc = unsafe { view_1d_f64(&a_bc_data) };
-        let b_backing = [10.0f64];
-        let b_bc = unsafe {
-            TensorView::<f64, Ix1>::from_raw_parts(
-                b_backing.as_ptr(),
-                b_backing.len(),
-                Ix1(4),
-                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
-                0,
-            )
-        }
-        .expect("valid broadcast view");
-        {
-            let guard = acquire_guard(&a_bc);
-            let result = par_dot(&a_bc, &b_bc, &strategy, guard);
-            assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
-        }
-
-        reset_parallel_threshold();
-    }
-
-    /// `par_dot` applies the Hermitian convention `sum(conj(lhs) * rhs)` for
-    /// complex inputs — the conjugate on the left operand is observable here
-    /// (unlike real inputs, where conjugate is the identity).
-    #[test]
-    fn test_par_dot_complex_f64_conjugate() {
-        let _threshold_guard = ThresholdTestGuard::new();
-        set_parallel_threshold(1);
-        let a_data = [Complex::new(1.0f64, 2.0), Complex::new(3.0, 4.0)];
-        let b_data = [Complex::new(5.0f64, 6.0), Complex::new(7.0, 8.0)];
-        let a = unsafe { view_1d(&a_data) };
-        let b = unsafe { view_1d(&b_data) };
-        let strategy = ParallelExecStrategy::auto();
-        let guard = acquire_guard(&a);
-        let result =
-            par_dot(&a, &b, &strategy, guard).expect("par_dot should succeed for valid input");
-        // conj(1+2i)*(5+6i) + conj(3+4i)*(7+8i)
-        // = (1-2i)*(5+6i) + (3-4i)*(7+8i)
-        // = (17-4i) + (53-4i) = 70 - 8i
-        assert_eq!(result, Complex::new(70.0f64, -8.0));
-        reset_parallel_threshold();
-    }
-
     /// `par_dot` works for `f32`.
     #[test]
     fn test_par_dot_f32() {
@@ -356,8 +261,83 @@ mod tests {
         reset_parallel_threshold();
     }
 
-    /// `par_dot` rejects a non-1-D rhs (the symmetric branch to the 2-D lhs
-    /// case), returning `InvalidArgument`.
+    /// `par_dot` applies the Hermitian convention `sum(conj(lhs) * rhs)` for
+    /// complex inputs — the conjugate on the left operand is observable here
+    /// (unlike real inputs, where conjugate is the identity).
+    #[test]
+    fn test_par_dot_complex_f64_conjugate() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let a_data = [Complex::new(1.0f64, 2.0), Complex::new(3.0, 4.0)];
+        let b_data = [Complex::new(5.0f64, 6.0), Complex::new(7.0, 8.0)];
+        let a = unsafe { view_1d(&a_data) };
+        let b = unsafe { view_1d(&b_data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&a);
+        let result =
+            par_dot(&a, &b, &strategy, guard).expect("par_dot should succeed for valid input");
+        // conj(1+2i)*(5+6i) + conj(3+4i)*(7+8i)
+        // = (1-2i)*(5+6i) + (3-4i)*(7+8i)
+        // = (17-4i) + (53-4i) = 70 - 8i
+        assert_eq!(result, Complex::new(70.0f64, -8.0));
+        reset_parallel_threshold();
+    }
+
+    /// `par_dot` rejects operands with different shapes, returning
+    /// `ShapeMismatch`.
+    #[test]
+    fn test_par_dot_shape_mismatch() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let strategy = ParallelExecStrategy::auto();
+
+        let a_data = vec![1.0f64, 2.0, 3.0];
+        let b_data = vec![1.0f64, 2.0];
+        let a = unsafe { view_1d_f64(&a_data) };
+        let b = unsafe { view_1d_f64(&b_data) };
+        let guard = acquire_guard(&a);
+        let result = par_dot(&a, &b, &strategy, guard);
+        match result {
+            Err(XenonError::ShapeMismatch {
+                left_shape,
+                right_shape,
+                ..
+            }) => {
+                assert_eq!(left_shape, vec![3]);
+                assert_eq!(right_shape, vec![2]);
+            },
+            _ => panic!("expected ShapeMismatch, got {:?}", result),
+        }
+        reset_parallel_threshold();
+    }
+
+    /// `par_dot` rejects a non-1-D lhs (2-D), returning `InvalidArgument`.
+    #[test]
+    fn test_par_dot_lhs_rank_mismatch() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let strategy = ParallelExecStrategy::auto();
+
+        let a_2d_data = [1.0f64, 2.0, 3.0, 4.0];
+        let a_2d = unsafe {
+            TensorView::<f64, Ix2>::from_raw_parts(
+                a_2d_data.as_ptr(),
+                a_2d_data.len(),
+                Ix2(2, 2),
+                Strides::from_slice(&[1_usize, 2]).expect("valid F-order strides for test"),
+                0,
+            )
+        }
+        .expect("valid F-order 2x2 view");
+        let b_1d_data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let b_1d = unsafe { view_1d_f64(&b_1d_data) };
+        let guard = acquire_guard(&b_1d);
+        let result = par_dot(&a_2d, &b_1d, &strategy, guard);
+        assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
+        reset_parallel_threshold();
+    }
+
+    /// `par_dot` rejects a non-1-D rhs (2-D), returning `InvalidArgument`.
     #[test]
     fn test_par_dot_rhs_rank_mismatch() {
         let _threshold_guard = ThresholdTestGuard::new();
@@ -383,7 +363,7 @@ mod tests {
         reset_parallel_threshold();
     }
 
-    /// `par_dot` rejects an lhs broadcast view (the lhs_bad branch), returning
+    /// `par_dot` rejects an lhs broadcast view (zero stride), returning
     /// `InvalidArgument`.
     #[test]
     fn test_par_dot_lhs_broadcast_rejected() {
@@ -406,6 +386,33 @@ mod tests {
         let b = unsafe { view_1d_f64(&b_data) };
         let guard = acquire_guard(&b);
         let result = par_dot(&a_bc, &b, &strategy, guard);
+        assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
+        reset_parallel_threshold();
+    }
+
+    /// `par_dot` rejects an rhs broadcast view (zero stride), returning
+    /// `InvalidArgument`.
+    #[test]
+    fn test_par_dot_rhs_broadcast_rejected() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let strategy = ParallelExecStrategy::auto();
+
+        let a_data = vec![1.0f64, 2.0, 3.0, 4.0];
+        let a = unsafe { view_1d_f64(&a_data) };
+        let b_backing = [10.0f64];
+        let b_bc = unsafe {
+            TensorView::<f64, Ix1>::from_raw_parts(
+                b_backing.as_ptr(),
+                b_backing.len(),
+                Ix1(4),
+                Strides::from_slice(&[0_usize]).expect("valid broadcast strides for test"),
+                0,
+            )
+        }
+        .expect("valid broadcast view");
+        let guard = acquire_guard(&a);
+        let result = par_dot(&a, &b_bc, &strategy, guard);
         assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
         reset_parallel_threshold();
     }
