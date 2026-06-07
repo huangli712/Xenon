@@ -270,7 +270,11 @@ mod tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
+        let (path, g) = select_exec_path(
+            t.len(),
+            t.is_f_contiguous(),
+            t.is_aligned()
+        );
         assert_eq!(path, ExecPath::Parallel);
         g.expect("Parallel implies Some(guard)")
     }
