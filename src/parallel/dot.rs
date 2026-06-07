@@ -166,7 +166,11 @@ mod tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
+        let (path, g) = select_exec_path(
+            t.len(),
+            t.is_f_contiguous(),
+            t.is_aligned()
+        );
         if !matches!(path, ExecPath::Parallel) {
             // IN_PARALLEL TLS may be contaminated from a prior test.
             panic!(
@@ -187,10 +191,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D f64 view")
+            ).expect("valid F-order 1-D f64 view")
         }
     }
 
@@ -202,10 +206,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D view")
+            ).expect("valid F-order 1-D view")
         }
     }
 
@@ -225,7 +229,11 @@ mod tests {
             let guard = acquire_guard(&a);
             let par_result = par_dot(&a, &b, &strategy, guard)
                 .expect("par_dot should succeed for valid test input");
-            let serial_result: f64 = a_vec.iter().zip(b_vec.iter()).map(|(x, y)| x * y).sum();
+            let serial_result: f64 = a_vec
+                .iter()
+                .zip(b_vec.iter())
+                .map(|(x, y)| x * y)
+                .sum();
             assert!((par_result - serial_result).abs() < 1e-10 * serial_result.abs().max(1.0));
         }
 
