@@ -3,11 +3,12 @@
 //! Provides [`par_sum`], the parallel sum of all elements in a tensor.
 
 use crate::dimension::Dimension;
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
 use crate::element::Numeric;
-use crate::parallel::reduce::par_reduce_impl;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
+
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+use crate::parallel::reduce::par_reduce_impl;
 
 /// Parallel sum of all elements in a tensor.
 ///
@@ -31,16 +32,16 @@ where
 mod tests {
     use super::*;
     use crate::dimension::{Dimension, Ix1};
-    use crate::dispatch::ThresholdTestGuard;
-    use crate::dispatch::{
-        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
-        set_parallel_threshold,
-    };
+    use crate::complex::Complex;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
-    use crate::complex::Complex;
+    
+    use crate::dispatch::ThresholdTestGuard;
+    use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+    use crate::dispatch::{ExecPath, select_exec_path};
+    use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
 
     /// Force the parallel path (via `set_parallel_threshold(1)`) and return
     /// its guard. Panics if a contaminated `IN_PARALLEL` TLS prevents the
@@ -51,7 +52,11 @@ mod tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
+        let (path, g) = select_exec_path(
+            t.len(),
+            t.is_f_contiguous(),
+            t.is_aligned()
+        );
         if !matches!(path, ExecPath::Parallel) {
             // IN_PARALLEL TLS may be contaminated from a prior test.
             panic!(
@@ -72,10 +77,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D f64 view")
+            ).expect("valid F-order 1-D f64 view")
         }
     }
 
@@ -87,10 +92,10 @@ mod tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D view")
+            ).expect("valid F-order 1-D view")
         }
     }
 
@@ -108,7 +113,10 @@ mod tests {
             let guard = acquire_guard(&tensor);
             let par_result = par_sum(&tensor, &strategy, guard);
             let serial_result: f64 = data.iter().sum();
-            assert!((par_result - serial_result).abs() < 1e-10 * serial_result.abs().max(1.0));
+            assert!(
+                (par_result - serial_result).abs()
+                    < 1e-10 * serial_result.abs().max(1.0)
+            );
         }
 
         let empty: Vec<f64> = Vec::new();
