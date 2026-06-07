@@ -42,6 +42,13 @@ mod chunk_tests {
         assert_eq!(compute_safe_chunks(5, 8), 1);
     }
 
+    /// `total == num_workers` is the boundary of the `total <= workers`
+    /// rule and still collapses to one element per worker.
+    #[test]
+    fn test_compute_safe_chunks_total_equals_workers() {
+        assert_eq!(compute_safe_chunks(8, 8), 1);
+    }
+
     /// A computed chunk below `MIN_CHUNK` is raised to the 1024 floor.
     #[test]
     fn test_compute_safe_chunks_respects_min_chunk() {
@@ -56,12 +63,5 @@ mod chunk_tests {
         // total=1_000_000, workers=8 → ceil(1_000_000 / 32) = 31_250 > 1024
         // → returns 31_250
         assert_eq!(compute_safe_chunks(1_000_000, 8), 31_250);
-    }
-
-    /// `total == num_workers` is the boundary of the `total <= workers`
-    /// rule and still collapses to one element per worker.
-    #[test]
-    fn test_compute_safe_chunks_total_equals_workers() {
-        assert_eq!(compute_safe_chunks(8, 8), 1);
     }
 }

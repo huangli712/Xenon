@@ -80,6 +80,21 @@ mod tests {
         }
     }
 
+    /// Build a 1-D F-order view over `data` for test inputs (any element type).
+    unsafe fn view_1d<'a, A: Element>(data: &'a [A]) -> TensorView<'a, A, Ix1> {
+        // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
+        unsafe {
+            TensorView::<A, Ix1>::from_raw_parts(
+                data.as_ptr(),
+                data.len(),
+                Ix1(data.len()),
+                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                0,
+            )
+            .expect("valid F-order 1-D view")
+        }
+    }
+
     /// `par_sum` matches the serial sum and returns the identity (0) for an
     /// empty tensor.
     #[test]
@@ -108,21 +123,6 @@ mod tests {
         }
 
         reset_parallel_threshold();
-    }
-
-    /// Build a 1-D F-order view over `data` for test inputs (any element type).
-    unsafe fn view_1d<'a, A: Element>(data: &'a [A]) -> TensorView<'a, A, Ix1> {
-        // SAFETY: caller ensures data is a valid F-order 1-D contiguous slice.
-        unsafe {
-            TensorView::<A, Ix1>::from_raw_parts(
-                data.as_ptr(),
-                data.len(),
-                Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
-                0,
-            )
-            .expect("valid F-order 1-D view")
-        }
     }
 
     /// `par_sum` works for `f32`.
