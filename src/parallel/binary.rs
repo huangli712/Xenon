@@ -10,7 +10,7 @@ use crate::dimension::Dimension;
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::element::Element;
 use crate::error::{InvalidShapeKind, XenonError};
-use crate::parallel::chunks::compute_safe_chunks;
+use super::chunks::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 

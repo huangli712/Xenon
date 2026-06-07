@@ -4,13 +4,14 @@
 //! - [`par_map_checked`] — fallible variant whose closure returns `Result`,
 //!   with error + panic propagation.
 
-use crate::dimension::Dimension;
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
-use crate::element::Element;
 use crate::error::XenonError;
-use crate::parallel::chunks::compute_safe_chunks;
+use crate::dimension::Dimension;
+use crate::element::Element;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
+
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
+use super::chunks::compute_safe_chunks;
 
 /// Infallible parallel element-wise map.
 ///
@@ -37,6 +38,12 @@ where
     B: Element + Send,
     F: Fn(&A) -> B + Send + Sync,
 {
+    use rayon::iter::{
+        IndexedParallelIterator,
+        IntoParallelRefIterator,
+        ParallelIterator
+    };
+
     let total = tensor.len();
     let num_threads = strategy
         .max_workers()
@@ -53,8 +60,6 @@ where
         "par_map caller must ensure F-contiguous + non-broadcast; \
          dispatch gates non-contiguous inputs to Serial",
     );
-
-    use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
     let mut output_data: Vec<B> = Vec::with_capacity(total);
     src_slice
