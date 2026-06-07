@@ -234,7 +234,10 @@ mod tests {
                 .zip(b_vec.iter())
                 .map(|(x, y)| x * y)
                 .sum();
-            assert!((par_result - serial_result).abs() < 1e-10 * serial_result.abs().max(1.0));
+            assert!(
+                (par_result - serial_result).abs()
+                    < 1e-10 * serial_result.abs().max(1.0)
+            );
         }
 
         let empty: Vec<f64> = Vec::new();
@@ -244,8 +247,8 @@ mod tests {
         let one = unsafe { view_1d_f64(&one_data) };
         {
             let guard = acquire_guard(&one);
-            let result =
-                par_dot(&ea, &eb, &strategy, guard).expect("empty par_dot should return identity");
+            let result = par_dot(&ea, &eb, &strategy, guard)
+                .expect("empty par_dot should return identity");
             assert_eq!(result, 0.0f64);
         }
 
