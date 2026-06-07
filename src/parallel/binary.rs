@@ -516,8 +516,14 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
-            .expect("par_zip_checked should succeed for valid test input");
+        let result = par_zip_checked(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| Ok(a + b)
+        ).expect("par_zip_checked should succeed for valid test input");
         assert_eq!(
             result.as_slice().expect("valid F-order test output"),
             &[11.0, 12.0, 13.0, 14.0]
@@ -536,11 +542,11 @@ mod tests {
                 lhs_data.as_ptr(),
                 lhs_data.len(),
                 Ix2(3, 1),
-                Strides::from_slice(&[1_usize, 3]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize, 3])
+                    .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order [3,1] view");
+        }.expect("valid F-order [3,1] view");
         let rhs_data = [10.0f64, 20.0, 30.0, 40.0];
         let rhs = unsafe {
             TensorView::<f64, Ix2>::from_raw_parts(
