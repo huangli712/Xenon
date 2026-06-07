@@ -36,7 +36,7 @@ mod feature_matrix_tests {
     use crate::dispatch::{ExecPath, select_exec_path};
     use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
     use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
-    use crate::parallel::sum::par_sum;
+    use super::sum::par_sum;
 
     /// Force the parallel path and return its guard, panicking if the
     /// parallel path was not selected.
@@ -46,7 +46,11 @@ mod feature_matrix_tests {
         D: Dimension,
         A: Element,
     {
-        let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
+        let (path, g) = select_exec_path(
+            t.len(),
+            t.is_f_contiguous(),
+            t.is_aligned()
+        );
         if !matches!(path, ExecPath::Parallel) {
             panic!("select_exec_path returned {:?}, not Parallel", path);
         }
@@ -61,10 +65,10 @@ mod feature_matrix_tests {
                 data.as_ptr(),
                 data.len(),
                 Ix1(data.len()),
-                Strides::from_slice(&[1_usize]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize])
+                    .expect("valid F-order strides for test"),
                 0,
-            )
-            .expect("valid F-order 1-D f64 view")
+            ).expect("valid F-order 1-D f64 view")
         }
     }
 
