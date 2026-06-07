@@ -48,6 +48,12 @@ where
     DR: Dimension,
     A: Numeric + Send + Sync,
 {
+    use rayon::iter::{
+        IndexedParallelIterator,
+        IntoParallelIterator,
+        ParallelIterator
+    };
+
     // Validate operands up front: dot requires two 1-D, equal-length,
     // F-contiguous (non-broadcast) vectors.
     if lhs.ndim() != 1 {
@@ -55,7 +61,9 @@ where
             operation: Cow::Borrowed("par_dot"),
             kind: InvalidArgumentKind::OperationSpecific {
                 argument: Cow::Borrowed("lhs"),
-                constraint: Cow::Owned(format!("must be 1-D, got {}-D", lhs.ndim())),
+                constraint: Cow::Owned(
+                    format!("must be 1-D, got {}-D", lhs.ndim())
+                ),
             },
         });
     }
@@ -64,7 +72,9 @@ where
             operation: Cow::Borrowed("par_dot"),
             kind: InvalidArgumentKind::OperationSpecific {
                 argument: Cow::Borrowed("rhs"),
-                constraint: Cow::Owned(format!("must be 1-D, got {}-D", rhs.ndim())),
+                constraint: Cow::Owned(
+                    format!("must be 1-D, got {}-D", rhs.ndim())
+                ),
             },
         });
     }
@@ -78,6 +88,7 @@ where
     }
 
     let total = lhs.len();
+
     // Empty input: the inner product is the additive identity.
     if total == 0 {
         return Ok(A::zero());
@@ -114,8 +125,6 @@ where
         .chunk_size()
         .unwrap_or_else(|| compute_safe_chunks(total, num_threads));
 
-    use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-
     // Parallel conjugate inner product: sum of conj(lhs_i) * rhs_i, reduced
     // across workers (addition is associative, so merge order is irrelevant).
     let result = (0..total)
@@ -127,8 +136,7 @@ where
                 let b = rhs_slice[i];
                 a.conjugate() * b
             })
-        })
-        .reduce(|| A::zero(), |x, y| x + y);
+        }).reduce(|| A::zero(), |x, y| x + y);
 
     Ok(result)
 }
@@ -136,17 +144,18 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
+    
     use crate::dimension::{Dimension, Ix1, Ix2};
-    use crate::dispatch::ThresholdTestGuard;
-    use crate::dispatch::{
-        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
-        set_parallel_threshold,
-    };
+    use crate::complex::Complex;
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
     use crate::tensor::{TensorBase, TensorView};
-    use crate::complex::Complex;
+
+    use crate::dispatch::ThresholdTestGuard;
+    use crate::dispatch::{ExecPath, select_exec_path};
+    use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+    use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
 
     /// Force the parallel path (via `set_parallel_threshold(1)`) and return
     /// its guard. Panics if a contaminated `IN_PARALLEL` TLS prevents the
