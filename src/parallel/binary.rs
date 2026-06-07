@@ -590,20 +590,27 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_checked(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| {
-            if *a == 3.0 {
-                Err(XenonError::InvalidArgument {
-                    operation: Cow::Borrowed("test"),
-                    kind: InvalidArgumentKind::NumericOutOfRange {
-                        argument: Cow::Borrowed("a"),
-                        domain: Cow::Borrowed("[0, 2]"),
-                        actual: Cow::Borrowed("3"),
-                    },
-                })
-            } else {
-                Ok(a + b)
+        let result = par_zip_checked(
+            &lhs,
+            &rhs,
+            &output_dim,
+            &strategy,
+            guard,
+            |a, b| {
+                if *a == 3.0 {
+                    Err(XenonError::InvalidArgument {
+                        operation: Cow::Borrowed("test"),
+                        kind: InvalidArgumentKind::NumericOutOfRange {
+                            argument: Cow::Borrowed("a"),
+                            domain: Cow::Borrowed("[0, 2]"),
+                            actual: Cow::Borrowed("3"),
+                        },
+                    })
+                } else {
+                    Ok(a + b)
+                }
             }
-        });
+        );
         assert!(result.is_err());
         reset_parallel_threshold();
     }
