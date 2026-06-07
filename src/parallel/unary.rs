@@ -183,8 +183,10 @@ mod tests {
     use crate::layout::Strides;
     use crate::tensor::TensorView;
 
-    use crate::dispatch::{ThresholdTestGuard, ExecPath, ParallelExecStrategy};
-    use crate::dispatch::{reset_parallel_threshold, select_exec_path, set_parallel_threshold};
+    use crate::dispatch::ThresholdTestGuard;
+    use crate::dispatch::{ExecPath, select_exec_path};
+    use crate::dispatch::ParallelExecStrategy;
+    use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
     
     /// Force the parallel path and return its guard, asserting the parallel
     /// path was actually selected.
