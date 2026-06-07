@@ -381,11 +381,11 @@ mod tests {
                 b_2d_data.as_ptr(),
                 b_2d_data.len(),
                 Ix2(2, 2),
-                Strides::from_slice(&[1_usize, 2]).expect("valid F-order strides for test"),
+                Strides::from_slice(&[1_usize, 2])
+                    .expect("valid F-order strides for test"),
                 0,
             )
-        }
-        .expect("valid F-order 2x2 view");
+        }.expect("valid F-order 2x2 view");
         let guard = acquire_guard(&a_1d);
         let result = par_dot(&a_1d, &b_2d, &strategy, guard);
         assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
