@@ -46,6 +46,8 @@ where
     DR: Dimension,
     A: Numeric + Send + Sync,
 {
+    // Validate operands up front: dot requires two 1-D, equal-length,
+    // F-contiguous (non-broadcast) vectors.
     if lhs.ndim() != 1 {
         return Err(XenonError::InvalidArgument {
             operation: Cow::Borrowed("par_dot"),
@@ -74,10 +76,13 @@ where
     }
 
     let total = lhs.len();
+    // Empty input: the inner product is the additive identity.
     if total == 0 {
         return Ok(A::zero());
     }
 
+    // par_dot indexes the backing slices directly by position, so both
+    // operands must be F-contiguous and not broadcast (zero-stride) views.
     let lhs_bad = !lhs.is_f_contiguous() || lhs.has_zero_stride();
     let rhs_bad = !rhs.is_f_contiguous() || rhs.has_zero_stride();
     if lhs_bad || rhs_bad {
@@ -109,6 +114,8 @@ where
 
     use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
+    // Parallel conjugate inner product: sum of conj(lhs_i) * rhs_i, reduced
+    // across workers (addition is associative, so merge order is irrelevant).
     let result = (0..total)
         .into_par_iter()
         .with_min_len(chunk_size)
@@ -151,7 +158,6 @@ mod tests {
         let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
         if !matches!(path, ExecPath::Parallel) {
             // IN_PARALLEL TLS may be contaminated from a prior test.
-            // Return a dummy sentinel; the caller should check.
             panic!(
                 "select_exec_path returned {:?}, not Parallel. \
                  IN_PARALLEL TLS may be contaminated from a prior test. \

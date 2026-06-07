@@ -54,7 +54,6 @@ mod tests {
         let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
         if !matches!(path, ExecPath::Parallel) {
             // IN_PARALLEL TLS may be contaminated from a prior test.
-            // Return a dummy sentinel; the caller should check.
             panic!(
                 "select_exec_path returned {:?}, not Parallel. \
                  IN_PARALLEL TLS may be contaminated from a prior test. \
