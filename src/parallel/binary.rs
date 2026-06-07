@@ -6,13 +6,15 @@
 
 use std::borrow::Cow;
 
-use crate::dimension::Dimension;
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
-use crate::element::Element;
 use crate::error::{InvalidShapeKind, XenonError};
-use super::chunks::compute_safe_chunks;
+use crate::dimension::Dimension;
+use crate::element::Element;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
+
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
+use crate::dispatch::{with_parallel_worker_context};
+use super::chunks::compute_safe_chunks;
 
 /// Infallible dual-input broadcast element-wise parallel map.
 ///
@@ -48,6 +50,12 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> C + Send + Sync,
 {
+    use rayon::iter::{
+        IndexedParallelIterator,
+        IntoParallelIterator,
+        ParallelIterator
+    };
+
     // checked_size overflow is an internal bug: the math layer validates the
     // broadcast output shape before routing here (mirrors broadcast_to below).
     let total = output_dim.checked_size().expect(
@@ -66,10 +74,12 @@ where
     // already broadcast against output_dim.
     let lhs_view = lhs
         .broadcast_to(output_dim.clone())
-        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
+        .expect("math layer ensures broadcast compatibility; \
+                 violation is an internal bug");
     let rhs_view = rhs
         .broadcast_to(output_dim.clone())
-        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
+        .expect("math layer ensures broadcast compatibility; \
+                 violation is an internal bug");
 
     // Pre-compute output shape for F-order index -> multi-dim coord conversion.
     let out_shape = output_dim.slice();
@@ -78,8 +88,6 @@ where
     for k in 1..ndim {
         strides_f[k] = strides_f[k - 1] * out_shape[k - 1];
     }
-
-    use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
     // Infallible: collect directly into Vec<C> (no Result buffering / second pass).
     let mut output_data: Vec<C> = Vec::with_capacity(total);
