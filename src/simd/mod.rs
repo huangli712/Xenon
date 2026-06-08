@@ -5,7 +5,6 @@
 //!
 //! ## Architecture
 //!
-//! - [`SimdElement`]: sealed marker trait for types with SIMD lane support.
 //! - Facade functions (`dispatch_vector_*_op`, `try_sum_*`, `try_dot_*`)
 //!   admit SIMD execution and return `bool`/`Option<A>` to signal
 //!   acceptance. The caller **must** run its own scalar fallback on
@@ -30,7 +29,7 @@ mod sum;
 #[cfg(feature = "simd")]
 mod driver;
 
-pub(crate) use types::{BinaryOp, SimdElement, UnaryOp};
+pub(crate) use types::{BinaryOp, UnaryOp};
 
 #[allow(unused_imports)]
 pub(crate) use driver::{

@@ -34,24 +34,15 @@ use crate::tensor::{Tensor, TensorBase};
 /// in this file.
 /// Per-type binary arithmetic dispatch trait.
 ///
-/// W16T11 (Option D): with the `simd` feature enabled, `SimdElement` is
-/// included as a supertrait so the compiler can resolve
+/// `SimdElement` is included as a supertrait so the compiler can resolve
 /// `apply_arith_with_dispatch`'s `A: SimdElement` bound when the caller
-/// has `A: BinaryArith` in scope. All six concrete impls (i32/i64/f32/
-/// f64/Complex<f32>/Complex<f64>) already implement `SimdElement` per
-/// W14T1 — adding it as a supertrait does not narrow the sealed set.
-#[cfg(feature = "simd")]
-pub(crate) trait BinaryArith: Numeric + crate::simd::SimdElement + 'static {
-    /// Context-aware add step. `idx` / `shape` consumed by integer
-    /// monomorphizations for panic diagnostics per 11-math §10.
-    fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
-    fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
-    fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
-    fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
-}
-
-#[cfg(not(feature = "simd"))]
-pub(crate) trait BinaryArith: Numeric + 'static {
+/// has `A: BinaryArith` in scope. Since `SimdElement` lives in
+/// `crate::element` (ungated), this bound holds in every feature
+/// configuration — only the SIMD kernels under `crate::simd` are gated
+/// behind the `simd` feature. All six concrete impls (i32/i64/f32/f64/
+/// Complex<f32>/Complex<f64>) already implement `SimdElement` per W14T1,
+/// so adding it as a supertrait does not narrow the sealed set.
+pub(crate) trait BinaryArith: Numeric + crate::element::SimdElement + 'static {
     /// Context-aware add step. `idx` / `shape` consumed by integer
     /// monomorphizations for panic diagnostics per 11-math §10.
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
@@ -601,7 +592,7 @@ pub(in crate::math) fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
     op_tag: Option<crate::simd::BinaryOp>,
 ) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
 where
-    A: Element + crate::simd::SimdElement + 'static,
+    A: Element + crate::element::SimdElement + 'static,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
     D1: Dimension + BroadcastDim<D2>,
@@ -662,7 +653,7 @@ fn try_simd_arith<A, S1, S2, D>(
     op_tag: Option<crate::simd::BinaryOp>,
 ) -> Option<Tensor<A, D>>
 where
-    A: Element + crate::simd::SimdElement,
+    A: Element + crate::element::SimdElement,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
     D: Dimension,

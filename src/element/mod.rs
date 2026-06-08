@@ -34,10 +34,12 @@
 //! | `real` | `RealScalar` trait + impls |
 //! | `complex` | `ComplexScalar` trait + impls |
 //! | `order` | `OrderedCompareElement` marker trait |
+//! | `simd` | `SimdElement` marker trait |
 //! | `checked` | Checked arithmetic traits |
 
 mod types;
 mod order;
+mod simd;
 mod checked;
 
 mod primitives;
@@ -48,6 +50,7 @@ mod complex;
 #[allow(unused_imports)]
 pub(crate) use types::{ElementType, element_type_of};
 pub(crate) use order::OrderedCompareElement;
+pub(crate) use simd::SimdElement;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
 
 pub use primitives::Element;

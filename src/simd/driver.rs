@@ -12,7 +12,8 @@ use std::sync::OnceLock;
 
 use super::{binary, dot, sum, unary};
 use crate::complex::Complex;
-use crate::simd::{BinaryOp, SimdElement, UnaryOp};
+use crate::element::SimdElement;
+use crate::simd::{BinaryOp, UnaryOp};
 
 // ----------------------------------------------------------------------------
 // Arch cache

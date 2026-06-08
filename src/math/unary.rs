@@ -34,13 +34,13 @@ use crate::tensor::{Tensor, TensorBase};
 /// forward to context-free `*_step` (zero cost on non-integer paths after
 /// `#[inline]`); integer impls override these to embed the full diagnostic
 /// fields.
-/// W16T11 (Option D): conditional `SimdElement` supertrait — see
-/// `BinaryArith` for the rationale. All four `UnaryArith` impls
+/// `SimdElement` supertrait — see `BinaryArith` for the rationale. Since
+/// `SimdElement` lives in `crate::element` (ungated), the bound holds in
+/// every feature configuration. All six `UnaryArith` impls
 /// (i32/i64/f32/f64/Complex<f32>/Complex<f64>) already implement
 /// `SimdElement` per W14T1, so adding the supertrait does not narrow
 /// the sealed set.
-#[cfg(feature = "simd")]
-trait UnaryArith: Numeric + crate::simd::SimdElement + 'static {
+trait UnaryArith: Numeric + crate::element::SimdElement + 'static {
     /// Element-wise negation; integer path panics on `MIN`.
     fn neg_step(x: Self) -> Self;
     /// Element-wise square `x * x`; integer path panics on overflow.
@@ -60,23 +60,6 @@ trait UnaryArith: Numeric + crate::simd::SimdElement + 'static {
     }
 }
 
-#[cfg(not(feature = "simd"))]
-trait UnaryArith: Numeric + 'static {
-    /// Element-wise negation; integer path panics on `MIN`.
-    fn neg_step(x: Self) -> Self;
-    /// Element-wise square `x * x`; integer path panics on overflow.
-    fn square_step(x: Self) -> Self;
-
-    #[inline]
-    fn neg_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
-        Self::neg_step(x)
-    }
-    #[inline]
-    fn square_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
-        Self::square_step(x)
-    }
-}
-
 /// Per-type unary step for abs / signum, restricted to ordered types.
 ///
 /// Trait bound `Numeric + OrderedCompareElement` 在 03-element §5.5 sealed
@@ -85,30 +68,12 @@ trait UnaryArith: Numeric + 'static {
 /// `*_step_with_ctx` variants follow the same contract as `UnaryArith`:
 /// default implementations forward to `*_step`; integer impls override to
 /// embed `element_index` + `shape` into panic text per 11-math §10.
-/// W16T11 (Option D): conditional `SimdElement` supertrait. All four
+/// `SimdElement` supertrait. Since `SimdElement` lives in `crate::element`
+/// (ungated), the bound holds in every feature configuration. All four
 /// `OrderedUnaryArith` impls (i32/i64/f32/f64) already implement
 /// `SimdElement` per W14T1, so the supertrait does not narrow the
 /// sealed set.
-#[cfg(feature = "simd")]
-trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::simd::SimdElement + 'static {
-    /// Element-wise absolute value; integer path panics on `MIN`.
-    fn abs_step(x: Self) -> Self;
-    /// Element-wise signum. Integers: `-1` / `0` / `1`.
-    /// Floats: delegates to `RealScalar::signum` (IEEE 754).
-    fn signum_step(x: Self) -> Self;
-
-    #[inline]
-    fn abs_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
-        Self::abs_step(x)
-    }
-    #[inline]
-    fn signum_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
-        Self::signum_step(x)
-    }
-}
-
-#[cfg(not(feature = "simd"))]
-trait OrderedUnaryArith: Numeric + OrderedCompareElement + 'static {
+trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::element::SimdElement + 'static {
     /// Element-wise absolute value; integer path panics on `MIN`.
     fn abs_step(x: Self) -> Self;
     /// Element-wise signum. Integers: `-1` / `0` / `1`.
@@ -619,7 +584,7 @@ fn apply_unary_with_dispatch<A, S, D, F>(
     op_tag: Option<crate::simd::UnaryOp>,
 ) -> Tensor<A, D>
 where
-    A: Element + crate::simd::SimdElement,
+    A: Element + crate::element::SimdElement,
     S: Storage<Elem = A>,
     D: Dimension,
     F: Fn(A) -> A + Copy + Send + Sync,
@@ -659,7 +624,7 @@ fn try_simd_unary_via_slice<A, S, D>(
     op_tag: Option<crate::simd::UnaryOp>,
 ) -> Option<Tensor<A, D>>
 where
-    A: Element + crate::simd::SimdElement,
+    A: Element + crate::element::SimdElement,
     S: Storage<Elem = A>,
     D: Dimension,
 {
