@@ -546,26 +546,29 @@ mod tests {
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
-    // ---------------------------- try_sum_serial ----------------------------
+    // --- try_sum_serial -----------------------------------------------------
 
     /// Serial sum of i32 elements equals their arithmetic total.
     #[test]
     fn test_try_sum_serial_i32() {
-        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
+            .expect("valid test input");
         assert_eq!(super::try_sum_serial(&x), 6);
     }
 
     /// Serial sum of an empty tensor returns the additive identity.
     #[test]
     fn test_try_sum_serial_empty() {
-        let x = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid test input");
+        let x = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid test input");
         assert_eq!(super::try_sum_serial(&x), 0.0);
     }
 
     /// Serial sum propagates f64 NaN per IEEE 754.
     #[test]
     fn test_try_sum_serial_nan_propagates() {
-        let x = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN]).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN])
+            .expect("valid test input");
         assert!(super::try_sum_serial(&x).is_nan());
     }
 
@@ -573,7 +576,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_try_sum_serial_i32_overflow_panics() {
-        let x = Tensor1::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![i32::MAX, 1])
+            .expect("valid test input");
         super::try_sum_serial(&x);
     }
 
