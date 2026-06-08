@@ -498,7 +498,7 @@ mod tests {
         assert!(!super::force_scalar_for_integers::<Complex<f32>>());
     }
 
-    // -------------------------- dim_with_axis_set ---------------------------
+    // --- dim_with_axis_set --------------------------------------------------
 
     /// Replacing a valid axis component produces the expected dimension.
     #[test]
