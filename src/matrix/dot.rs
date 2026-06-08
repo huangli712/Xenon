@@ -301,22 +301,98 @@ mod tests {
     use crate::tensor::Tensor;
     use crate::tensor::Tensor1;
 
-    // W17T1
+    // ── Helpers ──
+
+    #[cfg(any(feature = "simd", feature = "parallel"))]
+    fn f64_dot_tolerance(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
+        let ulp_term = 8.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
+        let floor = 4.0 * f64::MIN_POSITIVE;
+        ulp_term.max(floor)
+    }
+
+    #[cfg(feature = "parallel")]
+    fn f64_dot_tolerance_parallel(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
+        // Parallel reduction can reorder floating-point accumulation,
+        // requiring more headroom than §10.1 serial/SIMD tolerance.
+        let ulp_term = 256.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
+        let floor = 4.0 * f64::MIN_POSITIVE;
+        ulp_term.max(floor)
+    }
+
+    // ── dot_impl: basic correctness ──
+
     #[test]
-    fn test_matrix_module_dot_skeleton_returns_zero() {
+    fn test_dot_zero_f64() {
         let a = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         let b = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0.0_f64);
     }
 
     #[test]
-    fn test_matrix_module_dot_skeleton_returns_zero_for_int() {
+    fn test_dot_zero_i32() {
         let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
-    // W17T2
+    #[test]
+    fn test_dot_empty() {
+        let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
+        let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
+    }
+
+    #[test]
+    fn test_dot_single_element() {
+        let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32]).expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(1), vec![6_i32]).expect("valid construction");
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 42_i32);
+    }
+
+    #[test]
+    fn test_dot_small() {
+        let a = Tensor1::from_shape_vec(Ix1(4), vec![1.0_f64, 2.0, 3.0, 4.0])
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(4), vec![5.0_f64, 6.0, 7.0, 8.0])
+            .expect("valid construction");
+        assert_eq!(
+            dot_impl(&a, &b).expect("valid construction"),
+            1.0 * 5.0 + 2.0 * 6.0 + 3.0 * 7.0 + 4.0 * 8.0
+        );
+    }
+
+    #[test]
+    fn test_dot_large() {
+        let n: usize = 4096;
+        let xs: Vec<f64> = (0..n).map(|i| (i as f64) * 0.5).collect();
+        let ys: Vec<f64> = (0..n).map(|i| (i as f64) * 0.25 + 1.0).collect();
+        let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
+        let expected: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| x * y).sum();
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), expected);
+    }
+
+    #[test]
+    fn test_dot_real_conjugate_is_identity() {
+        let a =
+            Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, -2.0, 3.0]).expect("valid construction");
+        let b =
+            Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, -6.0]).expect("valid construction");
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), -24.0_f64);
+    }
+
+    #[test]
+    fn test_dot_complex() {
+        let a = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(1.0, 2.0)])
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(3.0, 4.0)])
+            .expect("valid construction");
+        let r = dot_impl(&a, &b).expect("valid construction");
+        assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
+    }
+
+    // ── dot_impl: validation errors ──
+
     #[test]
     fn test_dot_shape_mismatch() {
         let a = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2]).expect("valid construction");
@@ -337,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dot_high_rank_invalid_argument() {
+    fn test_dot_rank_high_lhs() {
         let a =
             Tensor::<i32, Ix2>::from_shape_vec((1, 1), vec![1_i32]).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(1), vec![1_i32]).expect("valid construction");
@@ -360,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dot_rhs_high_rank_invalid_argument() {
+    fn test_dot_rank_high_rhs() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![1_i32]).expect("valid construction");
         let b =
             Tensor::<i32, Ix2>::from_shape_vec((1, 1), vec![1_i32]).expect("valid construction");
@@ -374,16 +450,7 @@ mod tests {
         }
     }
 
-    // W17T3
-    #[test]
-    fn test_dot_complex() {
-        let a = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(1.0, 2.0)])
-            .expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(3.0, 4.0)])
-            .expect("valid construction");
-        let r = dot_impl(&a, &b).expect("valid construction");
-        assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
-    }
+    // ── dot_impl: integer overflow ──
 
     #[test]
     #[should_panic(
@@ -404,64 +471,11 @@ mod tests {
         let _ = dot_impl(&a, &b).expect("valid construction");
     }
 
-    #[test]
-    fn test_dot_real_conjugate_is_identity() {
-        let a =
-            Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, -2.0, 3.0]).expect("valid construction");
-        let b =
-            Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, -6.0]).expect("valid construction");
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), -24.0_f64);
-    }
-
-    // W17T4
-    #[test]
-    fn test_dot_empty() {
-        let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
-    }
-
-    #[test]
-    fn test_dot_single_element() {
-        let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32]).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(1), vec![6_i32]).expect("valid construction");
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 42_i32);
-    }
-
-    #[test]
-    fn test_dot_wire_dispatch_small_input_serial() {
-        let a = Tensor1::from_shape_vec(Ix1(4), vec![1.0_f64, 2.0, 3.0, 4.0])
-            .expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(4), vec![5.0_f64, 6.0, 7.0, 8.0])
-            .expect("valid construction");
-        assert_eq!(
-            dot_impl(&a, &b).expect("valid construction"),
-            1.0 * 5.0 + 2.0 * 6.0 + 3.0 * 7.0 + 4.0 * 8.0
-        );
-    }
-
-    #[test]
-    fn test_dot_wire_dispatch_large_input_falls_back_to_scalar() {
-        let n: usize = 4096;
-        let xs: Vec<f64> = (0..n).map(|i| (i as f64) * 0.5).collect();
-        let ys: Vec<f64> = (0..n).map(|i| (i as f64) * 0.25 + 1.0).collect();
-        let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
-        let expected: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| x * y).sum();
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), expected);
-    }
-
-    // W17T5: tolerance helper + SIMD tests
-    #[cfg(any(feature = "simd", feature = "parallel"))]
-    fn f64_dot_tolerance(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
-        let ulp_term = 8.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
-        let floor = 4.0 * f64::MIN_POSITIVE;
-        ulp_term.max(floor)
-    }
+    // ── dot_impl: SIMD path ──
 
     #[cfg(feature = "simd")]
     #[test]
-    fn test_dot_simd_path_with_feature() {
+    fn test_dot_simd() {
         let values: Vec<f64> = (0..1024).map(|i| (i as f64) * 0.5).collect();
         let a =
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
@@ -481,7 +495,7 @@ mod tests {
 
     #[cfg(feature = "simd")]
     #[test]
-    fn test_dot_simd_path_unsupported_type_falls_back() {
+    fn test_dot_simd_unsupported() {
         let values: Vec<i64> = (0..2048).collect();
         let a =
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
@@ -489,7 +503,8 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
     }
 
-    // W17T6: parallel path tests
+    // ── dot_impl: parallel path ──
+
     #[cfg(feature = "parallel")]
     #[test]
     fn test_dot_parallel_path() {
@@ -502,17 +517,8 @@ mod tests {
     }
 
     #[cfg(feature = "parallel")]
-    fn f64_dot_tolerance_parallel(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
-        // Parallel reduction can reorder floating-point accumulation,
-        // requiring more headroom than §10.1 serial/SIMD tolerance.
-        let ulp_term = 256.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
-        let floor = 4.0 * f64::MIN_POSITIVE;
-        ulp_term.max(floor)
-    }
-
-    #[cfg(feature = "parallel")]
     #[test]
-    fn test_dot_large_vector_parallel_threshold() {
+    fn test_dot_parallel_large() {
         let n: usize = 100_000;
         let xs: Vec<f64> = (0..n).map(|i| ((i % 11) as f64) * 0.1 + 1.0).collect();
         let ys: Vec<f64> = (0..n).map(|i| ((i % 13) as f64) * 0.1 + 2.0).collect();
@@ -531,7 +537,7 @@ mod tests {
 
     #[cfg(feature = "parallel")]
     #[test]
-    fn test_dot_nested_parallel_falls_back() {
+    fn test_dot_parallel_nested() {
         let n: usize = 16_384;
         let xs: Vec<f64> = (0..n).map(|i| (i as f64) * 0.001 + 1.0).collect();
         let ys: Vec<f64> = (0..n).map(|i| (i as f64) * 0.001 + 2.0).collect();
