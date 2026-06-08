@@ -64,6 +64,8 @@ mod tests {
     use crate::complex::Complex;
     use crate::dimension::{Axis, Ix0, Ix1, Ix2};
     use crate::error::XenonError;
+    #[cfg(any(feature = "simd", feature = "parallel"))]
+    use crate::reduction::sum;
     use crate::tensor::{Tensor, Tensor1};
 
     // ── W18T2 tests ──
@@ -176,17 +178,7 @@ mod tests {
         assert_eq!(y.shape(), &[1, 3]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[0, 0, 0]);
     }
-}
-
-// ── W18T5 dispatch consistency tests ──
-
-#[cfg(test)]
-mod tests_dispatch {
-    use crate::reduction::sum;
-    #[cfg(any(feature = "simd", feature = "parallel"))]
-    use crate::dimension::Ix1;
-    #[cfg(any(feature = "simd", feature = "parallel"))]
-    use crate::tensor::Tensor1;
+    // ── W18T5 dispatch consistency tests ──
 
     /// 13-reduction §6.3 line 264-275: f32 finite-value tolerance.
     #[cfg(any(feature = "simd", feature = "parallel"))]
