@@ -197,7 +197,7 @@ where
     None
 }
 
-// --- Validation --------------------------------------------------------------
+// --- Validation -------------------------------------------------------------
 
 /// Validate that both inputs are 1‑dimensional vectors of equal length.
 ///
@@ -243,7 +243,7 @@ where
     Ok(())
 }
 
-// --- SIMD support ------------------------------------------------------------
+// --- SIMD support -----------------------------------------------------------
 
 /// Returns `true` when both vectors are SIMD‑eligible.
 ///
