@@ -22,6 +22,79 @@ use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "simd")]
 use crate::simd::{try_sum_complex_f32, try_sum_complex_f64, try_sum_f32, try_sum_f64};
 
+pub(crate) fn sum_all<S, D, A>(tensor: &TensorBase<S, D>) -> A
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric + Copy + 'static,
+{
+    // 13-reduction §6.3: caller-side integer gate before dispatch.
+    if force_scalar_for_integers::<A>() {
+        return sum_serial(tensor);
+    }
+
+    let (path, _guard) =
+        select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
+
+    match path {
+        #[cfg(feature = "parallel")]
+        crate::dispatch::ExecPath::Parallel => {
+            // §5.5 line 388-393: when select returns Parallel, the guard is always Some.
+            let guard = _guard.expect("Parallel path implies Some(guard) per §5.5");
+            // ParallelExecStrategy is held independently by the parallel/ backend
+            // (30-dispatch.md §5.3 + Wave 10 audit memo); we construct the default
+            // strategy locally and pass by reference.
+            let strategy = ParallelExecStrategy::auto();
+            crate::parallel::sum::par_sum(tensor, &strategy, guard)
+        },
+        #[cfg(feature = "simd")]
+        crate::dispatch::ExecPath::Simd => {
+            try_simd_sum(tensor).unwrap_or_else(|| sum_serial(tensor))
+        },
+        _ => sum_serial(tensor),
+    }
+}
+
+// ── sum_axis implementation (W18T3) ──
+
+pub(crate) fn sum_axis_impl<S, D, A>(
+    tensor: &TensorBase<S, D>,
+    axis: Axis,
+) -> Result<Tensor<A, D::Smaller>, XenonError>
+where
+    S: Storage<Elem = A>,
+    D: Dimension + RemoveAxis,
+    A: Numeric + Copy + 'static,
+{
+    validate_axis(&tensor.raw_dim(), axis, "sum_axis")?;
+    // SAFETY-of-flow: axis is validated above, so remove_axis() cannot fail here.
+    let (output_dim, _removed_len) = tensor.raw_dim().remove_axis(axis)?;
+    let mut output = Tensor::<A, D::Smaller>::zeros(output_dim)?;
+    accumulate_axis(tensor, axis, &mut output)?;
+    Ok(output)
+}
+
+// ── sum_axis_keepdims implementation (W18T4) ──
+
+pub(crate) fn sum_axis_keepdims_impl<S, D, A>(
+    tensor: &TensorBase<S, D>,
+    axis: Axis,
+) -> Result<Tensor<A, D>, XenonError>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric + Copy + 'static,
+{
+    validate_axis(&tensor.raw_dim(), axis, "sum_axis_keepdims")?;
+    // SAFETY-of-flow: axis is validated above; dim_with_axis_set cannot fail
+    // for axis OOB here. `try_from_slice` succeeds because the slice length
+    // equals `ndim`, which `Dimension::try_from_slice` accepts.
+    let output_dim = dim_with_axis_set(&tensor.raw_dim(), axis, 1, "sum_axis_keepdims")?;
+    let mut output = Tensor::<A, D>::zeros(output_dim)?;
+    accumulate_axis_keepdims(tensor, axis, &mut output)?;
+    Ok(output)
+}
+
 /// Per-step accumulation enforcing 13-reduction §6.3 type semantics:
 /// - Integer types (`i32`, `i64`): checked arithmetic via `CheckedAdd`,
 ///   returning `None` on overflow so the caller can panic with element context.
@@ -93,39 +166,6 @@ fn force_scalar_for_integers<A: 'static>() -> bool {
     TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>()
 }
 
-pub(crate) fn sum_all<S, D, A>(tensor: &TensorBase<S, D>) -> A
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Numeric + Copy + 'static,
-{
-    // 13-reduction §6.3: caller-side integer gate before dispatch.
-    if force_scalar_for_integers::<A>() {
-        return sum_serial(tensor);
-    }
-
-    let (path, _guard) =
-        select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
-
-    match path {
-        #[cfg(feature = "parallel")]
-        crate::dispatch::ExecPath::Parallel => {
-            // §5.5 line 388-393: when select returns Parallel, the guard is always Some.
-            let guard = _guard.expect("Parallel path implies Some(guard) per §5.5");
-            // ParallelExecStrategy is held independently by the parallel/ backend
-            // (30-dispatch.md §5.3 + Wave 10 audit memo); we construct the default
-            // strategy locally and pass by reference.
-            let strategy = ParallelExecStrategy::auto();
-            crate::parallel::sum::par_sum(tensor, &strategy, guard)
-        },
-        #[cfg(feature = "simd")]
-        crate::dispatch::ExecPath::Simd => {
-            try_simd_sum(tensor).unwrap_or_else(|| sum_serial(tensor))
-        },
-        _ => sum_serial(tensor),
-    }
-}
-
 /// Type-dispatched wrapper for the W14 SIMD facades. Returns `None` when the
 /// element type is unsupported (caller falls back to `sum_serial`) or when the
 /// W14 facade itself rejects the input (e.g. shorter than the SIMD threshold).
@@ -181,25 +221,6 @@ pub(crate) fn validate_axis<D: Dimension>(
         });
     }
     Ok(())
-}
-
-// ── sum_axis implementation (W18T3) ──
-
-pub(crate) fn sum_axis_impl<S, D, A>(
-    tensor: &TensorBase<S, D>,
-    axis: Axis,
-) -> Result<Tensor<A, D::Smaller>, XenonError>
-where
-    S: Storage<Elem = A>,
-    D: Dimension + RemoveAxis,
-    A: Numeric + Copy + 'static,
-{
-    validate_axis(&tensor.raw_dim(), axis, "sum_axis")?;
-    // SAFETY-of-flow: axis is validated above, so remove_axis() cannot fail here.
-    let (output_dim, _removed_len) = tensor.raw_dim().remove_axis(axis)?;
-    let mut output = Tensor::<A, D::Smaller>::zeros(output_dim)?;
-    accumulate_axis(tensor, axis, &mut output)?;
-    Ok(output)
 }
 
 /// Per-slot accumulation over a single axis, mapping input indexed coordinates
@@ -272,27 +293,6 @@ pub(crate) fn dim_with_axis_set<D: Dimension>(
     }
     dims[axis.index()] = value;
     D::try_from_slice(&dims)
-}
-
-// ── sum_axis_keepdims implementation (W18T4) ──
-
-pub(crate) fn sum_axis_keepdims_impl<S, D, A>(
-    tensor: &TensorBase<S, D>,
-    axis: Axis,
-) -> Result<Tensor<A, D>, XenonError>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Numeric + Copy + 'static,
-{
-    validate_axis(&tensor.raw_dim(), axis, "sum_axis_keepdims")?;
-    // SAFETY-of-flow: axis is validated above; dim_with_axis_set cannot fail
-    // for axis OOB here. `try_from_slice` succeeds because the slice length
-    // equals `ndim`, which `Dimension::try_from_slice` accepts.
-    let output_dim = dim_with_axis_set(&tensor.raw_dim(), axis, 1, "sum_axis_keepdims")?;
-    let mut output = Tensor::<A, D>::zeros(output_dim)?;
-    accumulate_axis_keepdims(tensor, axis, &mut output)?;
-    Ok(output)
 }
 
 /// Per-slot accumulation, mapping input coordinates onto keepdims output
