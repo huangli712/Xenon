@@ -125,6 +125,8 @@ where
     Ok(output)
 }
 
+// --- Serial & SIMD sum ------------------------------------------------------
+
 /// Serial fallback for sum reduction.
 ///
 /// Iterates over all elements, accumulating with [`checked_add_step`].
