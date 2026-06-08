@@ -554,7 +554,10 @@ mod tests {
                 kind: InvalidArgumentKind::OperationSpecific { ref argument, .. },
                 ..
             } => assert_eq!(argument.as_ref(), "b"),
-            other => panic!("expected InvalidArgument::OperationSpecific for b, got {other:?}"),
+            other => panic!(
+                "expected InvalidArgument::OperationSpecific \
+                 for b, got {other:?}"
+            ),
         }
     }
 
