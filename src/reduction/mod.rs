@@ -8,10 +8,3 @@ mod sum;
 mod impls;
 
 pub(crate) use sum::{sum_impl, sum_axis_impl, sum_axis_keepdims_impl};
-
-#[cfg(test)]
-mod tests {
-    /// Smoke test verifying the reduction module compiles and re-exports resolve.
-    #[test]
-    fn test_reduction_module_compiles() {}
-}
