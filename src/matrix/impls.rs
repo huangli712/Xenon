@@ -3,13 +3,15 @@
 //! Defines the method-style `TensorBase::dot()` API, which delegates to
 //! the internal `dot_impl` free function in `dot.rs`.
 
+use crate::error::XenonError;
 use crate::dimension::Dimension;
 use crate::element::Numeric;
-use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
-// --- TensorBase::dot method --------------------------------------------------
+use super::dot_impl;
+
+// --- TensorBase::dot method -------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -31,7 +33,7 @@ where
         S2: Storage<Elem = A>,
         D2: Dimension,
     {
-        crate::matrix::dot_impl(self, other)
+        dot_impl(self, other)
     }
 }
 
@@ -40,7 +42,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::dimension::Ix1;
-    use crate::matrix::dot_impl;
+    use super::dot_impl;
     use crate::tensor::Tensor1;
 
     /// `TensorBase::dot` produces the same result as the free function
