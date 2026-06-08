@@ -23,7 +23,4 @@
 //! - `InvalidShapeKind::ElementCountMismatch` — data length ≠ expected size
 //! - `AllocationFailed` — underlying allocator cannot satisfy request
 
-pub mod types;
 pub mod impls;
-
-pub use types::EyeElement;

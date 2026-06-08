@@ -1,11 +1,11 @@
-//! Construction trait definitions.
+//! `EyeElement` sealed marker trait for the `eye()` constructor.
 //!
-//! Contains `EyeElement`, a sealed marker trait that restricts the `eye()`
-//! constructor to a closed set of numeric types.
+//! Defines the public `EyeElement` trait that restricts `eye()` to a closed
+//! set of numeric types, excluding `bool` and other non-numeric types.
 
-use crate::private::Sealed;
 use crate::complex::Complex;
-use crate::element::Element;
+use crate::private::Sealed;
+use super::Element;
 
 /// Sealed trait restricting `eye()` to a closed numeric set.
 ///

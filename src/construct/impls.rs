@@ -11,9 +11,8 @@ use crate::error::{InvalidShapeKind, XenonError};
 use crate::dimension::{Dimension, IntoDimension, Ix0, Ix1, Ix2};
 use crate::storage::{Owned, RawStorage, StorageOwned};
 use crate::layout::{Strides, compute_layout_flags};
-use crate::element::Element;
+use crate::element::{Element, EyeElement};
 use crate::tensor::TensorBase;
-use super::EyeElement;
 
 impl<A> TensorBase<Owned<A>, Ix0>
 where
