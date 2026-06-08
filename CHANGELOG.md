@@ -3,6 +3,30 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.31] — 2026-06-08
+
+### Added
+
+- Helpers and overflow unit tests for reduction sum helpers (+187 lines).
+
+### Removed
+
+- Redundant module smoke test from reduction `mod.rs`.
+- Redundant intra-doc link from reduction `mod.rs`.
+
+### Changed
+
+- Extracted public API impl blocks from `sum.rs` into new `impls.rs`.
+- Reordered reduction sum helpers in strict top-down dependency order.
+- Renamed `sum_all` to `sum_impl`, `sum_serial`/`try_simd_sum` to `try_sum_` prefix.
+- Reorganized imports (direct short paths, feature-gated, alphabetical) across reduction modules.
+- Standardized section separator comments to `// --- X ---` format.
+- Wrapped long calls and unsafe blocks across `sum.rs` and `impls.rs`.
+- Shortened module-level doc comment in reduction `mod.rs`.
+- Gated `ExecPath` import behind simd/parallel feature.
+- Moved `approx_eq_f32` helper to top of test module in `impls.rs`.
+- Moved `try_sum_serial` tests after overflow tests in `sum.rs`.
+
 ## [v0.0.30] — 2026-06-07
 
 ### Added
