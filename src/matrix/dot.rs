@@ -7,18 +7,20 @@ use std::any::TypeId;
 use std::borrow::Cow;
 use std::mem::transmute_copy;
 
-#[cfg(feature = "simd")]
-use crate::complex::Complex;
-use crate::dimension::Dimension;
-#[cfg(feature = "parallel")]
-use crate::dispatch::ParallelExecStrategy;
-use crate::dispatch::{ExecPath, select_exec_path};
-use crate::element::Numeric;
 use crate::error::{InvalidArgumentKind, XenonError};
+use crate::dimension::Dimension;
+use crate::element::Numeric;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
+use crate::dispatch::{ExecPath, select_exec_path};
 
-// --- Internal dot entry ------------------------------------------------------
+#[cfg(feature = "parallel")]
+use crate::dispatch::ParallelExecStrategy;
+
+#[cfg(feature = "simd")]
+use crate::complex::Complex;
+
+// --- dot_impl ---------------------------------------------------------------
 
 /// Vector dot product with validation and dispatch.
 ///
