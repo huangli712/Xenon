@@ -475,8 +475,10 @@ mod tests {
     /// Shape mismatch between two non‑empty vectors returns `ShapeMismatch`.
     #[test]
     fn test_dot_shape_mismatch() {
-        let a = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2]).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");
+        let a = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2])
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
+            .expect("valid construction");
         let err = dot_impl(&a, &b).expect_err("must return error");
         match err {
             XenonError::ShapeMismatch {
