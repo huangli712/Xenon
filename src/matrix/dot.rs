@@ -644,16 +644,24 @@ mod tests {
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values)
             .expect("valid construction");
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
+        assert_eq!(
+            dot_impl(&a, &b).expect("valid construction"),
+            try_dot_serial(&a, &b)
+        );
     }
 
-    /// Large‑vector parallel dot product stays within floating‑point tolerance.
+    /// Large‑vector parallel dot product stays within floating
+    /// point tolerance.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_dot_parallel_large() {
         let n: usize = 100_000;
-        let xs: Vec<f64> = (0..n).map(|i| ((i % 11) as f64) * 0.1 + 1.0).collect();
-        let ys: Vec<f64> = (0..n).map(|i| ((i % 13) as f64) * 0.1 + 2.0).collect();
+        let xs: Vec<f64> = (0..n)
+            .map(|i| ((i % 11) as f64) * 0.1 + 1.0)
+            .collect();
+        let ys: Vec<f64> = (0..n)
+            .map(|i| ((i % 13) as f64) * 0.1 + 2.0)
+            .collect();
         let a = Tensor1::from_shape_vec(Ix1(n), xs.clone())
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone())
@@ -665,17 +673,23 @@ mod tests {
         let tol = f64_dot_tolerance_parallel(n, max_abs_a, max_abs_b);
         assert!(
             (actual - expected).abs() <= tol,
-            "parallel result {actual} exceeds tolerance {tol} vs serial {expected}"
+            "parallel result {actual} exceeds tolerance {tol} \
+             vs serial {expected}"
         );
     }
 
-    /// Nested parallel dot product falls back to serial and stays within tolerance.
+    /// Nested parallel dot product falls back to serial and stays
+    /// within tolerance.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_dot_parallel_nested() {
         let n: usize = 16_384;
-        let xs: Vec<f64> = (0..n).map(|i| (i as f64) * 0.001 + 1.0).collect();
-        let ys: Vec<f64> = (0..n).map(|i| (i as f64) * 0.001 + 2.0).collect();
+        let xs: Vec<f64> = (0..n)
+            .map(|i| (i as f64) * 0.001 + 1.0)
+            .collect();
+        let ys: Vec<f64> = (0..n)
+            .map(|i| (i as f64) * 0.001 + 2.0)
+            .collect();
         let a = Tensor1::from_shape_vec(Ix1(n), xs.clone())
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone())
@@ -691,7 +705,8 @@ mod tests {
         let tol = f64_dot_tolerance(n, max_abs_a, max_abs_b);
         assert!(
             (result - baseline).abs() <= tol,
-            "nested-parallel result {result} exceeds tolerance {tol} vs baseline {baseline}"
+            "nested-parallel result {result} exceeds tolerance {tol} \
+             vs baseline {baseline}"
         );
     }
 }
