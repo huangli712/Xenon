@@ -12,11 +12,6 @@
 
 // ── Public re-exports ────────────────────────────────────────────────
 
-// Conversion traits
-pub use crate::convert::{
-    CastElement,
-};
-
 // Complex number type
 pub use crate::complex::Complex;
 

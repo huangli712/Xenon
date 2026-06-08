@@ -35,11 +35,13 @@
 //! | `complex` | `ComplexScalar` trait + impls |
 //! | `order` | `OrderedCompareElement` marker trait |
 //! | `simd` | `SimdElement` marker trait |
+//! | `cast` | `CastElement` marker trait |
 //! | `checked` | Checked arithmetic traits |
 
 mod types;
 mod order;
 mod simd;
+mod cast;
 mod checked;
 
 mod primitives;
@@ -57,3 +59,4 @@ pub use primitives::Element;
 pub use numeric::Numeric;
 pub use real::RealScalar;
 pub use complex::ComplexScalar;
+pub use cast::CastElement;

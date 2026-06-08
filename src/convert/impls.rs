@@ -4,17 +4,17 @@
 //! provide tensor-level type conversion and ownership transfer.
 //!
 //! `CastTo` trait and tier impls are in `super::cast`.
-//! `CastElement` is defined in `super::types`.
+//! `CastElement` is defined in `crate::element`.
 
 use std::borrow::Cow;
 
 use crate::error::{Result, XenonError};
 use crate::dimension::Dimension;
-use crate::element::Element;
+use crate::element::{Element, CastElement};
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{RawStorage, Storage, StorageIntoOwned, Owned};
 use crate::tensor::{Tensor, TensorBase};
-use super::{cast::CastTo, CastElement};
+use super::{cast::CastTo};
 
 /// Thin wrapper around `TensorBase::new_unchecked` for zero-overhead Owned
 /// construction from a validated `(shape, Vec<A>)` pair.

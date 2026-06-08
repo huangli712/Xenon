@@ -3,9 +3,9 @@
 //! Defines the public `CastElement` trait that gates `cast()` at compile time,
 //! restricting type conversion to the 6 numeric types in Xenon's element set.
 
-use crate::private::Sealed;
 use crate::complex::Complex;
-use crate::element::Element;
+use crate::private::Sealed;
+use super::Element;
 
 /// Public sealed marker for element types in the cast matrix.
 ///

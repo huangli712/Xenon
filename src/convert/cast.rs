@@ -15,16 +15,14 @@
 //!   real conversion.
 //!
 //! `CastTo` is `pub(crate)`.  Public compile-time gating is provided
-//! by `CastElement` (`super::types`), a sealed marker that excludes
+//! by `CastElement` (`crate::element`), a sealed marker that excludes
 //! `bool` and other non-numeric types.
 
 use std::borrow::Cow;
 
 use crate::complex::Complex;
-use crate::element::Element;
+use crate::element::{Element, CastElement};
 use crate::error::{ConversionFailureReason, Result, XenonError};
-
-use super::CastElement;
 
 /// Crate-private sealed conversion dispatch trait.
 ///
