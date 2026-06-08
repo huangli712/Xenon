@@ -7,5 +7,7 @@
 //! Design reference: 12-matrix §3, §5.1.
 
 mod dot;
+mod types;
 
 pub use dot::dot;
+pub use types::DotAccumulate;

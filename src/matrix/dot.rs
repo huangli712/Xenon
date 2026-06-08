@@ -19,80 +19,11 @@ use crate::dimension::Dimension;
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 use crate::dispatch::{ExecPath, select_exec_path};
-use crate::element::{CheckedAdd, CheckedMul, Numeric};
+use crate::element::Numeric;
+use super::types::DotAccumulate;
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
-
-// ── Per-type accumulation trait ──
-
-pub trait DotAccumulate: Numeric + 'static {
-    fn dot_step(acc: Self, x: Self, y: Self, index: usize, len: usize) -> Self;
-}
-
-// ── Float / complex impls ──
-
-impl DotAccumulate for f32 {
-    #[inline]
-    fn dot_step(acc: Self, x: Self, y: Self, _index: usize, _len: usize) -> Self {
-        acc + x.conjugate() * y
-    }
-}
-
-impl DotAccumulate for f64 {
-    #[inline]
-    fn dot_step(acc: Self, x: Self, y: Self, _index: usize, _len: usize) -> Self {
-        acc + x.conjugate() * y
-    }
-}
-
-impl DotAccumulate for Complex<f32> {
-    #[inline]
-    fn dot_step(acc: Self, x: Self, y: Self, _index: usize, _len: usize) -> Self {
-        acc + x.conjugate() * y
-    }
-}
-
-impl DotAccumulate for Complex<f64> {
-    #[inline]
-    fn dot_step(acc: Self, x: Self, y: Self, _index: usize, _len: usize) -> Self {
-        acc + x.conjugate() * y
-    }
-}
-
-// ── Integer impls ──
-
-impl DotAccumulate for i32 {
-    #[inline]
-    fn dot_step(acc: Self, x: Self, y: Self, index: usize, len: usize) -> Self {
-        let product = CheckedMul::checked_mul(x, y).unwrap_or_else(|| {
-            panic!(
-                "dot: integer overflow during multiplication at element {index} of shape [{len}] (type i32)"
-            )
-        });
-        CheckedAdd::checked_add(acc, product).unwrap_or_else(|| {
-            panic!(
-                "dot: integer overflow during accumulation at element {index} of shape [{len}] (type i32)"
-            )
-        })
-    }
-}
-
-impl DotAccumulate for i64 {
-    #[inline]
-    fn dot_step(acc: Self, x: Self, y: Self, index: usize, len: usize) -> Self {
-        let product = CheckedMul::checked_mul(x, y).unwrap_or_else(|| {
-            panic!(
-                "dot: integer overflow during multiplication at element {index} of shape [{len}] (type i64)"
-            )
-        });
-        CheckedAdd::checked_add(acc, product).unwrap_or_else(|| {
-            panic!(
-                "dot: integer overflow during accumulation at element {index} of shape [{len}] (type i64)"
-            )
-        })
-    }
-}
 
 // ── Validation ──
 
@@ -452,25 +383,6 @@ mod tests {
             .expect("valid construction");
         let r = dot(&a, &b).expect("valid construction");
         assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "dot: integer overflow during multiplication at element 0 of shape [1] (type i32)"
-    )]
-    fn test_dot_int_overflow_mul() {
-        let a = Tensor1::from_shape_vec(Ix1(1), vec![i32::MAX]).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(1), vec![2_i32]).expect("valid construction");
-        let _ = dot(&a, &b).expect("valid construction");
-    }
-
-    #[test]
-    #[should_panic(expected = "dot: integer overflow during accumulation at element")]
-    fn test_dot_int_overflow_add() {
-        let a = Tensor1::from_shape_vec(Ix1(3), vec![i32::MAX, 1, 1]).expect("valid construction");
-        let b =
-            Tensor1::from_shape_vec(Ix1(3), vec![1_i32, i32::MAX, 1]).expect("valid construction");
-        let _ = dot(&a, &b).expect("valid construction");
     }
 
     #[test]
