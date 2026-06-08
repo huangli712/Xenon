@@ -3,6 +3,18 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.34] — 2026-06-08
+
+### Removed
+
+- `convert/types.rs` (`CastElement` moved to element module).
+
+### Changed
+
+- Moved `CastElement` sealed marker trait from `convert/types.rs` to new `element/cast.rs`.
+- Tightened `CastElement` re-export from `pub` to `pub(crate)` (no public path remained).
+- Cleaned up `convert/mod.rs` docs and re-exports; removed `CastElement` from prelude.
+
 ## [v0.0.33] — 2026-06-08
 
 ### Removed
