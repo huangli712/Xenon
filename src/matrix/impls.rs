@@ -37,13 +37,12 @@ where
     }
 }
 
-// --- Unit tests --------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use crate::dimension::Ix1;
-    use super::dot_impl;
     use crate::tensor::Tensor1;
+
+    use super::dot_impl;
 
     /// `TensorBase::dot` produces the same result as the free function
     /// `dot_impl` for a basic integer dot product.
