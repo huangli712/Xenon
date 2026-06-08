@@ -4,6 +4,7 @@
 //! [`TensorBase::sum_axis`], and [`TensorBase::sum_axis_keepdims`].
 
 use core::any::{TypeId, type_name};
+use core::mem::transmute_copy;
 use std::borrow::Cow;
 
 use crate::error::XenonError;
@@ -178,21 +179,23 @@ where
     if TypeId::of::<A>() == TypeId::of::<f32>() {
         // SAFETY: TypeId equality proves `A == f32`.
         let s: &[f32] = unsafe { &*(slice as *const [A] as *const [f32]) };
-        return try_sum_f32(s).map(|r| unsafe { core::mem::transmute_copy::<f32, A>(&r) });
+        return try_sum_f32(s)
+            .map(|r| unsafe { transmute_copy::<f32, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<f64>() {
         let s: &[f64] = unsafe { &*(slice as *const [A] as *const [f64]) };
-        return try_sum_f64(s).map(|r| unsafe { core::mem::transmute_copy::<f64, A>(&r) });
+        return try_sum_f64(s)
+            .map(|r| unsafe { transmute_copy::<f64, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<Complex<f32>>() {
         let s: &[Complex<f32>] = unsafe { &*(slice as *const [A] as *const [Complex<f32>]) };
         return try_sum_complex_f32(s)
-            .map(|r| unsafe { core::mem::transmute_copy::<Complex<f32>, A>(&r) });
+            .map(|r| unsafe { transmute_copy::<Complex<f32>, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<Complex<f64>>() {
         let s: &[Complex<f64>] = unsafe { &*(slice as *const [A] as *const [Complex<f64>]) };
         return try_sum_complex_f64(s)
-            .map(|r| unsafe { core::mem::transmute_copy::<Complex<f64>, A>(&r) });
+            .map(|r| unsafe { transmute_copy::<Complex<f64>, A>(&r) });
     }
     None
 }
@@ -356,7 +359,7 @@ where
         return a
             .checked_add(v)
             // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
-            .map(|r| unsafe { core::mem::transmute_copy::<i32, A>(&r) });
+            .map(|r| unsafe { transmute_copy::<i32, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<i64>() {
         // SAFETY: TypeId equality proves `A == i64`.
@@ -365,7 +368,7 @@ where
         return a
             .checked_add(v)
             // SAFETY: `A == i64`; transmute is identity.
-            .map(|r| unsafe { core::mem::transmute_copy::<i64, A>(&r) });
+            .map(|r| unsafe { transmute_copy::<i64, A>(&r) });
     }
     // Float / complex path: `Numeric: Add<Output = Self>` covers all remaining
     // supported element types.
