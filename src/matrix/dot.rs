@@ -129,24 +129,28 @@ where
 
     let t = TypeId::of::<A>();
     if t == TypeId::of::<f32>() {
-        let lhs = reinterpret_slice::<A, f32>(lhs);
-        let rhs = reinterpret_slice::<A, f32>(rhs);
+        // SAFETY: TypeId equality proves `A == f32`.
+        let lhs: &[f32] = unsafe { &*(lhs as *const [A] as *const [f32]) };
+        let rhs: &[f32] = unsafe { &*(rhs as *const [A] as *const [f32]) };
         return crate::simd::try_dot_f32(lhs, rhs).map(|v| reinterpret_value::<f32, A>(v));
     }
     if t == TypeId::of::<f64>() {
-        let lhs = reinterpret_slice::<A, f64>(lhs);
-        let rhs = reinterpret_slice::<A, f64>(rhs);
+        // SAFETY: TypeId equality proves `A == f64`.
+        let lhs: &[f64] = unsafe { &*(lhs as *const [A] as *const [f64]) };
+        let rhs: &[f64] = unsafe { &*(rhs as *const [A] as *const [f64]) };
         return crate::simd::try_dot_f64(lhs, rhs).map(|v| reinterpret_value::<f64, A>(v));
     }
     if t == TypeId::of::<Complex<f32>>() {
-        let lhs = reinterpret_slice::<A, Complex<f32>>(lhs);
-        let rhs = reinterpret_slice::<A, Complex<f32>>(rhs);
+        // SAFETY: TypeId equality proves `A == Complex<f32>`.
+        let lhs: &[Complex<f32>] = unsafe { &*(lhs as *const [A] as *const [Complex<f32>]) };
+        let rhs: &[Complex<f32>] = unsafe { &*(rhs as *const [A] as *const [Complex<f32>]) };
         return crate::simd::try_dot_complex_f32(lhs, rhs)
             .map(|v| reinterpret_value::<Complex<f32>, A>(v));
     }
     if t == TypeId::of::<Complex<f64>>() {
-        let lhs = reinterpret_slice::<A, Complex<f64>>(lhs);
-        let rhs = reinterpret_slice::<A, Complex<f64>>(rhs);
+        // SAFETY: TypeId equality proves `A == Complex<f64>`.
+        let lhs: &[Complex<f64>] = unsafe { &*(lhs as *const [A] as *const [Complex<f64>]) };
+        let rhs: &[Complex<f64>] = unsafe { &*(rhs as *const [A] as *const [Complex<f64>]) };
         return crate::simd::try_dot_complex_f64(lhs, rhs)
             .map(|v| reinterpret_value::<Complex<f64>, A>(v));
     }
@@ -297,13 +301,6 @@ where
         || t == TypeId::of::<Complex<f64>>()
 }
 
-#[cfg(feature = "simd")]
-#[inline]
-fn reinterpret_slice<A: 'static, B: 'static>(s: &[A]) -> &[B] {
-    debug_assert_eq!(TypeId::of::<A>(), TypeId::of::<B>());
-    // SAFETY: TypeId equality implies full type identity.
-    unsafe { &*(s as *const [A] as *const [B]) }
-}
 
 #[cfg(feature = "simd")]
 #[inline]
