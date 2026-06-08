@@ -159,51 +159,6 @@ where
     None
 }
 
-/// Per-step accumulation enforcing 13-reduction §6.3 type semantics:
-/// - Integer types (`i32`, `i64`): checked arithmetic via `CheckedAdd`,
-///   returning `None` on overflow so the caller can panic with element context.
-/// - Floating / complex types: ordinary `+` via `Numeric: Add<Output = Self>`;
-///   IEEE 754 NaN / Inf propagation is preserved.
-///
-/// Dispatch mirrors the 13-reduction §6.3 line 291-295 SIMD type-gate pattern.
-/// The `unsafe` reads are sound because each is gated by
-/// `TypeId::of::<A>() == TypeId::of::<I>()`, which proves layout identity.
-#[inline]
-pub(crate) fn checked_add_step<A>(acc: A, value: A) -> Option<A>
-where
-    A: Numeric + Copy + 'static,
-{
-    if TypeId::of::<A>() == TypeId::of::<i32>() {
-        // SAFETY: TypeId equality proves `A == i32`, so `&A` and `&i32` are
-        // pointer-compatible and reading through a `*const i32` is sound.
-        let a: i32 = unsafe { *(&acc as *const A as *const i32) };
-        let v: i32 = unsafe { *(&value as *const A as *const i32) };
-        return a
-            .checked_add(v)
-            // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
-            .map(|r| unsafe { core::mem::transmute_copy::<i32, A>(&r) });
-    }
-    if TypeId::of::<A>() == TypeId::of::<i64>() {
-        // SAFETY: TypeId equality proves `A == i64`.
-        let a: i64 = unsafe { *(&acc as *const A as *const i64) };
-        let v: i64 = unsafe { *(&value as *const A as *const i64) };
-        return a
-            .checked_add(v)
-            // SAFETY: `A == i64`; transmute is identity.
-            .map(|r| unsafe { core::mem::transmute_copy::<i64, A>(&r) });
-    }
-    // Float / complex path: `Numeric: Add<Output = Self>` covers all remaining
-    // supported element types (`f32`, `f64`, `Complex<f32>`, `Complex<f64>`).
-    Some(acc + value)
-}
-
-/// 13-reduction §6.3 line 291-295: integer types skip the dispatcher when no
-/// verified widening SIMD implementation exists, falling directly to the
-/// scalar serial path for checked arithmetic equivalence.
-fn force_scalar_for_integers<A: 'static>() -> bool {
-    TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>()
-}
-
 // ── Axis validation helper (W18T3) ──
 
 /// `pub(crate)` so W18T4 can reuse it without duplicating the InvalidAxis logic.
@@ -331,5 +286,49 @@ pub(crate) fn dim_with_axis_set<D: Dimension>(
     D::try_from_slice(&dims)
 }
 
+/// 13-reduction §6.3 line 291-295: integer types skip the dispatcher when no
+/// verified widening SIMD implementation exists, falling directly to the
+/// scalar serial path for checked arithmetic equivalence.
+fn force_scalar_for_integers<A: 'static>() -> bool {
+    TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>()
+}
+
+/// Per-step accumulation enforcing 13-reduction §6.3 type semantics:
+/// - Integer types (`i32`, `i64`): checked arithmetic via `CheckedAdd`,
+///   returning `None` on overflow so the caller can panic with element context.
+/// - Floating / complex types: ordinary `+` via `Numeric: Add<Output = Self>`;
+///   IEEE 754 NaN / Inf propagation is preserved.
+///
+/// Dispatch mirrors the 13-reduction §6.3 line 291-295 SIMD type-gate pattern.
+/// The `unsafe` reads are sound because each is gated by
+/// `TypeId::of::<A>() == TypeId::of::<I>()`, which proves layout identity.
+#[inline]
+pub(crate) fn checked_add_step<A>(acc: A, value: A) -> Option<A>
+where
+    A: Numeric + Copy + 'static,
+{
+    if TypeId::of::<A>() == TypeId::of::<i32>() {
+        // SAFETY: TypeId equality proves `A == i32`, so `&A` and `&i32` are
+        // pointer-compatible and reading through a `*const i32` is sound.
+        let a: i32 = unsafe { *(&acc as *const A as *const i32) };
+        let v: i32 = unsafe { *(&value as *const A as *const i32) };
+        return a
+            .checked_add(v)
+            // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
+            .map(|r| unsafe { core::mem::transmute_copy::<i32, A>(&r) });
+    }
+    if TypeId::of::<A>() == TypeId::of::<i64>() {
+        // SAFETY: TypeId equality proves `A == i64`.
+        let a: i64 = unsafe { *(&acc as *const A as *const i64) };
+        let v: i64 = unsafe { *(&value as *const A as *const i64) };
+        return a
+            .checked_add(v)
+            // SAFETY: `A == i64`; transmute is identity.
+            .map(|r| unsafe { core::mem::transmute_copy::<i64, A>(&r) });
+    }
+    // Float / complex path: `Numeric: Add<Output = Self>` covers all remaining
+    // supported element types (`f32`, `f64`, `Complex<f32>`, `Complex<f64>`).
+    Some(acc + value)
+}
 
 
