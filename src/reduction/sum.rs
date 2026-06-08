@@ -14,10 +14,10 @@ use crate::tensor::{Tensor, TensorBase};
 use crate::dispatch::{select_exec_path, ExecPath};
 
 #[cfg(feature = "parallel")]
-use crate::parallel::sum::par_sum;
+use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
-use crate::dispatch::ParallelExecStrategy;
+use crate::parallel::sum::par_sum;
 
 #[cfg(feature = "simd")]
 use crate::complex::Complex;
@@ -68,8 +68,6 @@ where
         _ => try_sum_serial(tensor),
     }
 }
-
-// ------------------------------ sum_axis_impl -------------------------------
 
 /// Reduce along a single axis, removing that axis from the output shape.
 ///
