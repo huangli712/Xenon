@@ -197,6 +197,30 @@ where
     Ok(())
 }
 
+// ── SIMD support ──
+
+#[cfg(feature = "simd")]
+#[inline]
+fn can_use_simd_dot<A: 'static, S1, S2, D1, D2>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
+) -> bool
+where
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    D1: Dimension,
+    D2: Dimension,
+{
+    if !(a.is_f_contiguous() && b.is_f_contiguous()) {
+        return false;
+    }
+    let t = TypeId::of::<A>();
+    t == TypeId::of::<f32>()
+        || t == TypeId::of::<f64>()
+        || t == TypeId::of::<Complex<f32>>()
+        || t == TypeId::of::<Complex<f64>>()
+}
+
 /// Per-step dot-product accumulation with type-aware arithmetic semantics.
 ///
 /// - `i32`, `i64`: checked multiply then checked add; integer overflow is
@@ -262,30 +286,6 @@ where
     // the true conjugate for `Complex`, so this single expression covers all
     // non-integer supported types and preserves IEEE 754 NaN / Inf semantics.
     acc + x.conjugate() * y
-}
-
-// ── SIMD support ──
-
-#[cfg(feature = "simd")]
-#[inline]
-fn can_use_simd_dot<A: 'static, S1, S2, D1, D2>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-) -> bool
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension,
-    D2: Dimension,
-{
-    if !(a.is_f_contiguous() && b.is_f_contiguous()) {
-        return false;
-    }
-    let t = TypeId::of::<A>();
-    t == TypeId::of::<f32>()
-        || t == TypeId::of::<f64>()
-        || t == TypeId::of::<Complex<f32>>()
-        || t == TypeId::of::<Complex<f64>>()
 }
 
 // ── Unit tests ──
