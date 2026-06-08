@@ -257,7 +257,8 @@ where
             .expect("output_index is within reduced-shape bounds");
         *slot = checked_add_step(*slot, value).unwrap_or_else(|| {
             panic!(
-                "integer overflow in reduction sum_axis: element_type={}, shape={:?}, input_index={:?}",
+                "integer overflow in reduction sum_axis: \
+                 element_type={}, shape={:?}, input_index={:?}",
                 type_name::<A>(),
                 tensor.shape(),
                 input_index
@@ -287,14 +288,19 @@ where
 {
     for (input_index, &value) in tensor.indexed_iter() {
         // Axis was pre-validated; dim_with_axis_set cannot fail.
-        let output_index = dim_with_axis_set(&input_index, axis, 0, "sum_axis_keepdims")
-            .expect("axis pre-validated; dim_with_axis_set cannot fail here");
+        let output_index = dim_with_axis_set(
+            &input_index,
+            axis,
+            0,
+            "sum_axis_keepdims"
+        ).expect("axis pre-validated; dim_with_axis_set cannot fail here");
         let slot = output
             .get_mut(output_index.slice())
             .expect("output_index is within keepdims-shape bounds");
         *slot = checked_add_step(*slot, value).unwrap_or_else(|| {
             panic!(
-                "integer overflow in reduction sum_axis_keepdims: element_type={}, shape={:?}, input_index={:?}",
+                "integer overflow in reduction sum_axis_keepdims: \
+                 element_type={}, shape={:?}, input_index={:?}",
                 type_name::<A>(),
                 tensor.shape(),
                 input_index
