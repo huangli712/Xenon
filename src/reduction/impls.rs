@@ -92,26 +92,29 @@ mod tests {
         (actual - expected).abs() <= tol
     }
 
-    // -------------------------------- sum() ---------------------------------
+    // --- sum() --------------------------------------------------------------
 
     /// i32 sum of three elements equals their total.
     #[test]
     fn test_sum_i32() {
-        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
+            .expect("valid test input");
         assert_eq!(x.sum(), 6);
     }
 
     /// Sum of an empty tensor returns the additive identity.
     #[test]
     fn test_sum_empty() {
-        let x = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid test input");
+        let x = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid test input");
         assert_eq!(x.sum(), 0);
     }
 
     /// 0D (scalar) tensor sum returns its single element.
     #[test]
     fn test_sum_scalar_rank0() {
-        let x = Tensor::<i32, Ix0>::from_shape_vec(Ix0, vec![9]).expect("valid test input");
+        let x = Tensor::<i32, Ix0>::from_shape_vec(Ix0, vec![9])
+            .expect("valid test input");
         assert_eq!(x.sum(), 9);
     }
 
@@ -133,8 +136,7 @@ mod tests {
                 Complex::<f64>::new(1.0, 2.0),
                 Complex::<f64>::new(f64::NAN, 3.0),
             ],
-        )
-        .expect("valid test input");
+        ).expect("valid test input");
         let result = x.sum();
         // Real component is NaN because one input had NaN real part.
         assert!(result.re.is_nan());
