@@ -44,8 +44,11 @@ where
         return try_sum_serial(tensor);
     }
 
-    let (path, _guard) =
-        select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
+    let (path, _guard) = select_exec_path(
+        tensor.len(),
+        tensor.is_f_contiguous(),
+        tensor.is_aligned()
+    );
 
     match path {
         #[cfg(feature = "parallel")]
