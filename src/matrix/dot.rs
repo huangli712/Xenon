@@ -148,7 +148,7 @@ where
 // ── Scalar baseline ──
 
 #[inline]
-pub(crate) fn dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
+pub(crate) fn try_dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
@@ -274,7 +274,7 @@ where
     let (path, guard) = select_exec_path(a.len(), is_contig, alignment_ok(a, b));
 
     match path {
-        ExecPath::Serial => Ok(dot_serial(a, b)),
+        ExecPath::Serial => Ok(try_dot_serial(a, b)),
         ExecPath::Simd => {
             let _ = guard;
             #[cfg(feature = "simd")]
@@ -285,7 +285,7 @@ where
                     return Ok(v);
                 }
             }
-            Ok(dot_serial(a, b))
+            Ok(try_dot_serial(a, b))
         },
         ExecPath::Parallel => {
             // Dispatch invariant (30-dispatch §5.5 line 166): when
@@ -307,7 +307,7 @@ where
             #[cfg(not(feature = "parallel"))]
             {
                 let _ = guard;
-                Ok(dot_serial(a, b))
+                Ok(try_dot_serial(a, b))
             }
         },
     }
@@ -494,7 +494,7 @@ mod tests {
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
 
         let actual = dot_impl(&a, &b).expect("valid construction");
-        let expected = dot_serial(&a, &b);
+        let expected = try_dot_serial(&a, &b);
 
         let max_abs = values.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         let tol = f64_dot_tolerance(values.len(), max_abs, max_abs);
@@ -511,7 +511,7 @@ mod tests {
         let a =
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("valid construction");
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), dot_serial(&a, &b));
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
     }
 
     // W17T6: parallel path tests
@@ -523,7 +523,7 @@ mod tests {
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("valid construction");
         // Integer dot is exact across paths.
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), dot_serial(&a, &b));
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
     }
 
     #[cfg(feature = "parallel")]
@@ -544,7 +544,7 @@ mod tests {
         let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
         let actual = dot_impl(&a, &b).expect("valid construction");
-        let expected = dot_serial(&a, &b);
+        let expected = try_dot_serial(&a, &b);
         let max_abs_a = xs.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         let max_abs_b = ys.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         let tol = f64_dot_tolerance_parallel(n, max_abs_a, max_abs_b);
@@ -563,7 +563,7 @@ mod tests {
         let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
 
-        let baseline = dot_serial(&a, &b);
+        let baseline = try_dot_serial(&a, &b);
 
         let result = with_parallel_worker_context(|| dot_impl(&a, &b).expect("valid construction"));
 
