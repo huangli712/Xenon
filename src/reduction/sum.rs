@@ -332,3 +332,190 @@ where
 }
 
 
+
+// ── Unit tests for internal/private helpers ──
+
+#[cfg(test)]
+mod tests {
+    use crate::complex::Complex;
+    use crate::dimension::{Axis, Dimension, Ix0, Ix1, Ix2, RemoveAxis};
+    use crate::error::XenonError;
+    use crate::tensor::{Tensor, Tensor1};
+
+    // ── checked_add_step ──
+
+    #[test]
+    fn test_checked_add_step_i32_normal() {
+        assert_eq!(super::checked_add_step(1_i32, 2), Some(3));
+        assert_eq!(super::checked_add_step(-5_i32, 3), Some(-2));
+    }
+
+    #[test]
+    fn test_checked_add_step_i32_overflow() {
+        assert!(super::checked_add_step(i32::MAX, 1).is_none());
+    }
+
+    #[test]
+    fn test_checked_add_step_i32_underflow() {
+        assert!(super::checked_add_step(i32::MIN, -1).is_none());
+    }
+
+    #[test]
+    fn test_checked_add_step_i64_normal() {
+        assert_eq!(super::checked_add_step(100_i64, 200), Some(300));
+    }
+
+    #[test]
+    fn test_checked_add_step_i64_overflow() {
+        assert!(super::checked_add_step(i64::MAX, 1).is_none());
+    }
+
+    #[test]
+    fn test_checked_add_step_f32_normal() {
+        assert_eq!(super::checked_add_step(1.5_f32, 2.5), Some(4.0));
+    }
+
+    #[test]
+    fn test_checked_add_step_f32_nan_propagates() {
+        let result = super::checked_add_step(1.0_f32, f32::NAN);
+        assert!(result.unwrap().is_nan());
+    }
+
+    #[test]
+    fn test_checked_add_step_f64_normal() {
+        assert_eq!(super::checked_add_step(1.5_f64, 2.5), Some(4.0));
+    }
+
+    #[test]
+    fn test_checked_add_step_complex_f64_normal() {
+        let a = Complex::<f64>::new(1.0, 2.0);
+        let b = Complex::<f64>::new(3.0, 4.0);
+        let result = super::checked_add_step(a, b);
+        assert_eq!(result, Some(Complex::new(4.0, 6.0)));
+    }
+
+    #[test]
+    fn test_checked_add_step_zero_identity() {
+        // i32 zero + something = something
+        assert_eq!(super::checked_add_step(0_i32, 42), Some(42));
+        // f64 zero + something = something
+        assert_eq!(super::checked_add_step(0.0_f64, 3.14), Some(3.14));
+    }
+
+    // ── force_scalar_for_integers ──
+
+    #[test]
+    fn test_force_scalar_i32_true() {
+        assert!(super::force_scalar_for_integers::<i32>());
+    }
+
+    #[test]
+    fn test_force_scalar_i64_true() {
+        assert!(super::force_scalar_for_integers::<i64>());
+    }
+
+    #[test]
+    fn test_force_scalar_f32_false() {
+        assert!(!super::force_scalar_for_integers::<f32>());
+    }
+
+    #[test]
+    fn test_force_scalar_f64_false() {
+        assert!(!super::force_scalar_for_integers::<f64>());
+    }
+
+    #[test]
+    fn test_force_scalar_complex_f32_false() {
+        assert!(!super::force_scalar_for_integers::<Complex<f32>>());
+    }
+
+    // ── validate_axis ──
+
+    #[test]
+    fn test_validate_axis_valid() {
+        let dim = Ix2(3, 4);
+        assert!(super::validate_axis(&dim, Axis(0), "test_op").is_ok());
+        assert!(super::validate_axis(&dim, Axis(1), "test_op").is_ok());
+    }
+
+    #[test]
+    fn test_validate_axis_invalid() {
+        let dim = Ix2(3, 4);
+        let err = super::validate_axis(&dim, Axis(2), "test_op").unwrap_err();
+        assert!(matches!(err, XenonError::InvalidAxis { .. }));
+    }
+
+    #[test]
+    fn test_validate_axis_0d_always_invalid() {
+        let dim = Ix0;
+        let err = super::validate_axis(&dim, Axis(0), "test_op").unwrap_err();
+        assert!(matches!(err, XenonError::InvalidAxis { .. }));
+    }
+
+    // ── dim_with_axis_set ──
+
+    #[test]
+    fn test_dim_with_axis_set_valid() {
+        let dim = Ix2(3, 4);
+        let result = super::dim_with_axis_set(&dim, Axis(1), 7, "test_op").unwrap();
+        assert_eq!(result.slice(), &[3, 7]);
+    }
+
+    #[test]
+    fn test_dim_with_axis_set_oob() {
+        let dim = Ix2(3, 4);
+        let err = super::dim_with_axis_set(&dim, Axis(2), 1, "test_op").unwrap_err();
+        assert!(matches!(err, XenonError::InvalidAxis { .. }));
+    }
+
+    // ── try_sum_serial ──
+
+    #[test]
+    fn test_try_sum_serial_i32() {
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).unwrap();
+        assert_eq!(super::try_sum_serial(&x), 6);
+    }
+
+    #[test]
+    fn test_try_sum_serial_empty() {
+        let x = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).unwrap();
+        assert_eq!(super::try_sum_serial(&x), 0.0);
+    }
+
+    #[test]
+    fn test_try_sum_serial_nan_propagates() {
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN]).unwrap();
+        assert!(super::try_sum_serial(&x).is_nan());
+    }
+
+    #[test]
+    #[should_panic(expected = "integer overflow")]
+    fn test_try_sum_serial_i32_overflow_panics() {
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).unwrap();
+        super::try_sum_serial(&x);
+    }
+
+    // ── accumulate_axis: integer overflow panic path ──
+
+    #[test]
+    #[should_panic(expected = "integer overflow")]
+    fn test_accumulate_axis_overflow_panics() {
+        // sum_axis over axis 0 with shape (2,) and elements [i32::MAX, 1].
+        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).unwrap();
+        // sum_axis on a 1D tensor; remove_axis reduces to Ix0.
+        let output_dim = x.raw_dim().remove_axis(Axis(0)).unwrap().0;
+        let mut output = Tensor::<i32, Ix0>::zeros(output_dim).unwrap();
+        super::accumulate_axis(&x, Axis(0), &mut output).unwrap();
+    }
+
+    // ── accumulate_axis_keepdims: integer overflow panic path ──
+
+    #[test]
+    #[should_panic(expected = "integer overflow")]
+    fn test_accumulate_axis_keepdims_overflow_panics() {
+        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).unwrap();
+        let output_dim = super::dim_with_axis_set(&x.raw_dim(), Axis(0), 1, "test").unwrap();
+        let mut output = Tensor::<i32, Ix1>::zeros(output_dim).unwrap();
+        super::accumulate_axis_keepdims(&x, Axis(0), &mut output).unwrap();
+    }
+}
