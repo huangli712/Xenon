@@ -21,6 +21,14 @@ use crate::dispatch::ParallelExecStrategy;
 use crate::parallel::dot::par_dot;
 
 #[cfg(feature = "simd")]
+use crate::simd::{
+    try_dot_f32,
+    try_dot_f64,
+    try_dot_complex_f32,
+    try_dot_complex_f64,
+};
+
+#[cfg(feature = "simd")]
 use crate::complex::Complex;
 
 // --- dot_impl ---------------------------------------------------------------
@@ -142,31 +150,48 @@ where
     let lhs = a.as_slice()?;
     let rhs = b.as_slice()?;
 
-    let t = TypeId::of::<A>();
-    if t == TypeId::of::<f32>() {
+    if TypeId::of::<A>() == TypeId::of::<f32>() {
         // SAFETY: TypeId equality proves `A == f32`.
-        let lhs: &[f32] = unsafe { &*(lhs as *const [A] as *const [f32]) };
-        let rhs: &[f32] = unsafe { &*(rhs as *const [A] as *const [f32]) };
-        return crate::simd::try_dot_f32(lhs, rhs).map(|v| unsafe { transmute_copy::<f32, A>(&v) });
+        let lhs: &[f32] = unsafe {
+            &*(lhs as *const [A] as *const [f32]) 
+        };
+        let rhs: &[f32] = unsafe { 
+            &*(rhs as *const [A] as *const [f32]) 
+        };
+        return try_dot_f32(lhs, rhs)
+            .map(|v| unsafe { transmute_copy::<f32, A>(&v) });
     }
-    if t == TypeId::of::<f64>() {
+    if TypeId::of::<A>() == TypeId::of::<f64>() {
         // SAFETY: TypeId equality proves `A == f64`.
-        let lhs: &[f64] = unsafe { &*(lhs as *const [A] as *const [f64]) };
-        let rhs: &[f64] = unsafe { &*(rhs as *const [A] as *const [f64]) };
-        return crate::simd::try_dot_f64(lhs, rhs).map(|v| unsafe { transmute_copy::<f64, A>(&v) });
+        let lhs: &[f64] = unsafe {
+            &*(lhs as *const [A] as *const [f64])
+        };
+        let rhs: &[f64] = unsafe {
+            &*(rhs as *const [A] as *const [f64]) 
+        };
+        return try_dot_f64(lhs, rhs)
+            .map(|v| unsafe { transmute_copy::<f64, A>(&v) });
     }
-    if t == TypeId::of::<Complex<f32>>() {
+    if TypeId::of::<A>() == TypeId::of::<Complex<f32>>() {
         // SAFETY: TypeId equality proves `A == Complex<f32>`.
-        let lhs: &[Complex<f32>] = unsafe { &*(lhs as *const [A] as *const [Complex<f32>]) };
-        let rhs: &[Complex<f32>] = unsafe { &*(rhs as *const [A] as *const [Complex<f32>]) };
-        return crate::simd::try_dot_complex_f32(lhs, rhs)
+        let lhs: &[Complex<f32>] = unsafe {
+            &*(lhs as *const [A] as *const [Complex<f32>]) 
+        };
+        let rhs: &[Complex<f32>] = unsafe { 
+            &*(rhs as *const [A] as *const [Complex<f32>]) 
+        };
+        return try_dot_complex_f32(lhs, rhs)
             .map(|v| unsafe { transmute_copy::<Complex<f32>, A>(&v) });
     }
-    if t == TypeId::of::<Complex<f64>>() {
+    if TypeId::of::<A>() == TypeId::of::<Complex<f64>>() {
         // SAFETY: TypeId equality proves `A == Complex<f64>`.
-        let lhs: &[Complex<f64>] = unsafe { &*(lhs as *const [A] as *const [Complex<f64>]) };
-        let rhs: &[Complex<f64>] = unsafe { &*(rhs as *const [A] as *const [Complex<f64>]) };
-        return crate::simd::try_dot_complex_f64(lhs, rhs)
+        let lhs: &[Complex<f64>] = unsafe {
+            &*(lhs as *const [A] as *const [Complex<f64>]) 
+        };
+        let rhs: &[Complex<f64>] = unsafe {
+            &*(rhs as *const [A] as *const [Complex<f64>]) 
+        };
+        return try_dot_complex_f64(lhs, rhs)
             .map(|v| unsafe { transmute_copy::<Complex<f64>, A>(&v) });
     }
     None
