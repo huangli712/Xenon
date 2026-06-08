@@ -476,10 +476,14 @@ mod tests {
     /// Dot product of complex vectors computes conjugate‑linear inner product.
     #[test]
     fn test_dot_complex() {
-        let a = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(1.0, 2.0)])
-            .expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(3.0, 4.0)])
-            .expect("valid construction");
+        let a = Tensor1::from_shape_vec(
+            Ix1(1),
+            vec![Complex::<f64>::new(1.0, 2.0)]
+        ).expect("valid construction");
+        let b = Tensor1::from_shape_vec(
+            Ix1(1),
+            vec![Complex::<f64>::new(3.0, 4.0)]
+        ).expect("valid construction");
         let r = dot_impl(&a, &b).expect("valid construction");
         assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
     }
@@ -504,7 +508,9 @@ mod tests {
                 assert_eq!(left_shape.as_slice(), &[2]);
                 assert_eq!(right_shape.as_slice(), &[3]);
             },
-            other => panic!("expected ShapeMismatch, got {other:?}"),
+            other => panic!(
+                "expected ShapeMismatch, got {other:?}"
+            ),
         }
     }
 
@@ -529,7 +535,9 @@ mod tests {
                 assert_eq!(argument.as_ref(), "a");
                 assert_eq!(constraint.as_ref(), "rank == 1");
             },
-            other => panic!("expected InvalidArgument::OperationSpecific, got {other:?}"),
+            other => panic!(
+                "expected InvalidArgument::OperationSpecific, got {other:?}"
+            ),
         }
     }
 
