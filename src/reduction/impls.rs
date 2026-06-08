@@ -23,7 +23,7 @@ where
     /// Rank-0 (scalar) tensors return their single element.
     /// Integer overflow is unrecoverable and panics.
     pub fn sum(&self) -> A {
-        crate::reduction::sum_all(self)
+        crate::reduction::sum_impl(self)
     }
 
     /// Reduces along `axis` and keeps the reduced axis with length 1.

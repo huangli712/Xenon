@@ -7,7 +7,7 @@
 mod sum;
 mod impls;
 
-pub(crate) use sum::{sum_all, sum_axis_impl, sum_axis_keepdims_impl};
+pub(crate) use sum::{sum_impl, sum_axis_impl, sum_axis_keepdims_impl};
 
 #[cfg(test)]
 mod tests {

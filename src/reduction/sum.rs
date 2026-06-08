@@ -22,7 +22,7 @@ use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "simd")]
 use crate::simd::{try_sum_complex_f32, try_sum_complex_f64, try_sum_f32, try_sum_f64};
 
-pub(crate) fn sum_all<S, D, A>(tensor: &TensorBase<S, D>) -> A
+pub(crate) fn sum_impl<S, D, A>(tensor: &TensorBase<S, D>) -> A
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -134,7 +134,7 @@ where
 }
 
 /// Scalar serial baseline — same body as the W18T2 version, but now living
-/// as a private helper so the dispatched `sum_all` can fall back to it.
+/// as a private helper so the dispatched `sum_impl` can fall back to it.
 pub(crate) fn sum_serial<S, D, A>(tensor: &TensorBase<S, D>) -> A
 where
     S: Storage<Elem = A>,
@@ -142,7 +142,7 @@ where
     A: Numeric + Copy + 'static,
 {
     // Capture shape before fold so the panic closure can reference it without
-    // borrowing `tensor` mutably through `iter()` (mirrors W18T2 `sum_all`).
+    // borrowing `tensor` mutably through `iter()` (mirrors W18T2 `sum_impl`).
     let shape_snapshot = tensor.shape().to_vec();
     tensor
         .iter()
@@ -169,7 +169,7 @@ fn force_scalar_for_integers<A: 'static>() -> bool {
 /// Type-dispatched wrapper for the W14 SIMD facades. Returns `None` when the
 /// element type is unsupported (caller falls back to `sum_serial`) or when the
 /// W14 facade itself rejects the input (e.g. shorter than the SIMD threshold).
-/// The integer gate in `sum_all` ensures `i32`/`i64` never reach this branch.
+/// The integer gate in `sum_impl` ensures `i32`/`i64` never reach this branch.
 #[cfg(feature = "simd")]
 fn try_simd_sum<S, D, A>(tensor: &TensorBase<S, D>) -> Option<A>
 where
