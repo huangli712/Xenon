@@ -257,7 +257,7 @@ fn reinterpret_value<A: 'static + Copy, B: 'static + Copy>(v: A) -> B {
     unsafe { std::mem::transmute_copy::<A, B>(&v) }
 }
 
-// ── Public dot entry ──
+// ── Internal dot entry ──
 
 /// Vector dot product entry point.
 ///
@@ -268,7 +268,7 @@ fn reinterpret_value<A: 'static + Copy, B: 'static + Copy>(v: A) -> B {
 /// Returns `XenonError::DimensionMismatch` when the two tensors do not
 /// have the same element count. Returns `XenonError::InvalidLayout`
 /// when shape product overflow or stride validation fails.
-pub(crate) fn dot<S1, S2, A, D1, D2>(
+pub(crate) fn dot_impl<S1, S2, A, D1, D2>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
 ) -> Result<A, XenonError>
@@ -329,6 +329,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::dot_impl as dot;
     use crate::complex::Complex;
     use crate::dimension::Ix1;
     use crate::dimension::Ix2;

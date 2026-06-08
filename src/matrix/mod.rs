@@ -9,4 +9,4 @@
 mod dot;
 mod impls;
 
-pub(crate) use dot::dot;
+pub(crate) use dot::dot_impl;

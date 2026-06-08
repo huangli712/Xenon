@@ -18,7 +18,7 @@ where
     A: Numeric + Copy + 'static + Send + Sync,
 {
     /// Stable method-style API; semantically equivalent to
-    /// `matrix::dot(self, other)`. See 12-matrix §5.1.
+    /// `matrix::dot_impl(self, other)`. See 12-matrix §5.1.
     ///
     /// # Errors
     ///
@@ -30,7 +30,7 @@ where
         S2: Storage<Elem = A>,
         D2: Dimension,
     {
-        crate::matrix::dot(self, other)
+        crate::matrix::dot_impl(self, other)
     }
 }
 
@@ -39,7 +39,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::dimension::Ix1;
-    use crate::matrix::dot;
+    use crate::matrix::dot_impl as dot;
     use crate::tensor::Tensor1;
 
     // W17T3
