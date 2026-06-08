@@ -47,7 +47,11 @@ where
     validate_dot_inputs(a, b)?;
 
     let is_contig = a.is_f_contiguous() && b.is_f_contiguous();
-    let (path, guard) = select_exec_path(a.len(), is_contig, a.is_aligned() && b.is_aligned());
+    let (path, guard) = select_exec_path(
+        a.len(),
+        is_contig,
+        a.is_aligned() && b.is_aligned()
+    );
 
     match path {
         ExecPath::Serial => Ok(try_dot_serial(a, b)),
