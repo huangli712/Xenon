@@ -170,10 +170,22 @@ where
     D2: Dimension,
 {
     if a.ndim() != 1 {
-        return Err(invalid_rank("a"));
+        return Err(XenonError::InvalidArgument {
+            operation: Cow::Borrowed("dot"),
+            kind: InvalidArgumentKind::OperationSpecific {
+                argument: Cow::Borrowed("a"),
+                constraint: Cow::Borrowed("rank == 1"),
+            },
+        });
     }
     if b.ndim() != 1 {
-        return Err(invalid_rank("b"));
+        return Err(XenonError::InvalidArgument {
+            operation: Cow::Borrowed("dot"),
+            kind: InvalidArgumentKind::OperationSpecific {
+                argument: Cow::Borrowed("b"),
+                constraint: Cow::Borrowed("rank == 1"),
+            },
+        });
     }
     if a.len() != b.len() {
         return Err(XenonError::ShapeMismatch {
@@ -183,16 +195,6 @@ where
         });
     }
     Ok(())
-}
-
-fn invalid_rank(argument: &'static str) -> XenonError {
-    XenonError::InvalidArgument {
-        operation: Cow::Borrowed("dot"),
-        kind: InvalidArgumentKind::OperationSpecific {
-            argument: Cow::Borrowed(argument),
-            constraint: Cow::Borrowed("rank == 1"),
-        },
-    }
 }
 
 // ── Alignment ──
