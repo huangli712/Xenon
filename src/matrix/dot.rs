@@ -301,8 +301,6 @@ where
         || t == TypeId::of::<Complex<f64>>()
 }
 
-
-
 // ── Unit tests ──
 
 #[cfg(test)]
