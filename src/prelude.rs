@@ -150,9 +150,6 @@ pub use crate::error::{
 // Operator overload helper
 pub use crate::overload::Scalar;
 
-// Set trait
-pub use crate::set::UniqueElement;
-
 // Scratch workspace type
 pub use crate::workspace::Workspace;
 
