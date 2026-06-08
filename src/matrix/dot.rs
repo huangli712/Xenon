@@ -590,13 +590,15 @@ mod tests {
         let _ = dot_impl(&a, &b).expect("valid construction");
     }
 
-    // --- dot_impl: SIMD path -------------------------------------------------
+    // --- dot_impl: SIMD path ------------------------------------------------
 
     /// SIMD path produces a result within tolerance of the serial baseline.
     #[cfg(feature = "simd")]
     #[test]
     fn test_dot_simd() {
-        let values: Vec<f64> = (0..1024).map(|i| (i as f64) * 0.5).collect();
+        let values: Vec<f64> = (0..1024)
+            .map(|i| (i as f64) * 0.5)
+            .collect();
         let a = Tensor1::from_shape_vec(Ix1(values.len()), values.clone())
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values.clone())
@@ -605,7 +607,9 @@ mod tests {
         let actual = dot_impl(&a, &b).expect("valid construction");
         let expected = try_dot_serial(&a, &b);
 
-        let max_abs = values.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
+        let max_abs = values
+            .iter()
+            .fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         let tol = f64_dot_tolerance(values.len(), max_abs, max_abs);
         assert!(
             (actual - expected).abs() <= tol,
@@ -622,7 +626,10 @@ mod tests {
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values)
             .expect("valid construction");
-        assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
+        assert_eq!(
+            dot_impl(&a, &b).expect("valid construction"),
+            try_dot_serial(&a, &b)
+        );
     }
 
     // --- dot_impl: parallel path --------------------------------------------
