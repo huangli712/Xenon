@@ -3,13 +3,15 @@
 //! This file contains the `impl TensorBase` blocks that define the public
 //! reduction methods, delegating to the internal implementations in `sum.rs`.
 
+use crate::error::XenonError;
 use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::element::Numeric;
-use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-// ------------ Public API: sum / sum_axis_keepdims (D: Dimension) ------------
+use super::{sum_impl, sum_axis_impl, sum_axis_keepdims_impl};
+
+// --- Public API: sum / sum_axis_keepdims (D: Dimension) ---------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -23,7 +25,7 @@ where
     /// Rank-0 (scalar) tensors return their single element.
     /// Integer overflow is unrecoverable and panics.
     pub fn sum(&self) -> A {
-        crate::reduction::sum_impl(self)
+        sum_impl(self)
     }
 
     /// Reduces along `axis` and keeps the reduced axis with length 1.
@@ -34,12 +36,15 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError> {
-        crate::reduction::sum_axis_keepdims_impl(self, axis)
+    pub fn sum_axis_keepdims(
+        &self,
+        axis: Axis
+    ) -> Result<Tensor<A, D>, XenonError> {
+        sum_axis_keepdims_impl(self, axis)
     }
 }
 
-// ------------- Public API: sum_axis (D: Dimension + RemoveAxis) -------------
+// --- Public API: sum_axis (D: Dimension + RemoveAxis) -----------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -52,21 +57,23 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError> {
-        crate::reduction::sum_axis_impl(self, axis)
+    pub fn sum_axis(
+        &self,
+        axis: Axis
+    ) -> Result<Tensor<A, D::Smaller>, XenonError> {
+        sum_axis_impl(self, axis)
     }
 }
 
-// -------------------------------- Unit tests --------------------------------
-
 #[cfg(test)]
 mod tests {
-    use crate::complex::Complex;
-    use crate::dimension::{Axis, Ix0, Ix1, Ix2};
     use crate::error::XenonError;
+    use crate::dimension::{Axis, Ix0, Ix1, Ix2};
+    use crate::complex::Complex;
+    use crate::tensor::{Tensor, Tensor1};
+
     #[cfg(any(feature = "simd", feature = "parallel"))]
     use crate::reduction::sum;
-    use crate::tensor::{Tensor, Tensor1};
 
     // ---------------- Helpers ----------------
 
