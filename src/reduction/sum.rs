@@ -6,21 +6,26 @@
 use core::any::TypeId;
 use std::borrow::Cow;
 
-use crate::dimension::{Axis, Dimension, RemoveAxis};
-use crate::dispatch::select_exec_path;
-use crate::element::Numeric;
-
-#[cfg(feature = "simd")]
-use crate::complex::Complex;
 use crate::error::XenonError;
+use crate::dimension::{Axis, Dimension, RemoveAxis};
+use crate::element::Numeric;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
+use crate::dispatch::select_exec_path;
 
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "simd")]
-use crate::simd::{try_sum_complex_f32, try_sum_complex_f64, try_sum_f32, try_sum_f64};
+use crate::complex::Complex;
+
+#[cfg(feature = "simd")]
+use crate::simd::{
+    try_sum_f32,
+    try_sum_f64,
+    try_sum_complex_f32,
+    try_sum_complex_f64
+};
 
 /// Reduce all elements to a single scalar via dispatch to serial, SIMD, or
 /// parallel paths.
