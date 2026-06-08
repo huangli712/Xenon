@@ -581,27 +581,39 @@ mod tests {
         super::try_sum_serial(&x);
     }
 
-    // ----------------------- accumulate_axis overflow -----------------------
+    // --- accumulate_axis overflow -------------------------------------------
 
     /// accumulate_axis panics on i32 overflow in the reduction loop.
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_accumulate_axis_overflow_panics() {
-        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
-        let output_dim = x.raw_dim().remove_axis(Axis(0)).expect("axis 0 is valid").0;
-        let mut output = Tensor::<i32, Ix0>::zeros(output_dim).expect("valid shape");
+        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1])
+            .expect("valid test input");
+        let output_dim = x
+            .raw_dim()
+            .remove_axis(Axis(0))
+            .expect("axis 0 is valid").0;
+        let mut output = Tensor::<i32, Ix0>::zeros(output_dim)
+            .expect("valid shape");
         let _ = super::accumulate_axis(&x, Axis(0), &mut output);
     }
 
-    // ------------------ accumulate_axis_keepdims overflow -------------------
+    // --- accumulate_axis_keepdims overflow ----------------------------------
 
     /// accumulate_axis_keepdims panics on i32 overflow in the reduction loop.
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_accumulate_axis_keepdims_overflow_panics() {
-        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
-        let output_dim = super::dim_with_axis_set(&x.raw_dim(), Axis(0), 1, "test").expect("valid axis");
-        let mut output = Tensor::<i32, Ix1>::zeros(output_dim).expect("valid shape");
+        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1])
+            .expect("valid test input");
+        let output_dim = super::dim_with_axis_set(
+            &x.raw_dim(),
+            Axis(0),
+            1,
+            "test"
+        ).expect("valid axis");
+        let mut output = Tensor::<i32, Ix1>::zeros(output_dim)
+            .expect("valid shape");
         let _ = super::accumulate_axis_keepdims(&x, Axis(0), &mut output);
     }
 }
