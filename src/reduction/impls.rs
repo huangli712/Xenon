@@ -75,14 +75,20 @@ mod tests {
     #[cfg(any(feature = "simd", feature = "parallel"))]
     use crate::reduction::sum;
 
-    // ---------------- Helpers ----------------
+    // --- Helpers ------------------------------------------------------------
 
     /// f32 finite-value tolerance for dispatch consistency comparisons.
     /// Accounts for accumulated floating-point rounding error proportional to
     /// element count and input magnitude.
     #[cfg(any(feature = "simd", feature = "parallel"))]
-    fn approx_eq_f32(actual: f32, expected: f32, n: usize, max_abs_input: f32) -> bool {
-        let tol = (4.0 * f32::EPSILON * (n as f32) * max_abs_input).max(4.0 * f32::MIN_POSITIVE);
+    fn approx_eq_f32(
+        actual: f32,
+        expected: f32,
+        n: usize,
+        max_abs_input: f32
+    ) -> bool {
+        let tol = (4.0 * f32::EPSILON * (n as f32) * max_abs_input)
+            .max(4.0 * f32::MIN_POSITIVE);
         (actual - expected).abs() <= tol
     }
 
