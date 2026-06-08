@@ -8,6 +8,5 @@
 
 mod dot;
 mod impls;
-mod types;
 
 pub(crate) use dot::dot;
