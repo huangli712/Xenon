@@ -3,7 +3,7 @@
 //! Layered implementation across W17 tasks:
 //!   * W17T1: public signature with `Ok(A::zero())` stub.
 //!   * W17T2: rank + length validation returning recoverable errors.
-//!   * W17T3: scalar inner product via `DotAccumulate` trait.
+//!   * W17T3: scalar inner product via `types::dot_step`.
 //!   * W17T4: dispatch wiring (`select_exec_path`).
 //!   * W17T5: SIMD path integration via `simd::try_dot_*`.
 //!   * W17T6 (this task): parallel path integration via `parallel::par_dot`.
@@ -21,7 +21,7 @@ use crate::dimension::Dimension;
 use crate::dispatch::ParallelExecStrategy;
 use crate::dispatch::{ExecPath, select_exec_path};
 use crate::element::Numeric;
-use super::types::DotAccumulate;
+use super::types::dot_step;
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
@@ -83,7 +83,7 @@ pub(crate) fn scalar_dot<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBa
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    A: Numeric + DotAccumulate,
+    A: Numeric + Copy + 'static,
     D1: Dimension,
     D2: Dimension,
 {
@@ -93,7 +93,7 @@ where
         .zip(b.iter().copied())
         .enumerate()
         .fold(A::zero(), |acc, (index, (x, y))| {
-            <A as DotAccumulate>::dot_step(acc, x, y, index, len)
+            dot_step(acc, x, y, index, len)
         })
 }
 
@@ -102,7 +102,7 @@ pub(crate) fn dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBa
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    A: Numeric + DotAccumulate,
+    A: Numeric + Copy + 'static,
     D1: Dimension,
     D2: Dimension,
 {
@@ -207,7 +207,7 @@ pub(crate) fn dot<S1, S2, A, D1, D2>(
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    A: Numeric + DotAccumulate + Send + Sync,
+    A: Numeric + Copy + 'static + Send + Sync,
     D1: Dimension,
     D2: Dimension,
 {

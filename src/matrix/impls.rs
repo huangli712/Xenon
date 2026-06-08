@@ -9,15 +9,13 @@ use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
-use super::DotAccumulate;
-
 // ── TensorBase::dot method ──
 
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Numeric + DotAccumulate + Send + Sync,
+    A: Numeric + Copy + 'static + Send + Sync,
 {
     /// Stable method-style API; semantically equivalent to
     /// `matrix::dot(self, other)`. See 12-matrix §5.1.
