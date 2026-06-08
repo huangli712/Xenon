@@ -19,7 +19,7 @@ where
 {
     /// Vector dot product of two 1‑dimensional tensors.
     ///
-    /// Delegates to [`dot_impl`](crate::matrix::dot_impl).
+    /// Delegates to `dot_impl`.
     ///
     /// # Errors
     ///
