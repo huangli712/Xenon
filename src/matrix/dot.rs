@@ -17,6 +17,9 @@ use crate::dispatch::{ExecPath, select_exec_path};
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 
+#[cfg(feature = "parallel")]
+use crate::parallel::dot::par_dot;
+
 #[cfg(feature = "simd")]
 use crate::complex::Complex;
 
@@ -79,7 +82,7 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strategy = ParallelExecStrategy::auto();
-                crate::parallel::dot::par_dot::<_, _, A, _, _>(a, b, &strategy, guard)
+                par_dot::<_, _, A, _, _>(a, b, &strategy, guard)
             }
 
             #[cfg(not(feature = "parallel"))]
@@ -91,14 +94,17 @@ where
     }
 }
 
-// --- Scalar baseline ---------------------------------------------------------
+// --- Scalar baseline --------------------------------------------------------
 
 /// Serial dot product baseline.
 ///
 /// Iterates element‑wise, delegating per‑step arithmetic to [`dot_step`].
 /// Used as the fallback when SIMD or parallel execution is not applicable.
 #[inline]
-pub(crate) fn try_dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
+pub(crate) fn try_dot_serial<S1, S2, A, D1, D2>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>
+) -> A
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
@@ -116,7 +122,7 @@ where
         })
 }
 
-// --- SIMD dispatch -----------------------------------------------------------
+// --- SIMD dispatch ----------------------------------------------------------
 
 /// SIMD‑accelerated dot product.
 ///
