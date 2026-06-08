@@ -399,7 +399,7 @@ mod tests {
         // i32 zero + something = something
         assert_eq!(super::checked_add_step(0_i32, 42), Some(42));
         // f64 zero + something = something
-        assert_eq!(super::checked_add_step(0.0_f64, 3.14), Some(3.14));
+        assert_eq!(super::checked_add_step(0.0_f64, 2.5), Some(2.5));
     }
 
     // ── force_scalar_for_integers ──
@@ -441,14 +441,14 @@ mod tests {
     #[test]
     fn test_validate_axis_invalid() {
         let dim = Ix2(3, 4);
-        let err = super::validate_axis(&dim, Axis(2), "test_op").unwrap_err();
+        let err = super::validate_axis(&dim, Axis(2), "test_op").expect_err("expected InvalidAxis");
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
     #[test]
     fn test_validate_axis_0d_always_invalid() {
         let dim = Ix0;
-        let err = super::validate_axis(&dim, Axis(0), "test_op").unwrap_err();
+        let err = super::validate_axis(&dim, Axis(0), "test_op").expect_err("expected InvalidAxis");
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
@@ -457,14 +457,14 @@ mod tests {
     #[test]
     fn test_dim_with_axis_set_valid() {
         let dim = Ix2(3, 4);
-        let result = super::dim_with_axis_set(&dim, Axis(1), 7, "test_op").unwrap();
+        let result = super::dim_with_axis_set(&dim, Axis(1), 7, "test_op").expect("valid axis");
         assert_eq!(result.slice(), &[3, 7]);
     }
 
     #[test]
     fn test_dim_with_axis_set_oob() {
         let dim = Ix2(3, 4);
-        let err = super::dim_with_axis_set(&dim, Axis(2), 1, "test_op").unwrap_err();
+        let err = super::dim_with_axis_set(&dim, Axis(2), 1, "test_op").expect_err("expected InvalidAxis");
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
@@ -472,26 +472,26 @@ mod tests {
 
     #[test]
     fn test_try_sum_serial_i32() {
-        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).unwrap();
+        let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid test input");
         assert_eq!(super::try_sum_serial(&x), 6);
     }
 
     #[test]
     fn test_try_sum_serial_empty() {
-        let x = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).unwrap();
+        let x = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid test input");
         assert_eq!(super::try_sum_serial(&x), 0.0);
     }
 
     #[test]
     fn test_try_sum_serial_nan_propagates() {
-        let x = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN]).unwrap();
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN]).expect("valid test input");
         assert!(super::try_sum_serial(&x).is_nan());
     }
 
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_try_sum_serial_i32_overflow_panics() {
-        let x = Tensor1::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).unwrap();
+        let x = Tensor1::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
         super::try_sum_serial(&x);
     }
 
@@ -501,11 +501,11 @@ mod tests {
     #[should_panic(expected = "integer overflow")]
     fn test_accumulate_axis_overflow_panics() {
         // sum_axis over axis 0 with shape (2,) and elements [i32::MAX, 1].
-        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).unwrap();
+        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
         // sum_axis on a 1D tensor; remove_axis reduces to Ix0.
-        let output_dim = x.raw_dim().remove_axis(Axis(0)).unwrap().0;
-        let mut output = Tensor::<i32, Ix0>::zeros(output_dim).unwrap();
-        super::accumulate_axis(&x, Axis(0), &mut output).unwrap();
+        let output_dim = x.raw_dim().remove_axis(Axis(0)).expect("axis 0 is valid").0;
+        let mut output = Tensor::<i32, Ix0>::zeros(output_dim).expect("valid shape");
+        let _ = super::accumulate_axis(&x, Axis(0), &mut output);
     }
 
     // ── accumulate_axis_keepdims: integer overflow panic path ──
@@ -513,9 +513,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_accumulate_axis_keepdims_overflow_panics() {
-        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).unwrap();
-        let output_dim = super::dim_with_axis_set(&x.raw_dim(), Axis(0), 1, "test").unwrap();
-        let mut output = Tensor::<i32, Ix1>::zeros(output_dim).unwrap();
-        super::accumulate_axis_keepdims(&x, Axis(0), &mut output).unwrap();
+        let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
+        let output_dim = super::dim_with_axis_set(&x.raw_dim(), Axis(0), 1, "test").expect("valid axis");
+        let mut output = Tensor::<i32, Ix1>::zeros(output_dim).expect("valid shape");
+        let _ = super::accumulate_axis_keepdims(&x, Axis(0), &mut output);
     }
 }
