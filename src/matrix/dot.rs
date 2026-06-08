@@ -361,7 +361,11 @@ mod tests {
     ///
     /// Based on element count and the maximum absolute values in each input.
     #[cfg(any(feature = "simd", feature = "parallel"))]
-    fn f64_dot_tolerance(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
+    fn f64_dot_tolerance(
+        n: usize,
+        max_abs_a: f64,
+        max_abs_b: f64
+    ) -> f64 {
         let ulp_term = 8.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
         let floor = 4.0 * f64::MIN_POSITIVE;
         ulp_term.max(floor)
@@ -372,7 +376,11 @@ mod tests {
     /// Parallel reduction reorders floating‑point accumulation, requiring
     /// a wider tolerance margin than the scalar / SIMD comparison.
     #[cfg(feature = "parallel")]
-    fn f64_dot_tolerance_parallel(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
+    fn f64_dot_tolerance_parallel(
+        n: usize,
+        max_abs_a: f64,
+        max_abs_b: f64
+    ) -> f64 {
         let ulp_term = 256.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
         let floor = 4.0 * f64::MIN_POSITIVE;
         ulp_term.max(floor)
