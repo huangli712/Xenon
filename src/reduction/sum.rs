@@ -30,6 +30,8 @@ use crate::simd::{
     try_sum_complex_f64
 };
 
+// --- sum_impl ---------------------------------------------------------------
+
 /// Reduce all elements to a single scalar via dispatch to serial, SIMD, or
 /// parallel paths.
 ///
@@ -69,7 +71,7 @@ where
     }
 }
 
-// ------------------------------ sum_axis_impl -------------------------------
+// --- sum_axis_impl ----------------------------------------------------------
 
 /// Reduce along a single axis, removing that axis from the output shape.
 ///
@@ -92,7 +94,7 @@ where
     Ok(output)
 }
 
-// -------------------------- sum_axis_keepdims_impl --------------------------
+// --- sum_axis_keepdims_impl -------------------------------------------------
 
 /// Reduce along a single axis, keeping the reduced axis with length 1.
 ///
@@ -112,7 +114,12 @@ where
     // SAFETY-of-flow: axis is validated above; dim_with_axis_set cannot fail
     // for axis OOB here. `try_from_slice` succeeds because the slice length
     // equals `ndim`, which `Dimension::try_from_slice` accepts.
-    let output_dim = dim_with_axis_set(&tensor.raw_dim(), axis, 1, "sum_axis_keepdims")?;
+    let output_dim = dim_with_axis_set(
+        &tensor.raw_dim(),
+        axis,
+        1,
+        "sum_axis_keepdims"
+    )?;
     let mut output = Tensor::<A, D>::zeros(output_dim)?;
     accumulate_axis_keepdims(tensor, axis, &mut output)?;
     Ok(output)
