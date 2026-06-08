@@ -200,7 +200,7 @@ fn reinterpret_value<A: 'static + Copy, B: 'static + Copy>(v: A) -> B {
 /// Returns `XenonError::DimensionMismatch` when the two tensors do not
 /// have the same element count. Returns `XenonError::InvalidLayout`
 /// when shape product overflow or stride validation fails.
-pub fn dot<S1, S2, A, D1, D2>(
+pub(crate) fn dot<S1, S2, A, D1, D2>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
 ) -> Result<A, XenonError>

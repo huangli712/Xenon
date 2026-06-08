@@ -158,9 +158,6 @@ pub use crate::overload::Scalar;
 // Set trait
 pub use crate::set::UniqueElement;
 
-// Matrix operations
-pub use crate::matrix::dot;
-
 // Scratch workspace type
 pub use crate::workspace::Workspace;
 

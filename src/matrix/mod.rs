@@ -10,5 +10,5 @@ mod dot;
 mod impls;
 mod types;
 
-pub use dot::dot;
+pub(crate) use dot::dot;
 pub use types::DotAccumulate;

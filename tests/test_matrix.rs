@@ -7,7 +7,6 @@
 use xenon::XenonError;
 use xenon::complex::Complex;
 use xenon::dimension::{Ix1, Ix2};
-use xenon::dot;
 use xenon::tensor::{Tensor, Tensor1};
 
 /// 12-matrix §10.1 line 574-575: f64 dot tolerance.
@@ -33,8 +32,6 @@ fn test_dot_basic() {
     // §5.3 line 199-202 worked example: 1*4 + 2*5 + 3*6 = 32.
     let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(3), vec![4_i32, 5, 6]).expect("valid construction");
-    assert_eq!(dot(&a, &b).expect("valid construction"), 32_i32);
-    // §5.1 line 164-175: TensorBase::dot mirror.
     assert_eq!(a.dot(&b).expect("valid construction"), 32_i32);
 }
 
@@ -46,7 +43,7 @@ fn test_dot_complex() {
     let b = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(3.0, 4.0)])
         .expect("valid construction");
     assert_eq!(
-        dot(&a, &b).expect("valid construction"),
+        a.dot(&b).expect("valid construction"),
         Complex::<f64>::new(11.0, -2.0)
     );
 }
@@ -57,7 +54,7 @@ fn test_dot_complex() {
 fn test_dot_shape_mismatch() {
     let a = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");
-    let err = dot(&a, &b).expect_err("must return error");
+    let err = a.dot(&b).expect_err("must return error");
     assert!(matches!(err, XenonError::ShapeMismatch { .. }));
 }
 
@@ -67,7 +64,7 @@ fn test_dot_high_rank_invalid_argument() {
     // diagnostic fields. Use 2-D to keep construction minimal.
     let a = Tensor::<i32, Ix2>::from_shape_vec((1, 1), vec![1_i32]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(1), vec![1_i32]).expect("valid construction");
-    let err = dot(&a, &b).expect_err("must return error");
+    let err = a.dot(&b).expect_err("must return error");
     assert!(matches!(err, XenonError::InvalidArgument { .. }));
 }
 
@@ -78,7 +75,7 @@ fn test_dot_high_rank_invalid_argument() {
 fn test_dot_int_overflow_mul() {
     let a = Tensor1::from_shape_vec(Ix1(1), vec![i32::MAX]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(1), vec![2_i32]).expect("valid construction");
-    let _ = dot(&a, &b).expect("valid construction");
+    let _ = a.dot(&b).expect("valid construction");
 }
 
 #[test]
@@ -87,7 +84,7 @@ fn test_dot_int_overflow_add() {
     // First mul fits; the running sum overflows on the second add.
     let a = Tensor1::from_shape_vec(Ix1(3), vec![i32::MAX, 1_i32, 1]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, i32::MAX, 1]).expect("valid construction");
-    let _ = dot(&a, &b).expect("valid construction");
+    let _ = a.dot(&b).expect("valid construction");
 }
 
 // ── Boundary scenarios ──
@@ -96,14 +93,14 @@ fn test_dot_int_overflow_add() {
 fn test_dot_empty() {
     let a = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
     let b = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-    assert_eq!(dot(&a, &b).expect("valid construction"), 0.0_f64);
+    assert_eq!(a.dot(&b).expect("valid construction"), 0.0_f64);
 }
 
 #[test]
 fn test_dot_single_element() {
     let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(1), vec![6_i32]).expect("valid construction");
-    assert_eq!(dot(&a, &b).expect("valid construction"), 42_i32);
+    assert_eq!(a.dot(&b).expect("valid construction"), 42_i32);
 }
 
 // ── Non-finite values ──
@@ -113,7 +110,7 @@ fn test_dot_nan_input() {
     // §10.2 line 604: any NaN element → NaN result.
     let a = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN]).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(2), vec![2.0_f64, 3.0]).expect("valid construction");
-    assert!(dot(&a, &b).expect("valid construction").is_nan());
+    assert!(a.dot(&b).expect("valid construction").is_nan());
 }
 
 // ── Cross-path float tolerance ──
@@ -135,7 +132,7 @@ fn test_dot_float_tolerance_across_paths() {
         .zip(b_vals.iter())
         .fold(0.0_f64, |acc, (x, y)| acc + x * y);
 
-    let actual = dot(&a, &b).expect("valid construction");
+    let actual = a.dot(&b).expect("valid construction");
 
     let max_abs_a = a_vals.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
     let max_abs_b = b_vals.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
@@ -161,7 +158,7 @@ fn test_dot_simd_parallel_combined_consistency() {
     let a = Tensor1::from_shape_vec(Ix1(n), a_vals.clone()).expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(n), b_vals.clone()).expect("valid construction");
 
-    let actual = dot(&a, &b).expect("valid construction");
+    let actual = a.dot(&b).expect("valid construction");
     let expected: f64 = a_vals
         .iter()
         .zip(b_vals.iter())
@@ -185,7 +182,7 @@ fn test_dot_parallel_threshold_boundary() {
         let a = Tensor1::from_shape_vec(Ix1(n), a_vals.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), b_vals.clone()).expect("valid construction");
 
-        let actual = dot(&a, &b).expect("valid construction");
+        let actual = a.dot(&b).expect("valid construction");
         let expected: f64 = a_vals
             .iter()
             .zip(b_vals.iter())
@@ -213,7 +210,7 @@ fn test_dot_product() {
     let b = Tensor1::from_shape_vec(Ix1(4), vec![11_i32, 13, 17, 19])
         .expect("valid construction");
     // 2*11 + 3*13 + 5*17 + 7*19 = 22 + 39 + 85 + 133 = 279
-    assert_eq!(xenon::dot(&a, &b).expect("valid construction"), 279_i32);
+    assert_eq!(a.dot(&b).expect("valid construction"), 279_i32);
 }
 
 /// i32 overflow panics: multiplication of large values triggers panic.
@@ -224,7 +221,7 @@ fn test_i32_dot_overflow_panics() {
         .expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(2), vec![2_i32, 1_i32])
         .expect("valid construction");
-    let _ = xenon::dot(&a, &b).expect("construction");
+    let _ = a.dot(&b).expect("construction");
 }
 
 /// i64 overflow panics: accumulation overflow.
@@ -235,28 +232,5 @@ fn test_i64_dot_overflow_panics() {
         .expect("valid construction");
     let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i64, i64::MAX, 1])
         .expect("valid construction");
-    let _ = xenon::dot(&a, &b).expect("construction");
-}
-
-/// Free-function dot(xenon::dot) entry point works correctly.
-#[test]
-fn test_dot_free_function() {
-    let a = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, 2.0, 3.0])
-        .expect("valid construction");
-    let b = Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, 6.0])
-        .expect("valid construction");
-    let result = xenon::dot(&a, &b).expect("valid construction");
-    assert_eq!(result, 32.0_f64);
-}
-
-/// Dual-entry equivalence: free function and method produce identical results.
-#[test]
-fn test_dot_dual_entry_equivalence() {
-    let a = Tensor1::from_shape_vec(Ix1(3), vec![7_i32, 8, 9])
-        .expect("valid construction");
-    let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
-        .expect("valid construction");
-    let free = xenon::dot(&a, &b).expect("valid construction");
-    let method = a.dot(&b).expect("valid construction");
-    assert_eq!(free, method);
+    let _ = a.dot(&b).expect("construction");
 }
