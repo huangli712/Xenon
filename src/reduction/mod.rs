@@ -11,12 +11,7 @@ pub(crate) use sum::{sum_impl, sum_axis_impl, sum_axis_keepdims_impl};
 
 #[cfg(test)]
 mod tests {
-    // Smoke test: verify the reduction module skeleton and re-exports compile.
-    // sum() methods are implemented in W18T2+, full feature tests in W18T6.
-
+    /// Smoke test verifying the reduction module compiles and re-exports resolve.
     #[test]
-    fn test_reduction_module_compiles() {
-        // T1 only ensures mod sum and pub(crate) use compile in mod.rs.
-        // fn sum() is not yet implemented in this task, so no behaviour verified.
-    }
+    fn test_reduction_module_compiles() {}
 }

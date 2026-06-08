@@ -1,7 +1,7 @@
 //! Sum reducer implementations.
 //!
-//! Three public APIs: [`TensorBase::sum`], [`TensorBase::sum_axis`],
-//! [`TensorBase::sum_axis_keepdims`].
+//! Internal functions backing the public methods [`TensorBase::sum`],
+//! [`TensorBase::sum_axis`], and [`TensorBase::sum_axis_keepdims`].
 
 use core::any::TypeId;
 use std::borrow::Cow;
@@ -22,13 +22,19 @@ use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "simd")]
 use crate::simd::{try_sum_complex_f32, try_sum_complex_f64, try_sum_f32, try_sum_f64};
 
+/// Reduce all elements to a single scalar via dispatch to serial, SIMD, or
+/// parallel paths.
+///
+/// Integer types (`i32`, `i64`) are gated to the serial path for checked
+/// arithmetic. Other types are dispatched via [`select_exec_path`].
 pub(crate) fn sum_impl<S, D, A>(tensor: &TensorBase<S, D>) -> A
 where
     S: Storage<Elem = A>,
     D: Dimension,
     A: Numeric + Copy + 'static,
 {
-    // 13-reduction §6.3: caller-side integer gate before dispatch.
+    // Integer types skip the dispatcher; no verified widening SIMD
+    // implementation exists for them so we use the scalar serial path.
     if force_scalar_for_integers::<A>() {
         return try_sum_serial(tensor);
     }
@@ -39,11 +45,8 @@ where
     match path {
         #[cfg(feature = "parallel")]
         crate::dispatch::ExecPath::Parallel => {
-            // §5.5 line 388-393: when select returns Parallel, the guard is always Some.
-            let guard = _guard.expect("Parallel path implies Some(guard) per §5.5");
-            // ParallelExecStrategy is held independently by the parallel/ backend
-            // (30-dispatch.md §5.3 + Wave 10 audit memo); we construct the default
-            // strategy locally and pass by reference.
+            // When select_exec_path returns Parallel, the guard is always Some.
+            let guard = _guard.expect("Parallel path implies Some(guard)");
             let strategy = ParallelExecStrategy::auto();
             crate::parallel::sum::par_sum(tensor, &strategy, guard)
         },
@@ -55,8 +58,12 @@ where
     }
 }
 
-// ── sum_axis implementation (W18T3) ──
+// ── sum_axis_impl ──
 
+/// Reduce along a single axis, removing that axis from the output shape.
+///
+/// Validates the axis, constructs a zero-filled output tensor of the reduced
+/// shape, then accumulates input elements into the corresponding output slots.
 pub(crate) fn sum_axis_impl<S, D, A>(
     tensor: &TensorBase<S, D>,
     axis: Axis,
@@ -74,8 +81,13 @@ where
     Ok(output)
 }
 
-// ── sum_axis_keepdims implementation (W18T4) ──
+// ── sum_axis_keepdims_impl ──
 
+/// Reduce along a single axis, keeping the reduced axis with length 1.
+///
+/// Validates the axis, constructs a zero-filled output tensor with the
+/// reduced axis set to length 1, then accumulates input elements into the
+/// corresponding output slots.
 pub(crate) fn sum_axis_keepdims_impl<S, D, A>(
     tensor: &TensorBase<S, D>,
     axis: Axis,
@@ -95,16 +107,17 @@ where
     Ok(output)
 }
 
-/// Scalar serial baseline — same body as the W18T2 version, but now living
-/// as a private helper so the dispatched `sum_impl` can fall back to it.
+/// Serial fallback for sum reduction.
+///
+/// Iterates over all elements, accumulating with [`checked_add_step`].
+/// Captures the shape snapshot before iteration so the panic closure can
+/// reference it without holding a mutable borrow on the tensor.
 pub(crate) fn try_sum_serial<S, D, A>(tensor: &TensorBase<S, D>) -> A
 where
     S: Storage<Elem = A>,
     D: Dimension,
     A: Numeric + Copy + 'static,
 {
-    // Capture shape before fold so the panic closure can reference it without
-    // borrowing `tensor` mutably through `iter()` (mirrors W18T2 `sum_impl`).
     let shape_snapshot = tensor.shape().to_vec();
     tensor
         .iter()
@@ -121,10 +134,14 @@ where
         })
 }
 
-/// Type-dispatched wrapper for the W14 SIMD facades. Returns `None` when the
-/// element type is unsupported (caller falls back to `try_sum_serial`) or when the
-/// W14 facade itself rejects the input (e.g. shorter than the SIMD threshold).
-/// The integer gate in `sum_impl` ensures `i32`/`i64` never reach this branch.
+/// Type-dispatched SIMD sum.
+///
+/// Returns `None` when the element type is unsupported by the SIMD backend
+/// or the input is too short to benefit from SIMD. The caller falls back to
+/// [`try_sum_serial`] on `None`.
+///
+/// Integer types (`i32`, `i64`) never reach this branch; they are gated by
+/// `force_scalar_for_integers` in [`sum_impl`].
 #[cfg(feature = "simd")]
 fn try_sum_simd<S, D, A>(tensor: &TensorBase<S, D>) -> Option<A>
 where
@@ -134,7 +151,7 @@ where
 {
     // SIMD facades only consume contiguous slices. When `as_slice()` returns
     // `Some`, the underlying storage is F-contiguous and the slice spans the
-    // logical elements (07-tensor.md §5.4 line 544).
+    // logical elements.
     let slice: &[A] = tensor.as_slice()?;
 
     if TypeId::of::<A>() == TypeId::of::<f32>() {
@@ -159,9 +176,12 @@ where
     None
 }
 
-// ── Axis validation helper (W18T3) ──
+// ── Axis validation ──
 
-/// `pub(crate)` so W18T4 can reuse it without duplicating the InvalidAxis logic.
+/// Validate that `axis` is within bounds for the given dimension shape.
+///
+/// Returns `Ok(())` if valid, or `Err(XenonError::InvalidAxis)` with the
+/// operation name if `axis.index() >= shape.ndim()`.
 pub(crate) fn validate_axis<D: Dimension>(
     shape: &D,
     axis: Axis,
@@ -178,10 +198,13 @@ pub(crate) fn validate_axis<D: Dimension>(
     Ok(())
 }
 
-/// Per-slot accumulation over a single axis, mapping input indexed coordinates
-/// onto reduced output coordinates. Uses `checked_add_step` (defined in W18T2)
-/// so integer overflow panics with element context per 13-reduction §1.1, and
-/// float / complex addition follows IEEE 754 via `Numeric + Add`.
+/// Accumulate input elements into an output tensor by mapping each input
+/// indexed coordinate onto a reduced output coordinate (removing one axis).
+///
+/// Uses [`checked_add_step`] for accumulation: integer overflow panics with
+/// element context, float / complex follows IEEE 754 via `Numeric + Add`.
+///
+/// The caller must have pre-validated the axis via [`validate_axis`].
 fn accumulate_axis<S, D, A>(
     tensor: &TensorBase<S, D>,
     axis: Axis,
@@ -193,16 +216,10 @@ where
     A: Numeric + Copy + 'static,
 {
     for (input_index, &value) in tensor.indexed_iter() {
-        // `remove_axis` returns Result<Self::Smaller, _>; axis was pre-validated
-        // by `validate_axis(...)` above so this projection cannot fail.
+        // Axis was pre-validated; remove_axis projection cannot fail.
         let (output_index, _removed_len) = input_index
             .remove_axis(axis)
             .expect("axis pre-validated; remove_axis cannot fail here");
-        // `TensorBase` does not implement `IndexMut<D>`. Use `get_mut`
-        // with `&[usize]` (via `Dimension::slice`) to avoid requiring
-        // `NdIndex<D::Smaller>` tuple-form impls. The lookup cannot fail
-        // because `output_index` derives from a coordinate that already maps
-        // inside `output`'s logical range.
         let slot = output
             .get_mut(output_index.slice())
             .expect("output_index is within reduced-shape bounds");
@@ -218,10 +235,14 @@ where
     Ok(())
 }
 
-/// Per-slot accumulation, mapping input coordinates onto keepdims output
-/// coordinates by forcing the reduced axis component to `0`. Numeric
-/// semantics inherit from `checked_add_step` (13-reduction §6.1):
-/// integers panic on overflow, floats / complex follow IEEE 754.
+/// Accumulate input elements into a keepdims output tensor by mapping each
+/// input coordinate onto the output coordinate with the reduced axis forced
+/// to `0`.
+///
+/// Uses [`checked_add_step`] for accumulation: integer overflow panics with
+/// element context, float / complex follows IEEE 754 via `Numeric + Add`.
+///
+/// The caller must have pre-validated the axis via [`validate_axis`].
 fn accumulate_axis_keepdims<S, D, A>(
     tensor: &TensorBase<S, D>,
     axis: Axis,
@@ -233,12 +254,9 @@ where
     A: Numeric + Copy + 'static,
 {
     for (input_index, &value) in tensor.indexed_iter() {
-        // axis was pre-validated; this construction cannot fail.
+        // Axis was pre-validated; dim_with_axis_set cannot fail.
         let output_index = dim_with_axis_set(&input_index, axis, 0, "sum_axis_keepdims")
             .expect("axis pre-validated; dim_with_axis_set cannot fail here");
-        // `TensorBase` does not impl `IndexMut<D>`; use `get_mut`
-        // (17-indexing.md §5.2). Index is provably in-bounds because
-        // `output` has the reduced axis length 1 and `output_index[axis] = 0`.
         let slot = output
             .get_mut(output_index.slice())
             .expect("output_index is within keepdims-shape bounds");
@@ -254,19 +272,18 @@ where
     Ok(())
 }
 
-// ── dim_with_axis_set helper (W18T4) ──
+// ── dim_with_axis_set ──
 
-/// Construct a new dimension whose `axis` component has been replaced with
-/// `value`, leaving every other axis unchanged.
+/// Construct a new dimension identical to `dim` except that the component
+/// at `axis` is replaced with `value`.
 ///
-/// Uses only the stable `Dimension` API surface from
-/// `02-dimension.md §5.1`: `slice(&self) -> &[usize]` for read-out and
-/// `try_from_slice(&[usize]) -> Result<Self, _>` for reconstruction. This
-/// keeps the 0D / static-rank / dynamic-rank cases on the same code path
-/// and avoids extending the public trait surface.
+/// Uses the stable `Dimension` API (`slice` for read-out, `try_from_slice`
+/// for reconstruction) so the same code path handles 0D, static-rank, and
+/// dynamic-rank dimensions.
 ///
-/// Returns `XenonError::InvalidAxis` when `axis.index() >= dim.ndim()`,
-/// matching `13-reduction.md §5.2` axis OOB error contract.
+/// # Errors
+///
+/// Returns `XenonError::InvalidAxis` when `axis.index() >= dim.ndim()`.
 pub(crate) fn dim_with_axis_set<D: Dimension>(
     dim: &D,
     axis: Axis,
@@ -286,20 +303,23 @@ pub(crate) fn dim_with_axis_set<D: Dimension>(
     D::try_from_slice(&dims)
 }
 
-/// 13-reduction §6.3 line 291-295: integer types skip the dispatcher when no
-/// verified widening SIMD implementation exists, falling directly to the
-/// scalar serial path for checked arithmetic equivalence.
+/// Returns `true` for `i32` and `i64`, directing those element types to the
+/// scalar serial path for checked arithmetic.
+///
+/// Float and complex types return `false`, allowing SIMD or parallel dispatch.
 fn force_scalar_for_integers<A: 'static>() -> bool {
     TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>()
 }
 
-/// Per-step accumulation enforcing 13-reduction §6.3 type semantics:
-/// - Integer types (`i32`, `i64`): checked arithmetic via `CheckedAdd`,
-///   returning `None` on overflow so the caller can panic with element context.
-/// - Floating / complex types: ordinary `+` via `Numeric: Add<Output = Self>`;
-///   IEEE 754 NaN / Inf propagation is preserved.
+/// Per-step accumulation with type-aware arithmetic semantics.
 ///
-/// Dispatch mirrors the 13-reduction §6.3 line 291-295 SIMD type-gate pattern.
+/// - `i32`, `i64`: checked addition via `CheckedAdd`, returning `None` on
+///   overflow so the caller can panic with element context.
+/// - `f32`, `f64`, `Complex<f32>`, `Complex<f64>`: ordinary `+` via
+///   `Numeric: Add<Output = Self>`, preserving IEEE 754 NaN / Inf propagation.
+///
+/// # Safety
+///
 /// The `unsafe` reads are sound because each is gated by
 /// `TypeId::of::<A>() == TypeId::of::<I>()`, which proves layout identity.
 #[inline]
@@ -327,13 +347,11 @@ where
             .map(|r| unsafe { core::mem::transmute_copy::<i64, A>(&r) });
     }
     // Float / complex path: `Numeric: Add<Output = Self>` covers all remaining
-    // supported element types (`f32`, `f64`, `Complex<f32>`, `Complex<f64>`).
+    // supported element types.
     Some(acc + value)
 }
 
-
-
-// ── Unit tests for internal/private helpers ──
+// ── Unit tests for internal helpers ──
 
 #[cfg(test)]
 mod tests {
@@ -344,48 +362,57 @@ mod tests {
 
     // ── checked_add_step ──
 
+    /// i32 normal addition returns the sum.
     #[test]
     fn test_checked_add_step_i32_normal() {
         assert_eq!(super::checked_add_step(1_i32, 2), Some(3));
         assert_eq!(super::checked_add_step(-5_i32, 3), Some(-2));
     }
 
+    /// i32 overflow returns None.
     #[test]
     fn test_checked_add_step_i32_overflow() {
         assert!(super::checked_add_step(i32::MAX, 1).is_none());
     }
 
+    /// i32 underflow (MIN + -1) returns None.
     #[test]
     fn test_checked_add_step_i32_underflow() {
         assert!(super::checked_add_step(i32::MIN, -1).is_none());
     }
 
+    /// i64 normal addition returns the sum.
     #[test]
     fn test_checked_add_step_i64_normal() {
         assert_eq!(super::checked_add_step(100_i64, 200), Some(300));
     }
 
+    /// i64 overflow returns None.
     #[test]
     fn test_checked_add_step_i64_overflow() {
         assert!(super::checked_add_step(i64::MAX, 1).is_none());
     }
 
+    /// f32 normal addition returns the sum.
     #[test]
     fn test_checked_add_step_f32_normal() {
         assert_eq!(super::checked_add_step(1.5_f32, 2.5), Some(4.0));
     }
 
+    /// f32 NaN propagates through addition.
     #[test]
     fn test_checked_add_step_f32_nan_propagates() {
         let result = super::checked_add_step(1.0_f32, f32::NAN);
         assert!(result.expect("NaN must produce Some").is_nan());
     }
 
+    /// f64 normal addition returns the sum.
     #[test]
     fn test_checked_add_step_f64_normal() {
         assert_eq!(super::checked_add_step(1.5_f64, 2.5), Some(4.0));
     }
 
+    /// Complex f64 addition sums real and imaginary parts independently.
     #[test]
     fn test_checked_add_step_complex_f64_normal() {
         let a = Complex::<f64>::new(1.0, 2.0);
@@ -394,36 +421,40 @@ mod tests {
         assert_eq!(result, Some(Complex::new(4.0, 6.0)));
     }
 
+    /// Adding zero is an identity operation for both integer and float types.
     #[test]
     fn test_checked_add_step_zero_identity() {
-        // i32 zero + something = something
         assert_eq!(super::checked_add_step(0_i32, 42), Some(42));
-        // f64 zero + something = something
         assert_eq!(super::checked_add_step(0.0_f64, 2.5), Some(2.5));
     }
 
     // ── force_scalar_for_integers ──
 
+    /// i32 is classified as a scalar-only integer type.
     #[test]
     fn test_force_scalar_i32_true() {
         assert!(super::force_scalar_for_integers::<i32>());
     }
 
+    /// i64 is classified as a scalar-only integer type.
     #[test]
     fn test_force_scalar_i64_true() {
         assert!(super::force_scalar_for_integers::<i64>());
     }
 
+    /// f32 is not an integer type and may use SIMD/parallel paths.
     #[test]
     fn test_force_scalar_f32_false() {
         assert!(!super::force_scalar_for_integers::<f32>());
     }
 
+    /// f64 is not an integer type and may use SIMD/parallel paths.
     #[test]
     fn test_force_scalar_f64_false() {
         assert!(!super::force_scalar_for_integers::<f64>());
     }
 
+    /// Complex f32 is not an integer type and may use SIMD/parallel paths.
     #[test]
     fn test_force_scalar_complex_f32_false() {
         assert!(!super::force_scalar_for_integers::<Complex<f32>>());
@@ -431,6 +462,7 @@ mod tests {
 
     // ── validate_axis ──
 
+    /// Valid axes within [0, ndim) return Ok(()).
     #[test]
     fn test_validate_axis_valid() {
         let dim = Ix2(3, 4);
@@ -438,6 +470,7 @@ mod tests {
         assert!(super::validate_axis(&dim, Axis(1), "test_op").is_ok());
     }
 
+    /// An axis equal to ndim returns InvalidAxis error.
     #[test]
     fn test_validate_axis_invalid() {
         let dim = Ix2(3, 4);
@@ -445,6 +478,7 @@ mod tests {
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
+    /// A 0D dimension has no valid axes.
     #[test]
     fn test_validate_axis_0d_always_invalid() {
         let dim = Ix0;
@@ -454,6 +488,7 @@ mod tests {
 
     // ── dim_with_axis_set ──
 
+    /// Replacing a valid axis component produces the expected dimension.
     #[test]
     fn test_dim_with_axis_set_valid() {
         let dim = Ix2(3, 4);
@@ -461,6 +496,7 @@ mod tests {
         assert_eq!(result.slice(), &[3, 7]);
     }
 
+    /// An out-of-bounds axis returns InvalidAxis error.
     #[test]
     fn test_dim_with_axis_set_oob() {
         let dim = Ix2(3, 4);
@@ -470,24 +506,28 @@ mod tests {
 
     // ── try_sum_serial ──
 
+    /// Serial sum of i32 elements equals their arithmetic total.
     #[test]
     fn test_try_sum_serial_i32() {
         let x = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid test input");
         assert_eq!(super::try_sum_serial(&x), 6);
     }
 
+    /// Serial sum of an empty tensor returns the additive identity.
     #[test]
     fn test_try_sum_serial_empty() {
         let x = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid test input");
         assert_eq!(super::try_sum_serial(&x), 0.0);
     }
 
+    /// Serial sum propagates f64 NaN per IEEE 754.
     #[test]
     fn test_try_sum_serial_nan_propagates() {
         let x = Tensor1::from_shape_vec(Ix1(2), vec![1.0_f64, f64::NAN]).expect("valid test input");
         assert!(super::try_sum_serial(&x).is_nan());
     }
 
+    /// Serial sum panics on i32 overflow with an "integer overflow" message.
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_try_sum_serial_i32_overflow_panics() {
@@ -495,21 +535,21 @@ mod tests {
         super::try_sum_serial(&x);
     }
 
-    // ── accumulate_axis: integer overflow panic path ──
+    // ── accumulate_axis overflow ──
 
+    /// accumulate_axis panics on i32 overflow in the reduction loop.
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_accumulate_axis_overflow_panics() {
-        // sum_axis over axis 0 with shape (2,) and elements [i32::MAX, 1].
         let x = Tensor::<i32, Ix1>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
-        // sum_axis on a 1D tensor; remove_axis reduces to Ix0.
         let output_dim = x.raw_dim().remove_axis(Axis(0)).expect("axis 0 is valid").0;
         let mut output = Tensor::<i32, Ix0>::zeros(output_dim).expect("valid shape");
         let _ = super::accumulate_axis(&x, Axis(0), &mut output);
     }
 
-    // ── accumulate_axis_keepdims: integer overflow panic path ──
+    // ── accumulate_axis_keepdims overflow ──
 
+    /// accumulate_axis_keepdims panics on i32 overflow in the reduction loop.
     #[test]
     #[should_panic(expected = "integer overflow")]
     fn test_accumulate_axis_keepdims_overflow_panics() {
