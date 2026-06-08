@@ -178,12 +178,16 @@ where
 
     if TypeId::of::<A>() == TypeId::of::<f32>() {
         // SAFETY: TypeId equality proves `A == f32`.
-        let s: &[f32] = unsafe { &*(slice as *const [A] as *const [f32]) };
+        let s: &[f32] = unsafe {
+            &*(slice as *const [A] as *const [f32])
+        };
         return try_sum_f32(s)
             .map(|r| unsafe { transmute_copy::<f32, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<f64>() {
-        let s: &[f64] = unsafe { &*(slice as *const [A] as *const [f64]) };
+        let s: &[f64] = unsafe {
+            &*(slice as *const [A] as *const [f64])
+        };
         return try_sum_f64(s)
             .map(|r| unsafe { transmute_copy::<f64, A>(&r) });
     }
