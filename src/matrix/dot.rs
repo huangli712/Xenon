@@ -50,7 +50,7 @@ where
     validate_dot_inputs(a, b)?;
 
     let is_contig = a.is_f_contiguous() && b.is_f_contiguous();
-    let (path, guard) = select_exec_path(a.len(), is_contig, alignment_ok(a, b));
+    let (path, guard) = select_exec_path(a.len(), is_contig, a.is_aligned() && b.is_aligned());
 
     match path {
         ExecPath::Serial => Ok(try_dot_serial(a, b)),
@@ -200,18 +200,6 @@ where
 // ── Alignment ──
 
 #[inline]
-pub(crate) fn alignment_ok<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> bool
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension,
-    D2: Dimension,
-{
-    a.is_aligned() && b.is_aligned()
-}
-
-// ── Per-type accumulation step ──
-
 /// Per-step dot-product accumulation with type-aware arithmetic semantics.
 ///
 /// - `i32`, `i64`: checked multiply then checked add; integer overflow is
