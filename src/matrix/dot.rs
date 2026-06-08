@@ -3,9 +3,9 @@
 //! Implementation dispatches through serial, SIMD, and parallel execution
 //! paths depending on input size, contiguity, and alignment.
 
-use std::any::TypeId;
+use core::any::TypeId;
+use core::mem::transmute_copy;
 use std::borrow::Cow;
-use std::mem::transmute_copy;
 
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::dimension::Dimension;
