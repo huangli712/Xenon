@@ -271,7 +271,7 @@ where
         || t == TypeId::of::<Complex<f64>>()
 }
 
-// --- Per-type accumulation ---------------------------------------------------
+// --- Per-type accumulation --------------------------------------------------
 
 /// Per‑step dot‑product accumulation with type‑aware arithmetic.
 ///
