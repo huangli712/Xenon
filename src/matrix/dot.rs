@@ -132,27 +132,27 @@ where
         // SAFETY: TypeId equality proves `A == f32`.
         let lhs: &[f32] = unsafe { &*(lhs as *const [A] as *const [f32]) };
         let rhs: &[f32] = unsafe { &*(rhs as *const [A] as *const [f32]) };
-        return crate::simd::try_dot_f32(lhs, rhs).map(|v| reinterpret_value::<f32, A>(v));
+        return crate::simd::try_dot_f32(lhs, rhs).map(|v| unsafe { transmute_copy::<f32, A>(&v) });
     }
     if t == TypeId::of::<f64>() {
         // SAFETY: TypeId equality proves `A == f64`.
         let lhs: &[f64] = unsafe { &*(lhs as *const [A] as *const [f64]) };
         let rhs: &[f64] = unsafe { &*(rhs as *const [A] as *const [f64]) };
-        return crate::simd::try_dot_f64(lhs, rhs).map(|v| reinterpret_value::<f64, A>(v));
+        return crate::simd::try_dot_f64(lhs, rhs).map(|v| unsafe { transmute_copy::<f64, A>(&v) });
     }
     if t == TypeId::of::<Complex<f32>>() {
         // SAFETY: TypeId equality proves `A == Complex<f32>`.
         let lhs: &[Complex<f32>] = unsafe { &*(lhs as *const [A] as *const [Complex<f32>]) };
         let rhs: &[Complex<f32>] = unsafe { &*(rhs as *const [A] as *const [Complex<f32>]) };
         return crate::simd::try_dot_complex_f32(lhs, rhs)
-            .map(|v| reinterpret_value::<Complex<f32>, A>(v));
+            .map(|v| unsafe { transmute_copy::<Complex<f32>, A>(&v) });
     }
     if t == TypeId::of::<Complex<f64>>() {
         // SAFETY: TypeId equality proves `A == Complex<f64>`.
         let lhs: &[Complex<f64>] = unsafe { &*(lhs as *const [A] as *const [Complex<f64>]) };
         let rhs: &[Complex<f64>] = unsafe { &*(rhs as *const [A] as *const [Complex<f64>]) };
         return crate::simd::try_dot_complex_f64(lhs, rhs)
-            .map(|v| reinterpret_value::<Complex<f64>, A>(v));
+            .map(|v| unsafe { transmute_copy::<Complex<f64>, A>(&v) });
     }
     None
 }
@@ -302,13 +302,6 @@ where
 }
 
 
-#[cfg(feature = "simd")]
-#[inline]
-fn reinterpret_value<A: 'static + Copy, B: 'static + Copy>(v: A) -> B {
-    debug_assert_eq!(TypeId::of::<A>(), TypeId::of::<B>());
-    // SAFETY: TypeId equality implies same size / alignment / niche.
-    unsafe { std::mem::transmute_copy::<A, B>(&v) }
-}
 
 // ── Unit tests ──
 
