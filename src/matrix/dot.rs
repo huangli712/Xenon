@@ -566,7 +566,8 @@ mod tests {
     /// Integer overflow during multiplication panics with element context.
     #[test]
     #[should_panic(
-        expected = "dot: integer overflow during multiplication at element 0 of shape [1] (type i32)"
+        expected = "dot: integer overflow during multiplication at \
+                    element 0 of shape [1] (type i32)"
     )]
     fn test_dot_int_overflow_mul() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![i32::MAX])
@@ -578,7 +579,9 @@ mod tests {
 
     /// Integer overflow during accumulation panics with element context.
     #[test]
-    #[should_panic(expected = "dot: integer overflow during accumulation at element")]
+    #[should_panic(
+        expected = "dot: integer overflow during accumulation at element"
+    )]
     fn test_dot_int_overflow_add() {
         let a = Tensor1::from_shape_vec(Ix1(3), vec![i32::MAX, 1, 1])
             .expect("valid construction");
