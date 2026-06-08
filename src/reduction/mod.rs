@@ -5,6 +5,7 @@
 //! [`TensorBase`]: crate::tensor::TensorBase
 
 mod sum;
+mod impls;
 
 pub(crate) use sum::{sum_all, sum_axis_impl, sum_axis_keepdims_impl};
 
