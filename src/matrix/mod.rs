@@ -1,10 +1,7 @@
 //! Matrix operations.
 //!
-//! Currently this module exposes the vector dot product. The
-//! method-style `TensorBase::dot()` mirror is added by W17T3 once the
-//! scalar inner product is implemented.
-//!
-//! Design reference: 12-matrix §3, §5.1.
+//! Exposes the vector dot product. The free function `dot_impl` backs
+//! the method-style `TensorBase::dot()` API defined in `impls.rs`.
 
 mod dot;
 mod impls;

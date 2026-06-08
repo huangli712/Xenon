@@ -1,7 +1,7 @@
 //! Public API implementations for matrix dot product.
 //!
-//! This file contains the `impl TensorBase` block that defines the
-//! method-style `dot()` API, delegating to the free function in `dot.rs`.
+//! Defines the method-style `TensorBase::dot()` API, which delegates to
+//! the internal `dot_impl` free function in `dot.rs`.
 
 use crate::dimension::Dimension;
 use crate::element::Numeric;
@@ -9,7 +9,7 @@ use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
-// ── TensorBase::dot method ──
+// --- TensorBase::dot method --------------------------------------------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -17,13 +17,14 @@ where
     D: Dimension,
     A: Numeric + Copy + 'static + Send + Sync,
 {
-    /// Stable method-style API; semantically equivalent to
-    /// `matrix::dot_impl(self, other)`. See 12-matrix §5.1.
+    /// Vector dot product of two 1‑dimensional tensors.
+    ///
+    /// Delegates to [`dot_impl`](crate::matrix::dot_impl).
     ///
     /// # Errors
     ///
     /// Returns `XenonError::InvalidArgument` when either tensor is not
-    /// 1-dimensional. Returns `XenonError::ShapeMismatch` when the two
+    /// 1‑dimensional. Returns `XenonError::ShapeMismatch` when the two
     /// tensors have different element counts.
     pub fn dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>
     where
@@ -34,7 +35,7 @@ where
     }
 }
 
-// ── Unit tests ──
+// --- Unit tests --------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -42,7 +43,8 @@ mod tests {
     use crate::matrix::dot_impl;
     use crate::tensor::Tensor1;
 
-    // W17T3
+    /// `TensorBase::dot` produces the same result as the free function
+    /// `dot_impl` for a basic integer dot product.
     #[test]
     fn test_dot_basic() {
         let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");

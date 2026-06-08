@@ -1,14 +1,7 @@
-//! Vector dot product entry point.
+//! Vector dot product.
 //!
-//! Layered implementation across W17 tasks:
-//!   * W17T1: public signature with `Ok(A::zero())` stub.
-//!   * W17T2: rank + length validation returning recoverable errors.
-//!   * W17T3: scalar inner product via `types::dot_step`.
-//!   * W17T4: dispatch wiring (`select_exec_path`).
-//!   * W17T5: SIMD path integration via `simd::try_dot_*`.
-//!   * W17T6 (this task): parallel path integration via `parallel::par_dot`.
-//!
-//! Design reference: 12-matrix §5.1, §6.
+//! Implementation dispatches through serial, SIMD, and parallel execution
+//! paths depending on input size, contiguity, and alignment.
 
 use std::any::TypeId;
 use std::borrow::Cow;
@@ -25,17 +18,19 @@ use crate::error::{InvalidArgumentKind, XenonError};
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
-// ── Internal dot entry ──
+// --- Internal dot entry ------------------------------------------------------
 
-/// Vector dot product entry point.
+/// Vector dot product with validation and dispatch.
 ///
-/// See 12-matrix §5.1 for the final user-visible contract.
+/// Selects an execution path via [`select_exec_path`] based on element count,
+/// contiguity, and alignment. Falls back to the serial baseline when SIMD or
+/// parallel paths are unavailable or unsuitable.
 ///
 /// # Errors
 ///
-/// Returns `XenonError::DimensionMismatch` when the two tensors do not
-/// have the same element count. Returns `XenonError::InvalidLayout`
-/// when shape product overflow or stride validation fails.
+/// Returns `XenonError::InvalidArgument` when either tensor is not
+/// 1‑dimensional. Returns `XenonError::ShapeMismatch` when the two tensors
+/// have different element counts.
 pub(crate) fn dot_impl<S1, S2, A, D1, D2>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
@@ -67,13 +62,11 @@ where
             Ok(try_dot_serial(a, b))
         },
         ExecPath::Parallel => {
-            // Dispatch invariant (30-dispatch §5.5 line 166): when
-            // ExecPath::Parallel is returned, guard MUST be Some.
+            // When select_exec_path returns Parallel, the guard is always Some.
             let guard = match guard {
                 Some(g) => g,
                 None => unreachable!(
-                    "dispatch returned (ExecPath::Parallel, None) — \
-                     invariant violated, see 30-dispatch §5.5 line 166"
+                    "dot_impl: expected ParallelGuard on ExecPath::Parallel"
                 ),
             };
 
@@ -92,8 +85,12 @@ where
     }
 }
 
-// ── Scalar baseline ──
+// --- Scalar baseline ---------------------------------------------------------
 
+/// Serial dot product baseline.
+///
+/// Iterates element‑wise, delegating per‑step arithmetic to [`dot_step`].
+/// Used as the fallback when SIMD or parallel execution is not applicable.
 #[inline]
 pub(crate) fn try_dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
 where
@@ -113,6 +110,12 @@ where
         })
 }
 
+// --- SIMD dispatch -----------------------------------------------------------
+
+/// SIMD‑accelerated dot product.
+///
+/// Returns `None` when the element type is not supported by the SIMD
+/// backend. The caller falls back to [`try_dot_serial`] on `None`.
 #[cfg(feature = "simd")]
 fn try_dot_simd<A: 'static + Copy, S1, S2, D1, D2>(
     a: &TensorBase<S1, D1>,
@@ -157,8 +160,14 @@ where
     None
 }
 
-// ── Validation ──
+// --- Validation --------------------------------------------------------------
 
+/// Validate that both inputs are 1‑dimensional vectors of equal length.
+///
+/// # Errors
+///
+/// Returns `XenonError::InvalidArgument` if either input has rank != 1.
+/// Returns `XenonError::ShapeMismatch` if the lengths differ.
 fn validate_dot_inputs<S1, S2, A, D1, D2>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
@@ -197,8 +206,12 @@ where
     Ok(())
 }
 
-// ── SIMD support ──
+// --- SIMD support ------------------------------------------------------------
 
+/// Returns `true` when both vectors are SIMD‑eligible.
+///
+/// Requires F‑contiguous layout and a SIMD‑supported element type
+/// (`f32`, `f64`, `Complex<f32>`, `Complex<f64>`).
 #[cfg(feature = "simd")]
 #[inline]
 fn can_use_simd_dot<A: 'static, S1, S2, D1, D2>(
@@ -221,18 +234,17 @@ where
         || t == TypeId::of::<Complex<f64>>()
 }
 
-/// Per-step dot-product accumulation with type-aware arithmetic semantics.
+/// Per‑step dot‑product accumulation with type‑aware arithmetic.
 ///
 /// - `i32`, `i64`: checked multiply then checked add; integer overflow is
 ///   unrecoverable and panics with element context (index, shape, type).
-/// - `f32`, `f64`, `Complex<f32>`, `Complex<f64>`: conjugate-linear
+/// - `f32`, `f64`, `Complex<f32>`, `Complex<f64>`: conjugate‑linear
 ///   `acc + x.conjugate() * y` via `Numeric`, preserving IEEE 754 NaN / Inf
 ///   propagation. `conjugate()` is the identity for real types and the true
 ///   conjugate for complex types.
 ///
-/// Mirrors the `TypeId`-dispatch pattern of
-/// [`checked_add_step`](crate::reduction) so the per-type accumulation logic
-/// stays off the public `dot` generic bound.
+/// Uses `TypeId` dispatch so the per‑type arithmetic logic stays off the
+/// generic bounds of the public `dot` entry point.
 ///
 /// # Safety
 ///
@@ -288,7 +300,7 @@ where
     acc + x.conjugate() * y
 }
 
-// ── Unit tests ──
+// --- Unit tests --------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -301,8 +313,11 @@ mod tests {
     use crate::tensor::Tensor;
     use crate::tensor::Tensor1;
 
-    // ── Helpers ──
+    // --- Helpers -------------------------------------------------------------
 
+    /// F64 dot‑product tolerance for scalar and SIMD comparison.
+    ///
+    /// Based on element count and the maximum absolute values in each input.
     #[cfg(any(feature = "simd", feature = "parallel"))]
     fn f64_dot_tolerance(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
         let ulp_term = 8.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
@@ -310,17 +325,20 @@ mod tests {
         ulp_term.max(floor)
     }
 
+    /// F64 dot‑product tolerance for parallel vs serial comparison.
+    ///
+    /// Parallel reduction reorders floating‑point accumulation, requiring
+    /// a wider tolerance margin than the scalar / SIMD comparison.
     #[cfg(feature = "parallel")]
     fn f64_dot_tolerance_parallel(n: usize, max_abs_a: f64, max_abs_b: f64) -> f64 {
-        // Parallel reduction can reorder floating-point accumulation,
-        // requiring more headroom than §10.1 serial/SIMD tolerance.
         let ulp_term = 256.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b;
         let floor = 4.0 * f64::MIN_POSITIVE;
         ulp_term.max(floor)
     }
 
-    // ── dot_impl: basic correctness ──
+    // --- dot_impl: basic correctness -----------------------------------------
 
+    /// Dot product of two empty f64 tensors returns `0.0`.
     #[test]
     fn test_dot_zero_f64() {
         let a = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
@@ -328,6 +346,7 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0.0_f64);
     }
 
+    /// Dot product of two empty i32 tensors returns `0`.
     #[test]
     fn test_dot_zero_i32() {
         let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
@@ -335,6 +354,7 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
+    /// Dot product of two empty i32 tensors returns the additive identity.
     #[test]
     fn test_dot_empty() {
         let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
@@ -342,6 +362,7 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
+    /// Dot product of two single‑element tensors equals the product of their elements.
     #[test]
     fn test_dot_single_element() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32]).expect("valid construction");
@@ -349,6 +370,7 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 42_i32);
     }
 
+    /// Dot product of a small length‑4 f64 tensor produces the expected scalar sum.
     #[test]
     fn test_dot_small() {
         let a = Tensor1::from_shape_vec(Ix1(4), vec![1.0_f64, 2.0, 3.0, 4.0])
@@ -361,6 +383,7 @@ mod tests {
         );
     }
 
+    /// Dot product of a large (4096‑element) f64 tensor matches the scalar reference.
     #[test]
     fn test_dot_large() {
         let n: usize = 4096;
@@ -372,6 +395,8 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), expected);
     }
 
+    /// Conjugate of a real number is the identity, so the dot product of
+    /// real vectors equals the ordinary inner product.
     #[test]
     fn test_dot_real_conjugate_is_identity() {
         let a =
@@ -381,6 +406,7 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), -24.0_f64);
     }
 
+    /// Dot product of complex vectors computes conjugate‑linear inner product.
     #[test]
     fn test_dot_complex() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(1.0, 2.0)])
@@ -391,8 +417,9 @@ mod tests {
         assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
     }
 
-    // ── dot_impl: validation errors ──
+    // --- dot_impl: validation errors -----------------------------------------
 
+    /// Shape mismatch between two non‑empty vectors returns `ShapeMismatch`.
     #[test]
     fn test_dot_shape_mismatch() {
         let a = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2]).expect("valid construction");
@@ -412,6 +439,7 @@ mod tests {
         }
     }
 
+    /// A rank‑2 left tensor returns `InvalidArgument` with argument `"a"`.
     #[test]
     fn test_dot_rank_high_lhs() {
         let a =
@@ -435,6 +463,7 @@ mod tests {
         }
     }
 
+    /// A rank‑2 right tensor returns `InvalidArgument` with argument `"b"`.
     #[test]
     fn test_dot_rank_high_rhs() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![1_i32]).expect("valid construction");
@@ -450,8 +479,9 @@ mod tests {
         }
     }
 
-    // ── dot_impl: integer overflow ──
+    // --- dot_impl: integer overflow ------------------------------------------
 
+    /// Integer overflow during multiplication panics with element context.
     #[test]
     #[should_panic(
         expected = "dot: integer overflow during multiplication at element 0 of shape [1] (type i32)"
@@ -462,6 +492,7 @@ mod tests {
         let _ = dot_impl(&a, &b).expect("valid construction");
     }
 
+    /// Integer overflow during accumulation panics with element context.
     #[test]
     #[should_panic(expected = "dot: integer overflow during accumulation at element")]
     fn test_dot_int_overflow_add() {
@@ -471,8 +502,9 @@ mod tests {
         let _ = dot_impl(&a, &b).expect("valid construction");
     }
 
-    // ── dot_impl: SIMD path ──
+    // --- dot_impl: SIMD path -------------------------------------------------
 
+    /// SIMD path produces a result within tolerance of the serial baseline.
     #[cfg(feature = "simd")]
     #[test]
     fn test_dot_simd() {
@@ -489,10 +521,11 @@ mod tests {
         let tol = f64_dot_tolerance(values.len(), max_abs, max_abs);
         assert!(
             (actual - expected).abs() <= tol,
-            "SIMD result {actual} drifts beyond §10.1 tol {tol} from scalar {expected}"
+            "SIMD result {actual} exceeds tolerance {tol} vs serial {expected}"
         );
     }
 
+    /// Unsupported element types (i64) fall back to the serial path silently.
     #[cfg(feature = "simd")]
     #[test]
     fn test_dot_simd_unsupported() {
@@ -503,8 +536,9 @@ mod tests {
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
     }
 
-    // ── dot_impl: parallel path ──
+    // --- dot_impl: parallel path ---------------------------------------------
 
+    /// Integer dot product via the parallel path matches the serial baseline exactly.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_dot_parallel_path() {
@@ -512,10 +546,10 @@ mod tests {
         let a =
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("valid construction");
-        // Integer dot is exact across paths.
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), try_dot_serial(&a, &b));
     }
 
+    /// Large‑vector parallel dot product stays within floating‑point tolerance.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_dot_parallel_large() {
@@ -531,10 +565,11 @@ mod tests {
         let tol = f64_dot_tolerance_parallel(n, max_abs_a, max_abs_b);
         assert!(
             (actual - expected).abs() <= tol,
-            "parallel result {actual} drifts beyond tolerance {tol} from scalar {expected}"
+            "parallel result {actual} exceeds tolerance {tol} vs serial {expected}"
         );
     }
 
+    /// Nested parallel dot product falls back to serial and stays within tolerance.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_dot_parallel_nested() {
@@ -553,7 +588,7 @@ mod tests {
         let tol = f64_dot_tolerance(n, max_abs_a, max_abs_b);
         assert!(
             (result - baseline).abs() <= tol,
-            "nested-parallel result {result} drifts beyond §10.1 tol {tol} from baseline {baseline}"
+            "nested-parallel result {result} exceeds tolerance {tol} vs baseline {baseline}"
         );
     }
 }
