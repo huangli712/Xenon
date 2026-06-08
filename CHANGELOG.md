@@ -3,6 +3,24 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.32] — 2026-06-08
+
+### Added
+
+- Dot product overflow step tests (i32 multiplication and accumulation).
+
+### Removed
+
+- `DotAccumulate` trait and its `types.rs` file (replaced by TypeId dispatch).
+
+### Changed
+
+- Refactored matrix dot module: `dot_impl` naming, `try_dot_` prefix convention.
+- Replaced `DotAccumulate` trait with `TypeId` dispatch.
+- Extracted `TensorBase::dot` into `impls.rs`; made `dot` `pub(crate)`.
+- Merged `scalar_dot` into `try_dot_serial`; inlined reinterpret/validation helpers.
+- Reorganized tests, docs, section separators, and imports across matrix module.
+
 ## [v0.0.31] — 2026-06-08
 
 ### Added
