@@ -144,9 +144,10 @@ mod tests {
         assert_eq!(result.im, 5.0);
     }
 
-    // ------------------------------ sum_axis() ------------------------------
+    // --- sum_axis() ---------------------------------------------------------
 
-    /// sum_axis on a 2D F-order tensor sums along the specified axis, collapsing it.
+    /// sum_axis on a 2D F-order tensor sums along the specified axis,
+    /// collapsing it.
     #[test]
     fn test_sum_axis_2d() {
         // F-order layout: axis-0 varies fastest; data[i + j*nrows].
