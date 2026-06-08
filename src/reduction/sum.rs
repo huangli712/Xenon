@@ -3,7 +3,7 @@
 //! Internal functions backing the public methods [`TensorBase::sum`],
 //! [`TensorBase::sum_axis`], and [`TensorBase::sum_axis_keepdims`].
 
-use core::any::TypeId;
+use core::any::{TypeId, type_name};
 use std::borrow::Cow;
 
 use crate::error::XenonError;
@@ -145,8 +145,9 @@ where
         .fold(A::zero(), |acc, (index, &value)| {
             checked_add_step(acc, value).unwrap_or_else(|| {
                 panic!(
-                    "integer overflow in reduction sum: element_type={}, shape={:?}, element_index={}",
-                    core::any::type_name::<A>(),
+                    "integer overflow in reduction sum: \
+                     element_type={}, shape={:?}, element_index={}",
+                    type_name::<A>(),
                     shape_snapshot,
                     index
                 )
@@ -246,7 +247,7 @@ where
         *slot = checked_add_step(*slot, value).unwrap_or_else(|| {
             panic!(
                 "integer overflow in reduction sum_axis: element_type={}, shape={:?}, input_index={:?}",
-                core::any::type_name::<A>(),
+                type_name::<A>(),
                 tensor.shape(),
                 input_index
             )
@@ -283,7 +284,7 @@ where
         *slot = checked_add_step(*slot, value).unwrap_or_else(|| {
             panic!(
                 "integer overflow in reduction sum_axis_keepdims: element_type={}, shape={:?}, input_index={:?}",
-                core::any::type_name::<A>(),
+                type_name::<A>(),
                 tensor.shape(),
                 input_index
             )
