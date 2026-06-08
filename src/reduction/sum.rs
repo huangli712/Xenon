@@ -30,7 +30,7 @@ where
 {
     // 13-reduction §6.3: caller-side integer gate before dispatch.
     if force_scalar_for_integers::<A>() {
-        return sum_serial(tensor);
+        return try_sum_serial(tensor);
     }
 
     let (path, _guard) =
@@ -49,9 +49,9 @@ where
         },
         #[cfg(feature = "simd")]
         crate::dispatch::ExecPath::Simd => {
-            try_simd_sum(tensor).unwrap_or_else(|| sum_serial(tensor))
+            try_sum_simd(tensor).unwrap_or_else(|| try_sum_serial(tensor))
         },
-        _ => sum_serial(tensor),
+        _ => try_sum_serial(tensor),
     }
 }
 
@@ -97,7 +97,7 @@ where
 
 /// Scalar serial baseline — same body as the W18T2 version, but now living
 /// as a private helper so the dispatched `sum_impl` can fall back to it.
-pub(crate) fn sum_serial<S, D, A>(tensor: &TensorBase<S, D>) -> A
+pub(crate) fn try_sum_serial<S, D, A>(tensor: &TensorBase<S, D>) -> A
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -122,11 +122,11 @@ where
 }
 
 /// Type-dispatched wrapper for the W14 SIMD facades. Returns `None` when the
-/// element type is unsupported (caller falls back to `sum_serial`) or when the
+/// element type is unsupported (caller falls back to `try_sum_serial`) or when the
 /// W14 facade itself rejects the input (e.g. shorter than the SIMD threshold).
 /// The integer gate in `sum_impl` ensures `i32`/`i64` never reach this branch.
 #[cfg(feature = "simd")]
-fn try_simd_sum<S, D, A>(tensor: &TensorBase<S, D>) -> Option<A>
+fn try_sum_simd<S, D, A>(tensor: &TensorBase<S, D>) -> Option<A>
 where
     S: Storage<Elem = A>,
     D: Dimension,

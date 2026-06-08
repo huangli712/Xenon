@@ -197,7 +197,7 @@ mod tests {
         let max_abs = data.last().copied().unwrap_or(0.0).abs();
         let x = Tensor1::from_shape_vec(Ix1(n), data).expect("valid test input");
         let dispatched = x.sum();
-        let serial = sum::sum_serial(&x);
+        let serial = sum::try_sum_serial(&x);
         assert!(
             approx_eq_f32(dispatched, serial, n, max_abs),
             "SIMD path {dispatched} vs serial {serial} exceeds §6.3 tolerance"
@@ -215,7 +215,7 @@ mod tests {
         let max_abs = data.last().copied().unwrap_or(0.0).abs();
         let x = Tensor1::from_shape_vec(Ix1(n), data).expect("valid test input");
         let dispatched = x.sum();
-        let serial = sum::sum_serial(&x);
+        let serial = sum::try_sum_serial(&x);
         assert!(
             approx_eq_f32(dispatched, serial, n, max_abs),
             "parallel path {dispatched} vs serial {serial} exceeds §6.3 tolerance"
