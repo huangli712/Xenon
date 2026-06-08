@@ -69,6 +69,8 @@ where
     }
 }
 
+// ------------------------------ sum_axis_impl -------------------------------
+
 /// Reduce along a single axis, removing that axis from the output shape.
 ///
 /// Validates the axis, constructs a zero-filled output tensor of the reduced
