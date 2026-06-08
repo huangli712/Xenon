@@ -188,12 +188,16 @@ where
             .map(|r| unsafe { transmute_copy::<f64, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<Complex<f32>>() {
-        let s: &[Complex<f32>] = unsafe { &*(slice as *const [A] as *const [Complex<f32>]) };
+        let s: &[Complex<f32>] = unsafe {
+            &*(slice as *const [A] as *const [Complex<f32>])
+        };
         return try_sum_complex_f32(s)
             .map(|r| unsafe { transmute_copy::<Complex<f32>, A>(&r) });
     }
     if TypeId::of::<A>() == TypeId::of::<Complex<f64>>() {
-        let s: &[Complex<f64>] = unsafe { &*(slice as *const [A] as *const [Complex<f64>]) };
+        let s: &[Complex<f64>] = unsafe {
+            &*(slice as *const [A] as *const [Complex<f64>])
+        };
         return try_sum_complex_f64(s)
             .map(|r| unsafe { transmute_copy::<Complex<f64>, A>(&r) });
     }
