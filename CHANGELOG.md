@@ -3,6 +3,17 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.35] — 2026-06-08
+
+### Removed
+
+- `construct/types.rs` (`EyeElement` moved to element module).
+
+### Changed
+
+- Moved `EyeElement` sealed marker trait from `construct/types.rs` to new `element/eye.rs`.
+- Cleaned up `construct/mod.rs` re-exports and `construct/impls.rs` import paths.
+
 ## [v0.0.34] — 2026-06-08
 
 ### Removed
