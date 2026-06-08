@@ -55,6 +55,7 @@ pub(crate) use simd::SimdElement;
 pub(crate) use cast::CastElement;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
 
+pub use types::ElementType;
 pub use primitives::Element;
 pub use numeric::Numeric;
 pub use real::RealScalar;
