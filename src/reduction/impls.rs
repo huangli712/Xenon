@@ -162,7 +162,8 @@ mod tests {
     /// sum_axis with an out-of-bounds axis returns InvalidAxis error.
     #[test]
     fn test_sum_axis_invalid_axis() {
-        let x = Tensor::<i32, Ix2>::zeros((2, 3)).expect("valid test input");
+        let x = Tensor::<i32, Ix2>::zeros((2, 3))
+            .expect("valid test input");
         assert!(matches!(
             x.sum_axis(Axis(2)),
             Err(XenonError::InvalidAxis { .. })
@@ -172,7 +173,8 @@ mod tests {
     /// sum_axis over a zero-length axis produces output filled with A::zero().
     #[test]
     fn test_sum_axis_zero_len_axis() {
-        let x = Tensor::<i32, Ix2>::from_shape_vec((0, 3), vec![]).expect("valid test input");
+        let x = Tensor::<i32, Ix2>::from_shape_vec((0, 3), vec![])
+            .expect("valid test input");
         let y = x.sum_axis(Axis(0)).expect("valid test input");
         assert_eq!(y.shape(), &[3]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[0, 0, 0]);
