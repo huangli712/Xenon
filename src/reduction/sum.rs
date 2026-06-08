@@ -197,8 +197,6 @@ where
     Some(acc + value)
 }
 
-
-
 /// 13-reduction §6.3 line 291-295: integer types skip the dispatcher when no
 /// verified widening SIMD implementation exists, falling directly to the
 /// scalar serial path for checked arithmetic equivalence.
@@ -265,38 +263,6 @@ where
     Ok(())
 }
 
-// ── dim_with_axis_set helper (W18T4) ──
-
-/// Construct a new dimension whose `axis` component has been replaced with
-/// `value`, leaving every other axis unchanged.
-///
-/// Uses only the stable `Dimension` API surface from
-/// `02-dimension.md §5.1`: `slice(&self) -> &[usize]` for read-out and
-/// `try_from_slice(&[usize]) -> Result<Self, _>` for reconstruction. This
-/// keeps the 0D / static-rank / dynamic-rank cases on the same code path
-/// and avoids extending the public trait surface.
-///
-/// Returns `XenonError::InvalidAxis` when `axis.index() >= dim.ndim()`,
-/// matching `13-reduction.md §5.2` axis OOB error contract.
-pub(crate) fn dim_with_axis_set<D: Dimension>(
-    dim: &D,
-    axis: Axis,
-    value: usize,
-    operation: &'static str,
-) -> Result<D, XenonError> {
-    let mut dims: Vec<usize> = dim.slice().to_vec();
-    if axis.index() >= dims.len() {
-        return Err(XenonError::InvalidAxis {
-            operation: Cow::Borrowed(operation),
-            axis: axis.index(),
-            ndim: dims.len(),
-            shape: dims,
-        });
-    }
-    dims[axis.index()] = value;
-    D::try_from_slice(&dims)
-}
-
 /// Per-slot accumulation, mapping input coordinates onto keepdims output
 /// coordinates by forcing the reduced axis component to `0`. Numeric
 /// semantics inherit from `checked_add_step` (13-reduction §6.1):
@@ -332,5 +298,38 @@ where
     }
     Ok(())
 }
+
+// ── dim_with_axis_set helper (W18T4) ──
+
+/// Construct a new dimension whose `axis` component has been replaced with
+/// `value`, leaving every other axis unchanged.
+///
+/// Uses only the stable `Dimension` API surface from
+/// `02-dimension.md §5.1`: `slice(&self) -> &[usize]` for read-out and
+/// `try_from_slice(&[usize]) -> Result<Self, _>` for reconstruction. This
+/// keeps the 0D / static-rank / dynamic-rank cases on the same code path
+/// and avoids extending the public trait surface.
+///
+/// Returns `XenonError::InvalidAxis` when `axis.index() >= dim.ndim()`,
+/// matching `13-reduction.md §5.2` axis OOB error contract.
+pub(crate) fn dim_with_axis_set<D: Dimension>(
+    dim: &D,
+    axis: Axis,
+    value: usize,
+    operation: &'static str,
+) -> Result<D, XenonError> {
+    let mut dims: Vec<usize> = dim.slice().to_vec();
+    if axis.index() >= dims.len() {
+        return Err(XenonError::InvalidAxis {
+            operation: Cow::Borrowed(operation),
+            axis: axis.index(),
+            ndim: dims.len(),
+            shape: dims,
+        });
+    }
+    dims[axis.index()] = value;
+    D::try_from_slice(&dims)
+}
+
 
 
