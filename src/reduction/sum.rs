@@ -12,7 +12,10 @@ use crate::dimension::{Axis, Dimension, RemoveAxis};
 use crate::element::Numeric;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
-use crate::dispatch::{select_exec_path, ExecPath};
+use crate::dispatch::select_exec_path;
+
+#[cfg(any(feature = "simd", feature = "parallel"))]
+use crate::dispatch::ExecPath;
 
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
