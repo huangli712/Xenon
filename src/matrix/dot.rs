@@ -197,9 +197,6 @@ where
     Ok(())
 }
 
-// ── Alignment ──
-
-#[inline]
 /// Per-step dot-product accumulation with type-aware arithmetic semantics.
 ///
 /// - `i32`, `i64`: checked multiply then checked add; integer overflow is
