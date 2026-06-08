@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn test_checked_add_step_f32_nan_propagates() {
         let result = super::checked_add_step(1.0_f32, f32::NAN);
-        assert!(result.unwrap().is_nan());
+        assert!(result.expect("NaN must produce Some").is_nan());
     }
 
     #[test]
