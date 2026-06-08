@@ -454,7 +454,11 @@ mod tests {
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone())
             .expect("valid construction");
-        let expected: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| x * y).sum();
+        let expected: f64 = xs
+            .iter()
+            .zip(ys.iter())
+            .map(|(x, y)| x * y)
+            .sum();
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), expected);
     }
 
