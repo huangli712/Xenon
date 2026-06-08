@@ -390,16 +390,15 @@ where
     Some(acc + value)
 }
 
-// --------------------- Unit tests for internal helpers ----------------------
-
 #[cfg(test)]
 mod tests {
-    use crate::complex::Complex;
-    use crate::dimension::{Axis, Dimension, Ix0, Ix1, Ix2, RemoveAxis};
     use crate::error::XenonError;
+    use crate::complex::Complex;
+    use crate::dimension::{Ix0, Ix1, Ix2};
+    use crate::dimension::{Axis, Dimension, RemoveAxis};
     use crate::tensor::{Tensor, Tensor1};
 
-    // --------------------------- checked_add_step ---------------------------
+    // --- checked_add_step ---------------------------------------------------
 
     /// i32 normal addition returns the sum.
     #[test]
@@ -467,7 +466,7 @@ mod tests {
         assert_eq!(super::checked_add_step(0.0_f64, 2.5), Some(2.5));
     }
 
-    // ---------------------- force_scalar_for_integers -----------------------
+    // --- force_scalar_for_integers ------------------------------------------
 
     /// i32 is classified as a scalar-only integer type.
     #[test]
@@ -499,7 +498,27 @@ mod tests {
         assert!(!super::force_scalar_for_integers::<Complex<f32>>());
     }
 
-    // ---------------------------- validate_axis -----------------------------
+    // -------------------------- dim_with_axis_set ---------------------------
+
+    /// Replacing a valid axis component produces the expected dimension.
+    #[test]
+    fn test_dim_with_axis_set_valid() {
+        let dim = Ix2(3, 4);
+        let result = super::dim_with_axis_set(&dim, Axis(1), 7, "test_op")
+            .expect("valid axis");
+        assert_eq!(result.slice(), &[3, 7]);
+    }
+
+    /// An out-of-bounds axis returns InvalidAxis error.
+    #[test]
+    fn test_dim_with_axis_set_oob() {
+        let dim = Ix2(3, 4);
+        let err = super::dim_with_axis_set(&dim, Axis(2), 1, "test_op")
+            .expect_err("expected InvalidAxis");
+        assert!(matches!(err, XenonError::InvalidAxis { .. }));
+    }
+
+    // --- validate_axis ------------------------------------------------------
 
     /// Valid axes within [0, ndim) return Ok(()).
     #[test]
@@ -513,7 +532,8 @@ mod tests {
     #[test]
     fn test_validate_axis_invalid() {
         let dim = Ix2(3, 4);
-        let err = super::validate_axis(&dim, Axis(2), "test_op").expect_err("expected InvalidAxis");
+        let err = super::validate_axis(&dim, Axis(2), "test_op")
+            .expect_err("expected InvalidAxis");
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
@@ -521,25 +541,8 @@ mod tests {
     #[test]
     fn test_validate_axis_0d_always_invalid() {
         let dim = Ix0;
-        let err = super::validate_axis(&dim, Axis(0), "test_op").expect_err("expected InvalidAxis");
-        assert!(matches!(err, XenonError::InvalidAxis { .. }));
-    }
-
-    // -------------------------- dim_with_axis_set ---------------------------
-
-    /// Replacing a valid axis component produces the expected dimension.
-    #[test]
-    fn test_dim_with_axis_set_valid() {
-        let dim = Ix2(3, 4);
-        let result = super::dim_with_axis_set(&dim, Axis(1), 7, "test_op").expect("valid axis");
-        assert_eq!(result.slice(), &[3, 7]);
-    }
-
-    /// An out-of-bounds axis returns InvalidAxis error.
-    #[test]
-    fn test_dim_with_axis_set_oob() {
-        let dim = Ix2(3, 4);
-        let err = super::dim_with_axis_set(&dim, Axis(2), 1, "test_op").expect_err("expected InvalidAxis");
+        let err = super::validate_axis(&dim, Axis(0), "test_op")
+            .expect_err("expected InvalidAxis");
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
