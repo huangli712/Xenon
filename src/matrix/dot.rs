@@ -329,7 +329,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::dot_impl as dot;
     use crate::complex::Complex;
     use crate::dimension::Ix1;
     use crate::dimension::Ix2;
@@ -343,14 +342,14 @@ mod tests {
     fn test_matrix_module_dot_skeleton_returns_zero() {
         let a = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         let b = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), 0.0_f64);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0.0_f64);
     }
 
     #[test]
     fn test_matrix_module_dot_skeleton_returns_zero_for_int() {
         let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), 0_i32);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
     // W17T2
@@ -358,7 +357,7 @@ mod tests {
     fn test_dot_shape_mismatch() {
         let a = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2]).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");
-        let err = dot(&a, &b).expect_err("must return error");
+        let err = dot_impl(&a, &b).expect_err("must return error");
         match err {
             XenonError::ShapeMismatch {
                 ref operation,
@@ -378,7 +377,7 @@ mod tests {
         let a =
             Tensor::<i32, Ix2>::from_shape_vec((1, 1), vec![1_i32]).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(1), vec![1_i32]).expect("valid construction");
-        let err = dot(&a, &b).expect_err("must return error");
+        let err = dot_impl(&a, &b).expect_err("must return error");
         match err {
             XenonError::InvalidArgument {
                 ref operation,
@@ -401,7 +400,7 @@ mod tests {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![1_i32]).expect("valid construction");
         let b =
             Tensor::<i32, Ix2>::from_shape_vec((1, 1), vec![1_i32]).expect("valid construction");
-        let err = dot(&a, &b).expect_err("must return error");
+        let err = dot_impl(&a, &b).expect_err("must return error");
         match err {
             XenonError::InvalidArgument {
                 kind: InvalidArgumentKind::OperationSpecific { ref argument, .. },
@@ -418,7 +417,7 @@ mod tests {
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(3.0, 4.0)])
             .expect("valid construction");
-        let r = dot(&a, &b).expect("valid construction");
+        let r = dot_impl(&a, &b).expect("valid construction");
         assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
     }
 
@@ -429,7 +428,7 @@ mod tests {
     fn test_dot_int_overflow_mul() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![i32::MAX]).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(1), vec![2_i32]).expect("valid construction");
-        let _ = dot(&a, &b).expect("valid construction");
+        let _ = dot_impl(&a, &b).expect("valid construction");
     }
 
     #[test]
@@ -438,7 +437,7 @@ mod tests {
         let a = Tensor1::from_shape_vec(Ix1(3), vec![i32::MAX, 1, 1]).expect("valid construction");
         let b =
             Tensor1::from_shape_vec(Ix1(3), vec![1_i32, i32::MAX, 1]).expect("valid construction");
-        let _ = dot(&a, &b).expect("valid construction");
+        let _ = dot_impl(&a, &b).expect("valid construction");
     }
 
     #[test]
@@ -447,7 +446,7 @@ mod tests {
             Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, -2.0, 3.0]).expect("valid construction");
         let b =
             Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, -6.0]).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), -24.0_f64);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), -24.0_f64);
     }
 
     // W17T4
@@ -455,14 +454,14 @@ mod tests {
     fn test_dot_empty() {
         let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
         let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), 0_i32);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
     #[test]
     fn test_dot_single_element() {
         let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32]).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(1), vec![6_i32]).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), 42_i32);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 42_i32);
     }
 
     #[test]
@@ -472,7 +471,7 @@ mod tests {
         let b = Tensor1::from_shape_vec(Ix1(4), vec![5.0_f64, 6.0, 7.0, 8.0])
             .expect("valid construction");
         assert_eq!(
-            dot(&a, &b).expect("valid construction"),
+            dot_impl(&a, &b).expect("valid construction"),
             1.0 * 5.0 + 2.0 * 6.0 + 3.0 * 7.0 + 4.0 * 8.0
         );
     }
@@ -485,7 +484,7 @@ mod tests {
         let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
         let expected: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| x * y).sum();
-        assert_eq!(dot(&a, &b).expect("valid construction"), expected);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), expected);
     }
 
     // W17T5: tolerance helper + SIMD tests
@@ -505,7 +504,7 @@ mod tests {
         let b =
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
 
-        let actual = dot(&a, &b).expect("valid construction");
+        let actual = dot_impl(&a, &b).expect("valid construction");
         let expected = dot_serial(&a, &b);
 
         let max_abs = values.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
@@ -523,7 +522,7 @@ mod tests {
         let a =
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), dot_serial(&a, &b));
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), dot_serial(&a, &b));
     }
 
     // W17T6: parallel path tests
@@ -535,7 +534,7 @@ mod tests {
             Tensor1::from_shape_vec(Ix1(values.len()), values.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(values.len()), values).expect("valid construction");
         // Integer dot is exact across paths.
-        assert_eq!(dot(&a, &b).expect("valid construction"), dot_serial(&a, &b));
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), dot_serial(&a, &b));
     }
 
     #[cfg(feature = "parallel")]
@@ -555,7 +554,7 @@ mod tests {
         let ys: Vec<f64> = (0..n).map(|i| ((i % 13) as f64) * 0.1 + 2.0).collect();
         let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
-        let actual = dot(&a, &b).expect("valid construction");
+        let actual = dot_impl(&a, &b).expect("valid construction");
         let expected = dot_serial(&a, &b);
         let max_abs_a = xs.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         let max_abs_b = ys.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
@@ -577,7 +576,7 @@ mod tests {
 
         let baseline = dot_serial(&a, &b);
 
-        let result = with_parallel_worker_context(|| dot(&a, &b).expect("valid construction"));
+        let result = with_parallel_worker_context(|| dot_impl(&a, &b).expect("valid construction"));
 
         let max_abs_a = xs.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         let max_abs_b = ys.iter().fold(0.0_f64, |acc, &v| acc.max(v.abs()));

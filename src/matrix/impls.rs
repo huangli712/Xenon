@@ -39,7 +39,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::dimension::Ix1;
-    use crate::matrix::dot_impl as dot;
+    use crate::matrix::dot_impl;
     use crate::tensor::Tensor1;
 
     // W17T3
@@ -47,7 +47,7 @@ mod tests {
     fn test_dot_basic() {
         let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(3), vec![4_i32, 5, 6]).expect("valid construction");
-        assert_eq!(dot(&a, &b).expect("valid construction"), 32_i32);
+        assert_eq!(dot_impl(&a, &b).expect("valid construction"), 32_i32);
         assert_eq!(a.dot(&b).expect("valid construction"), 32_i32);
     }
 }
