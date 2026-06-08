@@ -147,7 +147,8 @@ where
 
 // ── Scalar baseline ──
 
-pub(crate) fn scalar_dot<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
+#[inline]
+pub(crate) fn dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
@@ -163,18 +164,6 @@ where
         .fold(A::zero(), |acc, (index, (x, y))| {
             dot_step(acc, x, y, index, len)
         })
-}
-
-#[inline]
-pub(crate) fn dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    A: Numeric + Copy + 'static,
-    D1: Dimension,
-    D2: Dimension,
-{
-    scalar_dot(a, b)
 }
 
 // ── SIMD support ──
