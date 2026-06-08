@@ -191,7 +191,7 @@ where
 }
 
 #[cfg(feature = "simd")]
-fn try_simd_dot_dispatch<A: 'static + Copy, S1, S2, D1, D2>(
+fn try_dot_simd<A: 'static + Copy, S1, S2, D1, D2>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
 ) -> Option<A>
@@ -280,7 +280,7 @@ where
             #[cfg(feature = "simd")]
             {
                 if can_use_simd_dot::<A, _, _, _, _>(a, b)
-                    && let Some(v) = try_simd_dot_dispatch(a, b)
+                    && let Some(v) = try_dot_simd(a, b)
                 {
                     return Ok(v);
                 }
