@@ -7,6 +7,7 @@
 //! Design reference: 12-matrix §3, §5.1.
 
 mod dot;
+mod impls;
 mod types;
 
 pub use dot::dot;
