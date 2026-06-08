@@ -3,6 +3,19 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.33] — 2026-06-08
+
+### Removed
+
+- `SimdElement` trait and re-export from `simd` module (moved to element module).
+
+### Changed
+
+- Moved `SimdElement` sealed marker trait from `simd/types.rs` to new `element/simd.rs`.
+- Removed `#[cfg(feature = "simd")]` gates on `BinaryArith`/`UnaryArith`/`OrderedUnaryArith`
+  trait definitions (no longer conditional on feature).
+- Updated all `crate::simd::SimdElement` references to `crate::element::SimdElement`.
+
 ## [v0.0.32] — 2026-06-08
 
 ### Added
