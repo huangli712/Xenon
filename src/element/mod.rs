@@ -49,8 +49,7 @@ mod numeric;
 mod real;
 mod complex;
 
-#[allow(unused_imports)]
-pub(crate) use types::{ElementType, element_type_of};
+pub(crate) use types::element_type_of;
 pub(crate) use order::OrderedCompareElement;
 pub(crate) use simd::SimdElement;
 pub(crate) use cast::CastElement;
