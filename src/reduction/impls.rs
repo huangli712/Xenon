@@ -152,8 +152,10 @@ mod tests {
     fn test_sum_axis_2d() {
         // F-order layout: axis-0 varies fastest; data[i + j*nrows].
         // Shape (2, 3): [[1,3,5], [2,4,6]] -> sum_axis(1) sums columns.
-        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6])
-            .expect("valid test input");
+        let x = Tensor::<i32, Ix2>::from_shape_vec(
+            (2, 3),
+            vec![1, 2, 3, 4, 5, 6]
+        ).expect("valid test input");
         let y = x.sum_axis(Axis(1)).expect("valid test input");
         assert_eq!(y.shape(), &[2]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[9, 12]);
@@ -180,15 +182,17 @@ mod tests {
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[0, 0, 0]);
     }
 
-    // ------------------------- sum_axis_keepdims() --------------------------
+    // --- sum_axis_keepdims() ------------------------------------------------
 
     /// sum_axis_keepdims preserves the reduced axis with length 1.
     #[test]
     fn test_sum_axis_keepdims() {
         // F-order: shape (2, 3) -> sum along axis 1 keeps dim 1 with length 1.
         // [[1,3,5], [2,4,6]] -> keepdims(1): [[9], [12]]
-        let x = Tensor::<i32, Ix2>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6])
-            .expect("valid test input");
+        let x = Tensor::<i32, Ix2>::from_shape_vec(
+            (2, 3),
+            vec![1, 2, 3, 4, 5, 6]
+        ).expect("valid test input");
         let y = x.sum_axis_keepdims(Axis(1)).expect("valid test input");
         assert_eq!(y.shape(), &[2, 1]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[9, 12]);
