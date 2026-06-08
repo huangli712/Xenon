@@ -53,10 +53,10 @@ mod complex;
 pub(crate) use types::{ElementType, element_type_of};
 pub(crate) use order::OrderedCompareElement;
 pub(crate) use simd::SimdElement;
+pub(crate) use cast::CastElement;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
 
 pub use primitives::Element;
 pub use numeric::Numeric;
 pub use real::RealScalar;
 pub use complex::ComplexScalar;
-pub use cast::CastElement;
