@@ -92,6 +92,67 @@ where
     }
 }
 
+// ── Scalar baseline ──
+
+#[inline]
+pub(crate) fn try_dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
+where
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    A: Numeric + Copy + 'static,
+    D1: Dimension,
+    D2: Dimension,
+{
+    let len = a.len();
+    a.iter()
+        .copied()
+        .zip(b.iter().copied())
+        .enumerate()
+        .fold(A::zero(), |acc, (index, (x, y))| {
+            dot_step(acc, x, y, index, len)
+        })
+}
+
+#[cfg(feature = "simd")]
+fn try_dot_simd<A: 'static + Copy, S1, S2, D1, D2>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
+) -> Option<A>
+where
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    D1: Dimension,
+    D2: Dimension,
+{
+    let lhs = a.as_slice()?;
+    let rhs = b.as_slice()?;
+
+    let t = TypeId::of::<A>();
+    if t == TypeId::of::<f32>() {
+        let lhs = reinterpret_slice::<A, f32>(lhs);
+        let rhs = reinterpret_slice::<A, f32>(rhs);
+        return crate::simd::try_dot_f32(lhs, rhs).map(|v| reinterpret_value::<f32, A>(v));
+    }
+    if t == TypeId::of::<f64>() {
+        let lhs = reinterpret_slice::<A, f64>(lhs);
+        let rhs = reinterpret_slice::<A, f64>(rhs);
+        return crate::simd::try_dot_f64(lhs, rhs).map(|v| reinterpret_value::<f64, A>(v));
+    }
+    if t == TypeId::of::<Complex<f32>>() {
+        let lhs = reinterpret_slice::<A, Complex<f32>>(lhs);
+        let rhs = reinterpret_slice::<A, Complex<f32>>(rhs);
+        return crate::simd::try_dot_complex_f32(lhs, rhs)
+            .map(|v| reinterpret_value::<Complex<f32>, A>(v));
+    }
+    if t == TypeId::of::<Complex<f64>>() {
+        let lhs = reinterpret_slice::<A, Complex<f64>>(lhs);
+        let rhs = reinterpret_slice::<A, Complex<f64>>(rhs);
+        return crate::simd::try_dot_complex_f64(lhs, rhs)
+            .map(|v| reinterpret_value::<Complex<f64>, A>(v));
+    }
+    None
+}
+
 // ── Validation ──
 
 fn validate_dot_inputs<S1, S2, A, D1, D2>(
@@ -212,27 +273,6 @@ where
     acc + x.conjugate() * y
 }
 
-// ── Scalar baseline ──
-
-#[inline]
-pub(crate) fn try_dot_serial<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> A
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    A: Numeric + Copy + 'static,
-    D1: Dimension,
-    D2: Dimension,
-{
-    let len = a.len();
-    a.iter()
-        .copied()
-        .zip(b.iter().copied())
-        .enumerate()
-        .fold(A::zero(), |acc, (index, (x, y))| {
-            dot_step(acc, x, y, index, len)
-        })
-}
-
 // ── SIMD support ──
 
 #[cfg(feature = "simd")]
@@ -255,46 +295,6 @@ where
         || t == TypeId::of::<f64>()
         || t == TypeId::of::<Complex<f32>>()
         || t == TypeId::of::<Complex<f64>>()
-}
-
-#[cfg(feature = "simd")]
-fn try_dot_simd<A: 'static + Copy, S1, S2, D1, D2>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-) -> Option<A>
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension,
-    D2: Dimension,
-{
-    let lhs = a.as_slice()?;
-    let rhs = b.as_slice()?;
-
-    let t = TypeId::of::<A>();
-    if t == TypeId::of::<f32>() {
-        let lhs = reinterpret_slice::<A, f32>(lhs);
-        let rhs = reinterpret_slice::<A, f32>(rhs);
-        return crate::simd::try_dot_f32(lhs, rhs).map(|v| reinterpret_value::<f32, A>(v));
-    }
-    if t == TypeId::of::<f64>() {
-        let lhs = reinterpret_slice::<A, f64>(lhs);
-        let rhs = reinterpret_slice::<A, f64>(rhs);
-        return crate::simd::try_dot_f64(lhs, rhs).map(|v| reinterpret_value::<f64, A>(v));
-    }
-    if t == TypeId::of::<Complex<f32>>() {
-        let lhs = reinterpret_slice::<A, Complex<f32>>(lhs);
-        let rhs = reinterpret_slice::<A, Complex<f32>>(rhs);
-        return crate::simd::try_dot_complex_f32(lhs, rhs)
-            .map(|v| reinterpret_value::<Complex<f32>, A>(v));
-    }
-    if t == TypeId::of::<Complex<f64>>() {
-        let lhs = reinterpret_slice::<A, Complex<f64>>(lhs);
-        let rhs = reinterpret_slice::<A, Complex<f64>>(rhs);
-        return crate::simd::try_dot_complex_f64(lhs, rhs)
-            .map(|v| reinterpret_value::<Complex<f64>, A>(v));
-    }
-    None
 }
 
 #[cfg(feature = "simd")]
