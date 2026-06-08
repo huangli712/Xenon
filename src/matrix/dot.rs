@@ -347,14 +347,13 @@ where
 mod tests {
     use super::*;
     use crate::complex::Complex;
-    use crate::dimension::Ix1;
-    use crate::dimension::Ix2;
+    use crate::dimension::{Ix1, Ix2};
+    use crate::tensor::{Tensor, Tensor1};
+
     #[cfg(feature = "parallel")]
     use crate::dispatch::with_parallel_worker_context;
-    use crate::tensor::Tensor;
-    use crate::tensor::Tensor1;
 
-    // --- Helpers -------------------------------------------------------------
+    // --- Helpers ------------------------------------------------------------
 
     /// F64 dot‑product tolerance for scalar and SIMD comparison.
     ///
@@ -377,41 +376,51 @@ mod tests {
         ulp_term.max(floor)
     }
 
-    // --- dot_impl: basic correctness -----------------------------------------
+    // --- dot_impl: basic correctness ----------------------------------------
 
     /// Dot product of two empty f64 tensors returns `0.0`.
     #[test]
     fn test_dot_zero_f64() {
-        let a = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        let b = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
+        let a = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid construction");
+        let b = Tensor1::<f64>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0.0_f64);
     }
 
     /// Dot product of two empty i32 tensors returns `0`.
     #[test]
     fn test_dot_zero_i32() {
-        let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
+        let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid construction");
+        let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
     /// Dot product of two empty i32 tensors returns the additive identity.
     #[test]
     fn test_dot_empty() {
-        let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
-        let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid construction");
+        let a = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid construction");
+        let b = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![])
+            .expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 0_i32);
     }
 
-    /// Dot product of two single‑element tensors equals the product of their elements.
+    /// Dot product of two single‑element tensors equals the product of
+    /// their elements.
     #[test]
     fn test_dot_single_element() {
-        let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32]).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(1), vec![6_i32]).expect("valid construction");
+        let a = Tensor1::from_shape_vec(Ix1(1), vec![7_i32])
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(1), vec![6_i32])
+            .expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 42_i32);
     }
 
-    /// Dot product of a small length‑4 f64 tensor produces the expected scalar sum.
+    /// Dot product of a small length‑4 f64 tensor produces the expected
+    /// scalar sum.
     #[test]
     fn test_dot_small() {
         let a = Tensor1::from_shape_vec(Ix1(4), vec![1.0_f64, 2.0, 3.0, 4.0])
@@ -424,14 +433,17 @@ mod tests {
         );
     }
 
-    /// Dot product of a large (4096‑element) f64 tensor matches the scalar reference.
+    /// Dot product of a large (4096‑element) f64 tensor matches the
+    /// scalar reference.
     #[test]
     fn test_dot_large() {
         let n: usize = 4096;
         let xs: Vec<f64> = (0..n).map(|i| (i as f64) * 0.5).collect();
         let ys: Vec<f64> = (0..n).map(|i| (i as f64) * 0.25 + 1.0).collect();
-        let a = Tensor1::from_shape_vec(Ix1(n), xs.clone()).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(n), ys.clone()).expect("valid construction");
+        let a = Tensor1::from_shape_vec(Ix1(n), xs.clone())
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(n), ys.clone())
+            .expect("valid construction");
         let expected: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| x * y).sum();
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), expected);
     }
@@ -440,10 +452,10 @@ mod tests {
     /// real vectors equals the ordinary inner product.
     #[test]
     fn test_dot_real_conjugate_is_identity() {
-        let a =
-            Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, -2.0, 3.0]).expect("valid construction");
-        let b =
-            Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, -6.0]).expect("valid construction");
+        let a = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, -2.0, 3.0])
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, -6.0])
+            .expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), -24.0_f64);
     }
 
@@ -458,7 +470,7 @@ mod tests {
         assert_eq!(r, Complex::<f64>::new(11.0, -2.0));
     }
 
-    // --- dot_impl: validation errors -----------------------------------------
+    // --- dot_impl: validation errors ----------------------------------------
 
     /// Shape mismatch between two non‑empty vectors returns `ShapeMismatch`.
     #[test]
