@@ -1,8 +1,6 @@
 //! Reduction operations.
 //!
 //! The public API is exposed as methods on [`TensorBase`].
-//!
-//! [`TensorBase`]: crate::tensor::TensorBase
 
 mod sum;
 mod impls;
