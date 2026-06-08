@@ -264,11 +264,13 @@ where
     if !(a.is_f_contiguous() && b.is_f_contiguous()) {
         return false;
     }
-    let t = TypeId::of::<A>();
-    t == TypeId::of::<f32>()
-        || t == TypeId::of::<f64>()
-        || t == TypeId::of::<Complex<f32>>()
-        || t == TypeId::of::<Complex<f64>>()
+    [
+        TypeId::of::<f32>(),
+        TypeId::of::<f64>(),
+        TypeId::of::<Complex<f32>>(),
+        TypeId::of::<Complex<f64>>(),
+    ]
+    .contains(&TypeId::of::<A>())
 }
 
 // --- Per-type accumulation --------------------------------------------------
