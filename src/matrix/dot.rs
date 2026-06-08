@@ -14,6 +14,7 @@
 use std::any::TypeId;
 use std::borrow::Cow;
 
+#[cfg(feature = "simd")]
 use crate::complex::Complex;
 use crate::dimension::Dimension;
 #[cfg(feature = "parallel")]
