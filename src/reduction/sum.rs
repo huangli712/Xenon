@@ -14,6 +14,9 @@ use crate::tensor::{Tensor, TensorBase};
 use crate::dispatch::{select_exec_path, ExecPath};
 
 #[cfg(feature = "parallel")]
+use crate::parallel::sum::par_sum;
+
+#[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "simd")]
@@ -56,7 +59,7 @@ where
             // When select_exec_path returns Parallel, the guard is always Some.
             let guard = _guard.expect("Parallel path implies Some(guard)");
             let strategy = ParallelExecStrategy::auto();
-            crate::parallel::sum::par_sum(tensor, &strategy, guard)
+            par_sum(tensor, &strategy, guard)
         },
         #[cfg(feature = "simd")]
         ExecPath::Simd => {
