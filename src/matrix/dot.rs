@@ -14,7 +14,6 @@
 use std::any::TypeId;
 use std::borrow::Cow;
 
-use crate::complex::Complex;
 use crate::dimension::Dimension;
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;

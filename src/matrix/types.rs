@@ -88,7 +88,6 @@ impl DotAccumulate for i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::dimension::Ix1;
     use crate::tensor::Tensor1;
 
