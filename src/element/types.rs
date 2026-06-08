@@ -56,7 +56,7 @@ impl ElementType {
 }
 
 impl Display for ElementType {
-    /// Formats `ElementType` using its [`name`](ElementType::name).
+    /// Formats `ElementType` using its `name`.
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.name())
     }
