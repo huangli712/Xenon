@@ -208,7 +208,7 @@ where
     None
 }
 
-// ----------------------------- Axis validation ------------------------------
+// --- Axis validation --------------------------------------------------------
 
 /// Validate that `axis` is within bounds for the given dimension shape.
 ///
@@ -310,7 +310,7 @@ where
     Ok(())
 }
 
-// ---------------------------- dim_with_axis_set -----------------------------
+// --- Internal helpers -------------------------------------------------------
 
 /// Construct a new dimension identical to `dim` except that the component
 /// at `axis` is replaced with `value`.
