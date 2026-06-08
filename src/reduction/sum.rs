@@ -346,7 +346,8 @@ pub(crate) fn dim_with_axis_set<D: Dimension>(
 ///
 /// Float and complex types return `false`, allowing SIMD or parallel dispatch.
 fn force_scalar_for_integers<A: 'static>() -> bool {
-    TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>()
+    let id = TypeId::of::<A>();
+    id == TypeId::of::<i32>() || id == TypeId::of::<i64>()
 }
 
 /// Per-step accumulation with type-aware arithmetic semantics.
