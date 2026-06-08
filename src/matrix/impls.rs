@@ -48,8 +48,10 @@ mod tests {
     /// `dot_impl` for a basic integer dot product.
     #[test]
     fn test_dot_basic() {
-        let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3]).expect("valid construction");
-        let b = Tensor1::from_shape_vec(Ix1(3), vec![4_i32, 5, 6]).expect("valid construction");
+        let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
+            .expect("valid construction");
+        let b = Tensor1::from_shape_vec(Ix1(3), vec![4_i32, 5, 6])
+            .expect("valid construction");
         assert_eq!(dot_impl(&a, &b).expect("valid construction"), 32_i32);
         assert_eq!(a.dot(&b).expect("valid construction"), 32_i32);
     }
