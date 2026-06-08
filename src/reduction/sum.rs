@@ -58,7 +58,7 @@ where
     }
 }
 
-// ── sum_axis_impl ──
+// ------------------------------ sum_axis_impl -------------------------------
 
 /// Reduce along a single axis, removing that axis from the output shape.
 ///
@@ -81,7 +81,7 @@ where
     Ok(output)
 }
 
-// ── sum_axis_keepdims_impl ──
+// -------------------------- sum_axis_keepdims_impl --------------------------
 
 /// Reduce along a single axis, keeping the reduced axis with length 1.
 ///
@@ -176,7 +176,7 @@ where
     None
 }
 
-// ── Axis validation ──
+// ----------------------------- Axis validation ------------------------------
 
 /// Validate that `axis` is within bounds for the given dimension shape.
 ///
@@ -272,7 +272,7 @@ where
     Ok(())
 }
 
-// ── dim_with_axis_set ──
+// ---------------------------- dim_with_axis_set -----------------------------
 
 /// Construct a new dimension identical to `dim` except that the component
 /// at `axis` is replaced with `value`.
@@ -351,7 +351,7 @@ where
     Some(acc + value)
 }
 
-// ── Unit tests for internal helpers ──
+// --------------------- Unit tests for internal helpers ----------------------
 
 #[cfg(test)]
 mod tests {
@@ -360,7 +360,7 @@ mod tests {
     use crate::error::XenonError;
     use crate::tensor::{Tensor, Tensor1};
 
-    // ── checked_add_step ──
+    // --------------------------- checked_add_step ---------------------------
 
     /// i32 normal addition returns the sum.
     #[test]
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(super::checked_add_step(0.0_f64, 2.5), Some(2.5));
     }
 
-    // ── force_scalar_for_integers ──
+    // ---------------------- force_scalar_for_integers -----------------------
 
     /// i32 is classified as a scalar-only integer type.
     #[test]
@@ -460,7 +460,7 @@ mod tests {
         assert!(!super::force_scalar_for_integers::<Complex<f32>>());
     }
 
-    // ── validate_axis ──
+    // ---------------------------- validate_axis -----------------------------
 
     /// Valid axes within [0, ndim) return Ok(()).
     #[test]
@@ -486,7 +486,7 @@ mod tests {
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
-    // ── dim_with_axis_set ──
+    // -------------------------- dim_with_axis_set ---------------------------
 
     /// Replacing a valid axis component produces the expected dimension.
     #[test]
@@ -504,7 +504,7 @@ mod tests {
         assert!(matches!(err, XenonError::InvalidAxis { .. }));
     }
 
-    // ── try_sum_serial ──
+    // ---------------------------- try_sum_serial ----------------------------
 
     /// Serial sum of i32 elements equals their arithmetic total.
     #[test]
@@ -535,7 +535,7 @@ mod tests {
         super::try_sum_serial(&x);
     }
 
-    // ── accumulate_axis overflow ──
+    // ----------------------- accumulate_axis overflow -----------------------
 
     /// accumulate_axis panics on i32 overflow in the reduction loop.
     #[test]
@@ -547,7 +547,7 @@ mod tests {
         let _ = super::accumulate_axis(&x, Axis(0), &mut output);
     }
 
-    // ── accumulate_axis_keepdims overflow ──
+    // ------------------ accumulate_axis_keepdims overflow -------------------
 
     /// accumulate_axis_keepdims panics on i32 overflow in the reduction loop.
     #[test]

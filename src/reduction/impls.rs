@@ -9,7 +9,7 @@ use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-// ── Public API: sum / sum_axis_keepdims (D: Dimension) ──
+// ------------ Public API: sum / sum_axis_keepdims (D: Dimension) ------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -39,7 +39,7 @@ where
     }
 }
 
-// ── Public API: sum_axis (D: Dimension + RemoveAxis) ──
+// ------------- Public API: sum_axis (D: Dimension + RemoveAxis) -------------
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -57,7 +57,7 @@ where
     }
 }
 
-// ── Unit tests ──
+// -------------------------------- Unit tests --------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -68,7 +68,7 @@ mod tests {
     use crate::reduction::sum;
     use crate::tensor::{Tensor, Tensor1};
 
-    // ── sum() ──
+    // -------------------------------- sum() ---------------------------------
 
     /// i32 sum of three elements equals their total.
     #[test]
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(result.im, 5.0);
     }
 
-    // ── sum_axis() ──
+    // ------------------------------ sum_axis() ------------------------------
 
     /// sum_axis on a 2D F-order tensor sums along the specified axis, collapsing it.
     #[test]
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[0, 0, 0]);
     }
 
-    // ── sum_axis_keepdims() ──
+    // ------------------------- sum_axis_keepdims() --------------------------
 
     /// sum_axis_keepdims preserves the reduced axis with length 1.
     #[test]
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[0, 0, 0]);
     }
 
-    // ── Dispatch consistency ──
+    // ------------------------- Dispatch consistency -------------------------
 
     /// f32 finite-value tolerance for dispatch consistency comparisons.
     /// Accounts for accumulated floating-point rounding error proportional to
