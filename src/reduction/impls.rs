@@ -201,7 +201,8 @@ mod tests {
     /// sum_axis_keepdims with out-of-bounds axis returns InvalidAxis error.
     #[test]
     fn test_sum_axis_keepdims_invalid_axis() {
-        let x = Tensor::<i32, Ix2>::zeros((2, 3)).expect("valid test input");
+        let x = Tensor::<i32, Ix2>::zeros((2, 3))
+            .expect("valid test input");
         assert!(matches!(
             x.sum_axis_keepdims(Axis(2)),
             Err(XenonError::InvalidAxis { .. })
@@ -212,13 +213,14 @@ mod tests {
     /// reduced axis set to length 1; all output slots are zero.
     #[test]
     fn test_sum_axis_keepdims_zero_len_axis() {
-        let x = Tensor::<i32, Ix2>::from_shape_vec((0, 3), vec![]).expect("valid test input");
+        let x = Tensor::<i32, Ix2>::from_shape_vec((0, 3), vec![])
+            .expect("valid test input");
         let y = x.sum_axis_keepdims(Axis(0)).expect("valid test input");
         assert_eq!(y.shape(), &[1, 3]);
         assert_eq!(y.as_slice().expect("contiguous tensor"), &[0, 0, 0]);
     }
 
-    // ------------------------- Dispatch consistency -------------------------
+    // --- Dispatch consistency -----------------------------------------------
 
     /// SIMD sum path produces results consistent with the serial baseline
     /// within floating-point tolerance.
@@ -230,7 +232,8 @@ mod tests {
         let n = 2048;
         let data: Vec<f32> = (0..n).map(|v| (v as f32) * 0.5).collect();
         let max_abs = data.last().copied().unwrap_or(0.0).abs();
-        let x = Tensor1::from_shape_vec(Ix1(n), data).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(n), data)
+            .expect("valid test input");
         let dispatched = x.sum();
         let serial = sum::try_sum_serial(&x);
         assert!(
@@ -249,7 +252,8 @@ mod tests {
         let n = 100_000;
         let data: Vec<f32> = (0..n).map(|v| (v as f32) * 1e-3).collect();
         let max_abs = data.last().copied().unwrap_or(0.0).abs();
-        let x = Tensor1::from_shape_vec(Ix1(n), data).expect("valid test input");
+        let x = Tensor1::from_shape_vec(Ix1(n), data)
+            .expect("valid test input");
         let dispatched = x.sum();
         let serial = sum::try_sum_serial(&x);
         assert!(
