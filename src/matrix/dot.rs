@@ -25,6 +25,73 @@ use crate::error::{InvalidArgumentKind, XenonError};
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
+// ── Internal dot entry ──
+
+/// Vector dot product entry point.
+///
+/// See 12-matrix §5.1 for the final user-visible contract.
+///
+/// # Errors
+///
+/// Returns `XenonError::DimensionMismatch` when the two tensors do not
+/// have the same element count. Returns `XenonError::InvalidLayout`
+/// when shape product overflow or stride validation fails.
+pub(crate) fn dot_impl<S1, S2, A, D1, D2>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
+) -> Result<A, XenonError>
+where
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    A: Numeric + Copy + 'static + Send + Sync,
+    D1: Dimension,
+    D2: Dimension,
+{
+    validate_dot_inputs(a, b)?;
+
+    let is_contig = a.is_f_contiguous() && b.is_f_contiguous();
+    let (path, guard) = select_exec_path(a.len(), is_contig, alignment_ok(a, b));
+
+    match path {
+        ExecPath::Serial => Ok(try_dot_serial(a, b)),
+        ExecPath::Simd => {
+            let _ = guard;
+            #[cfg(feature = "simd")]
+            {
+                if can_use_simd_dot::<A, _, _, _, _>(a, b)
+                    && let Some(v) = try_dot_simd(a, b)
+                {
+                    return Ok(v);
+                }
+            }
+            Ok(try_dot_serial(a, b))
+        },
+        ExecPath::Parallel => {
+            // Dispatch invariant (30-dispatch §5.5 line 166): when
+            // ExecPath::Parallel is returned, guard MUST be Some.
+            let guard = match guard {
+                Some(g) => g,
+                None => unreachable!(
+                    "dispatch returned (ExecPath::Parallel, None) — \
+                     invariant violated, see 30-dispatch §5.5 line 166"
+                ),
+            };
+
+            #[cfg(feature = "parallel")]
+            {
+                let strategy = ParallelExecStrategy::auto();
+                crate::parallel::dot::par_dot::<_, _, A, _, _>(a, b, &strategy, guard)
+            }
+
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                Ok(try_dot_serial(a, b))
+            }
+        },
+    }
+}
+
 // ── Validation ──
 
 fn validate_dot_inputs<S1, S2, A, D1, D2>(
@@ -244,73 +311,6 @@ fn reinterpret_value<A: 'static + Copy, B: 'static + Copy>(v: A) -> B {
     debug_assert_eq!(TypeId::of::<A>(), TypeId::of::<B>());
     // SAFETY: TypeId equality implies same size / alignment / niche.
     unsafe { std::mem::transmute_copy::<A, B>(&v) }
-}
-
-// ── Internal dot entry ──
-
-/// Vector dot product entry point.
-///
-/// See 12-matrix §5.1 for the final user-visible contract.
-///
-/// # Errors
-///
-/// Returns `XenonError::DimensionMismatch` when the two tensors do not
-/// have the same element count. Returns `XenonError::InvalidLayout`
-/// when shape product overflow or stride validation fails.
-pub(crate) fn dot_impl<S1, S2, A, D1, D2>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-) -> Result<A, XenonError>
-where
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    A: Numeric + Copy + 'static + Send + Sync,
-    D1: Dimension,
-    D2: Dimension,
-{
-    validate_dot_inputs(a, b)?;
-
-    let is_contig = a.is_f_contiguous() && b.is_f_contiguous();
-    let (path, guard) = select_exec_path(a.len(), is_contig, alignment_ok(a, b));
-
-    match path {
-        ExecPath::Serial => Ok(try_dot_serial(a, b)),
-        ExecPath::Simd => {
-            let _ = guard;
-            #[cfg(feature = "simd")]
-            {
-                if can_use_simd_dot::<A, _, _, _, _>(a, b)
-                    && let Some(v) = try_dot_simd(a, b)
-                {
-                    return Ok(v);
-                }
-            }
-            Ok(try_dot_serial(a, b))
-        },
-        ExecPath::Parallel => {
-            // Dispatch invariant (30-dispatch §5.5 line 166): when
-            // ExecPath::Parallel is returned, guard MUST be Some.
-            let guard = match guard {
-                Some(g) => g,
-                None => unreachable!(
-                    "dispatch returned (ExecPath::Parallel, None) — \
-                     invariant violated, see 30-dispatch §5.5 line 166"
-                ),
-            };
-
-            #[cfg(feature = "parallel")]
-            {
-                let strategy = ParallelExecStrategy::auto();
-                crate::parallel::dot::par_dot::<_, _, A, _, _>(a, b, &strategy, guard)
-            }
-
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                Ok(try_dot_serial(a, b))
-            }
-        },
-    }
 }
 
 // ── Unit tests ──
