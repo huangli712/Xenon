@@ -271,6 +271,8 @@ where
         || t == TypeId::of::<Complex<f64>>()
 }
 
+// --- Per-type accumulation ---------------------------------------------------
+
 /// Per‑step dot‑product accumulation with type‑aware arithmetic.
 ///
 /// - `i32`, `i64`: checked multiply then checked add; integer overflow is
@@ -301,12 +303,14 @@ where
         let acci: i32 = unsafe { *(&acc as *const A as *const i32) };
         let product = xi.checked_mul(yi).unwrap_or_else(|| {
             panic!(
-                "dot: integer overflow during multiplication at element {index} of shape [{len}] (type i32)"
+                "dot: integer overflow during multiplication at \
+                 element {index} of shape [{len}] (type i32)"
             )
         });
         let sum = acci.checked_add(product).unwrap_or_else(|| {
             panic!(
-                "dot: integer overflow during accumulation at element {index} of shape [{len}] (type i32)"
+                "dot: integer overflow during accumulation at \
+                 element {index} of shape [{len}] (type i32)"
             )
         });
         // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
@@ -319,12 +323,14 @@ where
         let acci: i64 = unsafe { *(&acc as *const A as *const i64) };
         let product = xi.checked_mul(yi).unwrap_or_else(|| {
             panic!(
-                "dot: integer overflow during multiplication at element {index} of shape [{len}] (type i64)"
+                "dot: integer overflow during multiplication at \
+                 element {index} of shape [{len}] (type i64)"
             )
         });
         let sum = acci.checked_add(product).unwrap_or_else(|| {
             panic!(
-                "dot: integer overflow during accumulation at element {index} of shape [{len}] (type i64)"
+                "dot: integer overflow during accumulation at \
+                 element {index} of shape [{len}] (type i64)"
             )
         });
         // SAFETY: `A == i64`; reinterpreting `i64` as `A` is identity.
@@ -336,8 +342,6 @@ where
     // non-integer supported types and preserves IEEE 754 NaN / Inf semantics.
     acc + x.conjugate() * y
 }
-
-// --- Unit tests --------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
