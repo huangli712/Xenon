@@ -198,7 +198,7 @@ fn invalid_rank(argument: &'static str) -> XenonError {
 // ── Alignment ──
 
 #[inline]
-fn alignment_ok<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> bool
+pub(crate) fn alignment_ok<S1, S2, A, D1, D2>(a: &TensorBase<S1, D1>, b: &TensorBase<S2, D2>) -> bool
 where
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
