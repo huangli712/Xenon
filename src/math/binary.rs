@@ -12,9 +12,9 @@ use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Private per-type dispatch trait for binary arithmetic
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Per-type binary arithmetic dispatch for add / sub / mul / div.
 ///
@@ -49,7 +49,7 @@ pub(crate) trait BinaryArith: Numeric + crate::element::SimdElement + 'static {
     fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
 }
 
-// ========== Integer impls (checked arithmetic with diagnostic panic) ==========
+// --------- Integer impls (checked arithmetic with diagnostic panic) ---------
 
 /// `BinaryArith` for `i32`: checked arithmetic. Overflow, division by
 /// zero, and `i32::MIN / -1` panic with operation, type, operand values,
@@ -179,7 +179,7 @@ impl BinaryArith for i64 {
     }
 }
 
-// ========== Float impls (IEEE 754, never panic) ==========
+// ------------------- Float impls (IEEE 754, never panic) --------------------
 
 /// `BinaryArith` for `f32`: ordinary IEEE 754 `+` / `-` / `*` / `/`;
 /// never panics. NaN and Inf propagate per IEEE 754.
@@ -223,7 +223,7 @@ impl BinaryArith for f64 {
     }
 }
 
-// ========== Complex impls ==========
+// ------------------------------ Complex impls -------------------------------
 
 /// `BinaryArith` for `Complex<f32>`: ordinary `+` / `-` / `*` / `/`
 /// inherited from the `Numeric` supertraits; never panics. NaN
@@ -269,9 +269,9 @@ impl BinaryArith for crate::complex::Complex<f64> {
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Public arithmetic methods: tensor-tensor add/sub/mul/div
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[expect(
     private_bounds,
@@ -421,9 +421,9 @@ where
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Scalar arithmetic variants
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[expect(private_bounds, reason = "BinaryArith is a private sealed trait")]
 impl<S, D, A> TensorBase<S, D>
@@ -557,9 +557,9 @@ where
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Broadcast-aware binary helper with index/shape context
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Broadcast-aware binary traversal with element-index + shape context
 /// propagated into the kernel closure — needed so integer overflow /
@@ -598,9 +598,9 @@ where
     Ok(result)
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Dispatch-aware helpers for arithmetic
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 /// Non-broadcasting binary traversal helper. Assumes `a` and `b` have
 /// identical shapes (caller is responsible for `broadcast_to` upstream).
@@ -719,9 +719,9 @@ where
     }
 }
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Tests
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
