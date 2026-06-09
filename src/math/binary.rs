@@ -10,6 +10,7 @@ use crate::dispatch::{ExecPath, select_exec_path};
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
 use crate::storage::Storage;
+use crate::complex::Complex;
 use crate::tensor::{Tensor, TensorBase};
 
 // ----------------------------------------------------------------------------
@@ -250,7 +251,7 @@ impl BinaryArith for crate::complex::Complex<f32> {
 /// `BinaryArith` for `Complex<f64>`: ordinary `+` / `-` / `*` / `/`
 /// inherited from the `Numeric` supertraits; never panics. NaN
 /// propagation follows the underlying `f64` IEEE 754 semantics.
-impl BinaryArith for crate::complex::Complex<f64> {
+impl BinaryArith for Complex<f64> {
     #[inline]
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a + b
