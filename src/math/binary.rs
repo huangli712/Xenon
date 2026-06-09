@@ -5,8 +5,9 @@
 
 use crate::broadcast::broadcast_shape;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
-#[cfg(feature = "parallel")]
+#[cfg(all(feature = "simd", feature = "parallel"))]
 use crate::dispatch::ParallelExecStrategy;
+#[cfg(feature = "simd")]
 use crate::dispatch::{ExecPath, select_exec_path};
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric};
 use crate::error::XenonError;
