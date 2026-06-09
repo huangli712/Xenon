@@ -5,9 +5,11 @@
  //! trait-impl visibility; only `Scalar` needs to be named explicitly by
  //! user code.
 
- pub mod scalar;
- pub mod owned;
- pub mod view;
+pub mod scalar;
+pub mod add;
+pub mod sub;
+pub mod mul;
+pub mod div;
+pub mod view;
 
- pub use scalar::Scalar;
-
+pub use scalar::Scalar;

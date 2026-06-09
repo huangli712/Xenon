@@ -1,0 +1,302 @@
+//! Owned `Tensor` Div operator overloading (W23T8).
+//!
+//! Provides `Div` implementations for pairs of
+//! `TensorBase<Owned<A>, D>` with broadcast support, right-scalar,
+//! `Scalar<A>` left-scalar, and native per-type left-scalar paths.
+
+use core::ops::Div;
+
+use crate::complex::Complex;
+use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::error::Result;
+use crate::math::BinaryArith;
+use crate::storage::Owned;
+use crate::tensor::{Tensor, TensorBase};
+
+use super::scalar::Scalar;
+
+// ==========================================================================
+// Div — tensor × tensor (W23T8)
+// ==========================================================================
+
+impl<A, D, E> Div<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::div(&self, &rhs)
+    }
+}
+
+impl<'b, A, D, E> Div<&'b TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::div(self, rhs)
+    }
+}
+
+impl<'a, A, D, E> Div<&'a TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: &'a TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::div(&self, rhs)
+    }
+}
+
+impl<A, D, E> Div<TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::div(self, &rhs)
+    }
+}
+
+// ==========================================================================
+// Div — right scalar (W23T8)
+// ==========================================================================
+
+impl<A, D> Div<A> for TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+
+    fn div(self, rhs: A) -> Self::Output {
+        self.div_scalar(rhs)
+    }
+}
+
+impl<A, D> Div<A> for &TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+
+    fn div(self, rhs: A) -> Self::Output {
+        self.div_scalar(rhs)
+    }
+}
+
+// ==========================================================================
+// Div — Scalar<A> left (non-commutative → div_from_scalar) (W23T8)
+// ==========================================================================
+
+impl<A, D> Div<TensorBase<Owned<A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+
+    fn div(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
+        rhs.div_from_scalar(self.0)
+    }
+}
+
+impl<'a, A, D> Div<&'a TensorBase<Owned<A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+
+    fn div(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
+        rhs.div_from_scalar(self.0)
+    }
+}
+
+// ==========================================================================
+// Div — native left scalar per-type (W23T8)
+// ==========================================================================
+
+impl<D> Div<TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn div(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn div(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn div(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn div(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn div(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn div(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+
+// ==========================================================================
+// Unit tests (W23T8)
+// ==========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tensor::Tensor;
+
+    // ---- W23T8: Div ----
+    #[test]
+    fn test_div_basic() {
+        let left = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
+        let right = Tensor::from_shape_vec([2], vec![2.0, 3.0]).expect("valid test input");
+        assert_eq!((left / right).expect("broadcast succeeds").as_slice().expect("c"), &[4.0, 3.0]);
+    }
+
+    #[test]
+    fn test_div_ref_ref() {
+        let left = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
+        let right = Tensor::from_shape_vec([2], vec![2.0, 3.0]).expect("valid test input");
+        let result = (&left / &right).expect("broadcast succeeds");
+        assert_eq!(left.as_slice().expect("c"), &[8.0, 9.0]);
+        assert_eq!(result.as_slice().expect("c"), &[4.0, 3.0]);
+    }
+
+    #[test]
+    fn test_div_right_scalar() {
+        let tensor = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
+        assert_eq!((tensor / 2.0).as_slice().expect("c"), &[4.0, 4.5]);
+    }
+
+    #[test]
+    fn test_div_scalar_wrapper_left_noncommutative() {
+        let tensor = Tensor::from_shape_vec([2], vec![2.0, 4.0]).expect("valid test input");
+        assert_eq!((Scalar(8.0) / tensor).as_slice().expect("c"), &[4.0, 2.0]);
+    }
+
+    #[test]
+    fn test_div_native_left_scalar_f64() {
+        let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        assert_eq!((8.0f64 / tensor).as_slice().expect("c"), &[4.0, 2.0]);
+    }
+}
