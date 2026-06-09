@@ -552,15 +552,11 @@ where
         let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
         match path {
             // No bool SIMD kernel in W14; Serial and Simd fall through to
-            // the inline scalar loop. Parallel routes through par_map (W15).
+            // the scalar `apply_unary_map` baseline. Parallel routes through
+            // par_map (W15).
             ExecPath::Serial | ExecPath::Simd => {
                 let _ = guard;
-                let mut result =
-                    Tensor::zeros(self.raw_dim()).expect("input dimension must be valid");
-                for (dst, &src) in result.iter_mut().zip(self.iter()) {
-                    *dst = !src;
-                }
-                result
+                apply_unary_map(self, |x| !x)
             },
             ExecPath::Parallel => {
                 #[cfg(feature = "parallel")]
@@ -572,12 +568,7 @@ where
                 #[cfg(not(feature = "parallel"))]
                 {
                     let _ = guard;
-                    let mut result =
-                        Tensor::zeros(self.raw_dim()).expect("input dimension must be valid");
-                    for (dst, &src) in result.iter_mut().zip(self.iter()) {
-                        *dst = !src;
-                    }
-                    result
+                    apply_unary_map(self, |x| !x)
                 }
             },
         }
