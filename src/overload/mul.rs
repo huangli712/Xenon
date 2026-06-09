@@ -553,12 +553,30 @@ mod tests {
     use super::*;
     use crate::tensor::Tensor;
 
-    // ---- Mul ----
+    #[test]
+    fn test_scalar_wrapper_construct() {
+        let scalar = Scalar(2i32);
+        assert_eq!(scalar.0, 2);
+    }
+
+    // ---- Scalar ----
+
     #[test]
     fn test_mul_basic() {
         let left = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![4, 5]).expect("valid test input");
         assert_eq!((left * right).expect("broadcast succeeds").as_slice().expect("c"), &[8, 15]);
+    }
+
+    // ---- Owned — tensor ----
+
+    #[test]
+    fn test_mul_broadcast() {
+        let left = Tensor::from_shape_vec([2, 3], vec![2, 3, 4, 5, 6, 7]).expect("valid test input");
+        let right = Tensor::from_shape_vec([3], vec![10, 20, 30]).expect("valid test input");
+        let result = (left * right).expect("broadcast succeeds");
+        assert_eq!(result.shape(), &[2, 3]);
+        assert_eq!(result.as_slice().expect("contiguous"), &[20, 30, 80, 100, 180, 210]);
     }
 
     #[test]
@@ -594,10 +612,19 @@ mod tests {
         assert_eq!((tensor * 4).as_slice().expect("c"), &[8, 12]);
     }
 
+    // ---- Owned — scalar ----
+
     #[test]
-    fn test_mul_scalar_wrapper_left_commutative() {
+    fn test_mul_scalar_wrapper_left() {
         let tensor = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
         assert_eq!((Scalar(4) * tensor).as_slice().expect("c"), &[8, 12]);
+    }
+
+    #[test]
+    fn test_mul_scalar_wrapper_left_ref() {
+        let tensor = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
+        assert_eq!((Scalar(4) * &tensor).as_slice().expect("c"), &[8, 12]);
+        assert_eq!(tensor.as_slice().expect("c"), &[2, 3]);
     }
 
     #[test]
@@ -607,19 +634,22 @@ mod tests {
     }
 
     #[test]
+    fn test_mul_native_left_scalar_f64_ref() {
+        let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
+        assert_eq!((4.0f64 * &tensor).as_slice().expect("c"), &[8.0, 12.0]);
+        assert_eq!(tensor.as_slice().expect("c"), &[2.0f64, 3.0]);
+    }
+
+    #[test]
     fn test_mul_native_left_scalar_i32() {
         let tensor = Tensor::from_shape_vec([2], vec![2i32, 3]).expect("valid test input");
         assert_eq!((4i32 * tensor).as_slice().expect("c"), &[8i32, 12i32]);
     }
 
-    // ---- TensorView ----
     #[test]
-    fn test_view_mul_right_and_left() {
-        let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
-        let v = t.view();
-        assert_eq!((&v * 4.0).as_slice().expect("c"), &[8.0, 12.0]);
-        assert_eq!((Scalar(4.0) * &v).as_slice().expect("c"), &[8.0, 12.0]);
-        assert_eq!((4.0 * &v).as_slice().expect("c"), &[8.0, 12.0]);
+    fn test_mul_native_left_scalar_i64() {
+        let tensor = Tensor::from_shape_vec([2], vec![2i64, 3]).expect("valid test input");
+        assert_eq!((4i64 * tensor).as_slice().expect("c"), &[8i64, 12i64]);
     }
 
     #[test]
@@ -628,29 +658,11 @@ mod tests {
         assert_eq!((&tensor * 4).as_slice().expect("c"), &[8, 12]);
     }
 
-
-    #[test]
-    fn test_mul_scalar_wrapper_left_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
-        assert_eq!((Scalar(4) * &tensor).as_slice().expect("c"), &[8, 12]);
-        assert_eq!(tensor.as_slice().expect("c"), &[2, 3]);
-    }
-
-
-    #[test]
-    fn test_mul_native_left_scalar_f64_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
-        assert_eq!((4.0f64 * &tensor).as_slice().expect("c"), &[8.0, 12.0]);
-        assert_eq!(tensor.as_slice().expect("c"), &[2.0f64, 3.0]);
-    }
-
-
     #[test]
     fn test_mul_native_left_scalar_f32() {
         let tensor = Tensor::from_shape_vec([2], vec![2.0, 3.0f32]).expect("valid test input");
         assert_eq!((4.0f32 * tensor).as_slice().expect("c"), &[8.0, 12.0f32]);
     }
-
 
     #[test]
     fn test_view_mul_view() {
@@ -663,6 +675,7 @@ mod tests {
         assert_eq!(left.as_slice().expect("c"), &[2, 3, 4, 5]);
     }
 
+    // ---- View — tensor ----
 
     #[test]
     fn test_view_mul_owned() {
@@ -672,7 +685,6 @@ mod tests {
         let result = (&lv * &right).expect("broadcast succeeds");
         assert_eq!(result.as_slice().expect("c"), &[12, 21, 32, 45]);
     }
-
 
     #[test]
     fn test_view_owned_mul_view() {
@@ -684,26 +696,13 @@ mod tests {
     }
 
     #[test]
-    fn test_mul_native_left_scalar_i64() {
-        let tensor = Tensor::from_shape_vec([2], vec![2i64, 3]).expect("valid test input");
-        assert_eq!((4i64 * tensor).as_slice().expect("c"), &[8i64, 12i64]);
-    }
-
-    #[test]
-    fn test_mul_broadcast() {
-        let left = Tensor::from_shape_vec([2, 3], vec![2, 3, 4, 5, 6, 7]).expect("valid test input");
-        let right = Tensor::from_shape_vec([3], vec![10, 20, 30]).expect("valid test input");
-        let result = (left * right).expect("broadcast succeeds");
-        assert_eq!(result.shape(), &[2, 3]);
-        assert_eq!(result.as_slice().expect("contiguous"), &[20, 30, 80, 100, 180, 210]);
-    }
-
-    #[test]
     fn test_view_mul_right_scalar() {
         let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
         let v = t.view();
         assert_eq!((&v * 4.0).as_slice().expect("c"), &[8.0, 12.0]);
     }
+
+    // ---- View — scalar ----
 
     #[test]
     fn test_view_mul_scalar_wrapper_left() {
@@ -720,9 +719,11 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_wrapper_construct() {
-        let scalar = Scalar(2i32);
-        assert_eq!(scalar.0, 2);
+    fn test_view_mul_combined() {
+        let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
+        let v = t.view();
+        assert_eq!((&v * 4.0).as_slice().expect("c"), &[8.0, 12.0]);
+        assert_eq!((Scalar(4.0) * &v).as_slice().expect("c"), &[8.0, 12.0]);
+        assert_eq!((4.0 * &v).as_slice().expect("c"), &[8.0, 12.0]);
     }
-
 }
