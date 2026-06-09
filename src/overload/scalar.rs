@@ -8,7 +8,7 @@
 /// Rust orphan rules forbid blanket impls such as
 /// `impl<T> Add<TensorBase<...>> for T`. Concrete primitive left-hand sides
 /// like `impl Add<Tensor<f32, D>> for f32` remain legal and are provided for
-/// Xenon's supported scalar set in `W23T5`–`W23T8` / `W23T10`.
+/// Xenon's supported scalar set in .
 ///
 /// Exported via `xenon::overload::Scalar` only — intentionally excluded from
 /// the prelude and top-level re-exports.

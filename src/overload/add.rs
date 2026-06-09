@@ -1,4 +1,4 @@
-//! Owned `Tensor` Add operator overloading (W23T3–T5).
+//! Owned `Tensor` Add operator overloading.
 //!
 //! Provides `Add` implementations for pairs of
 //! `TensorBase<Owned<A>, D>` with broadcast support, right-scalar,
@@ -15,12 +15,9 @@ use crate::tensor::{Tensor, TensorBase};
 
 use super::scalar::Scalar;
 
-// ==========================================================================
-// Scalar bound shorthand — both directions of BroadcastDim required by
-// add_scalar / sub_scalar / mul_scalar / div_scalar and *_from_scalar.
-// ==========================================================================
-// Add — owned tensor × owned tensor (W23T3)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — owned tensor × owned tensor
+// ----------------------------------------------------------------------------
 
 impl<A, D, E> Add<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
 where
@@ -35,9 +32,9 @@ where
     }
 }
 
-// ==========================================================================
-// Add — ref / mixed owned tensor combos (W23T4)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — ref / mixed owned tensor combos
+// ----------------------------------------------------------------------------
 
 // &Tensor + &Tensor
 impl<'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
@@ -81,9 +78,9 @@ where
     }
 }
 
-// ==========================================================================
-// Add — right scalar: Tensor + A, &Tensor + A (W23T5)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — right scalar: Tensor + A, &Tensor + A
+// ----------------------------------------------------------------------------
 
 impl<A, D> Add<A> for TensorBase<Owned<A>, D>
 where
@@ -111,9 +108,9 @@ where
     }
 }
 
-// ==========================================================================
-// Add — Scalar<A> left: Scalar<A> + Tensor, Scalar<A> + &Tensor (W23T5)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — Scalar<A> left: Scalar<A> + Tensor, Scalar<A> + &Tensor
+// ----------------------------------------------------------------------------
 
 impl<A, D> Add<TensorBase<Owned<A>, D>> for Scalar<A>
 where
@@ -141,9 +138,9 @@ where
     }
 }
 
-// ==========================================================================
-// Add — native left scalar per-type (W23T5)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — native left scalar per-type
+// ----------------------------------------------------------------------------
 
 impl<D> Add<TensorBase<Owned<f32>, D>> for f32
 where
@@ -266,18 +263,14 @@ where
     }
 }
 
-// ==========================================================================
-// Unit tests (W23T3–T5)
-// ==========================================================================
-
-// ==========================================================================
-// TensorView — ADD (W23T9–T10)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// TensorView — ADD
+// ----------------------------------------------------------------------------
 
 
-// ==========================================================================
-// Add — TensorView × tensor (W23T9)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — TensorView × tensor
+// ----------------------------------------------------------------------------
 
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
     for &'a TensorBase<ViewRepr<'a, A>, D>
@@ -322,10 +315,9 @@ where
 }
 
 
-
-// ==========================================================================
-// Add — TensorView right scalar (W23T10)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — TensorView right scalar
+// ----------------------------------------------------------------------------
 
 impl<'a, A, D> Add<A> for TensorBase<ViewRepr<'a, A>, D>
 where
@@ -352,10 +344,9 @@ where
 }
 
 
-
-// ==========================================================================
-// Add — TensorView Scalar<A> left (W23T10)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// Add — TensorView Scalar<A> left
+// ----------------------------------------------------------------------------
 
 impl<'a, A, D> Add<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
 where
@@ -382,10 +373,9 @@ where
 }
 
 
-
-// ==========================================================================
-// TensorView — native left scalar per-type (W23T10)
-// ==========================================================================
+// ----------------------------------------------------------------------------
+// TensorView — native left scalar per-type
+// ----------------------------------------------------------------------------
 
 impl<'a, D> Add<TensorBase<ViewRepr<'a, f32>, D>> for f32
 where
@@ -508,19 +498,23 @@ where
     }
 }
 
+// ----------------------------------------------------------------------------
+// Unit tests
+// ----------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tensor::Tensor;
 
-    // ---- W23T2: Scalar wrapper construction ----
+    // ---- Scalar wrapper construction ----
     #[test]
     fn test_scalar_wrapper_construct() {
         let scalar = Scalar(2i32);
         assert_eq!(scalar.0, 2);
     }
 
-    // ---- W23T3: Add same-shape ----
+    // ---- Add same-shape ----
     #[test]
     fn test_add_same_shape() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -529,7 +523,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("contiguous"), &[4, 6]);
     }
 
-    // ---- W23T3: Add broadcast ----
+    // ---- Add broadcast ----
     //
     // Xenon stores tensors in F-order (column-major) per
     // `00-coding.md §14 决策 1`. For shape=[2,3] data=[1,2,3,4,5,6]:
@@ -541,7 +535,7 @@ mod tests {
     //   (0,2)=5+30=35, (1,2)=6+30=36
     // F-order memory layout: [11, 12, 23, 24, 35, 36].
     //
-    // The W23T3 design doc Step 2 sample expects the C-order layout
+    // The original design doc sample expects the C-order layout
     // [11,22,33,14,25,36]; that sample is inconsistent with Xenon's
     // F-order baseline and is corrected here to the F-order value.
     #[test]
@@ -556,7 +550,7 @@ mod tests {
         );
     }
 
-    // ---- W23T4: ref/mixed owned tensor Add combos ----
+    // ---- ref/mixed owned tensor Add combos ----
     #[test]
     fn test_add_ref_ref() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -585,7 +579,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
 
-    // ---- W23T5: Add scalar paths ----
+    // ---- Add scalar paths ----
     #[test]
     fn test_add_right_scalar() {
         let tensor = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -624,8 +618,8 @@ mod tests {
         assert_eq!((5i32 + tensor).as_slice().expect("c"), &[6i32, 7i32]);
     }
 
-    // ---- W23T9-T10: TensorView ----
-    // ---- W23T9: TensorView tensor×tensor ----
+    // ---- TensorView ----
+    // ---- TensorView tensor×tensor ----
     #[test]
     fn test_add_view_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
@@ -666,7 +660,7 @@ mod tests {
         assert_eq!((&av / &bv).expect("broadcast succeeds").as_slice().expect("c"), &[4.0, 3.0]);
     }
 
-    // ---- W23T10: TensorView scalar ----
+    // ---- TensorView scalar ----
     #[test]
     fn test_view_add_right_scalar() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
