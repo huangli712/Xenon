@@ -5,14 +5,9 @@
 //! re-exports are needed: method visibility is governed by the
 //! `impl<...> TensorBase<...>` blocks themselves.
 //!
-//! The `helpers` submodule centralizes the shared element-wise traversal
-//! skeletons consumed by `binary` / `unary` / `comparison`. Helpers are
-//! `pub(in crate::math)` so all three submodules see them without leaking
-//! to the crate surface.
 
 mod binary;
 mod comparison;
-mod helpers;
 mod unary;
 
 pub(crate) use binary::BinaryArith;
