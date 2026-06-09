@@ -33,10 +33,6 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// Add — ref / mixed owned tensor combos
-// ----------------------------------------------------------------------------
-
 // &Tensor + &Tensor
 impl<'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
 where
@@ -161,6 +157,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<&'a TensorBase<Owned<f32>, D>> for f32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -172,6 +169,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<D> Add<TensorBase<Owned<f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -183,6 +181,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<&'a TensorBase<Owned<f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -194,6 +193,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<D> Add<TensorBase<Owned<i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -205,6 +205,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<&'a TensorBase<Owned<i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -216,6 +217,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<D> Add<TensorBase<Owned<i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -227,6 +229,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<&'a TensorBase<Owned<i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -238,6 +241,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<D> Add<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -249,6 +253,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -260,6 +265,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<D> Add<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -271,6 +277,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -286,7 +293,6 @@ where
 // ----------------------------------------------------------------------------
 // TensorView — ADD
 // ----------------------------------------------------------------------------
-
 
 // ----------------------------------------------------------------------------
 // Add — TensorView × tensor
@@ -337,7 +343,6 @@ where
     }
 }
 
-
 // ----------------------------------------------------------------------------
 // Add — TensorView right scalar
 // ----------------------------------------------------------------------------
@@ -368,7 +373,6 @@ where
     }
 }
 
-
 // ----------------------------------------------------------------------------
 // Add — TensorView Scalar<A> left
 // ----------------------------------------------------------------------------
@@ -398,7 +402,6 @@ where
         rhs.add_scalar(self.0)
     }
 }
-
 
 // ----------------------------------------------------------------------------
 // TensorView — native left scalar per-type
