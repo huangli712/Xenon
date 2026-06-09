@@ -8,11 +8,17 @@ use crate::dimension::Dimension;
 use crate::dispatch::ParallelExecStrategy;
 use crate::dispatch::{ExecPath, select_exec_path};
 use crate::element::{
-    CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar,
+    CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar, SimdElement,
 };
 
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
+#[cfg(feature = "simd")]
+use crate::simd::{UnaryOp, dispatch_vector_unary_op};
+#[cfg(feature = "parallel")]
+use crate::parallel::unary::par_map;
+#[cfg(feature = "simd")]
+use core::any::TypeId;
 
 // ----------------------------------------------------------------------------
 // Private per-type dispatch traits
@@ -41,7 +47,7 @@ use crate::tensor::{Tensor, TensorBase};
 /// (`i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>`) already
 /// implement `SimdElement`, so adding the supertrait does not narrow the
 /// sealed set.
-trait UnaryArith: Numeric + crate::element::SimdElement + 'static {
+trait UnaryArith: Numeric + SimdElement + 'static {
     /// Element-wise negation; integer path panics on `MIN`.
     fn neg_step(x: Self) -> Self;
     /// Element-wise square `x * x`; integer path panics on overflow.
@@ -191,7 +197,7 @@ impl UnaryArith for f64 {
 
 /// Unary step for `Complex<f32>`: standard `Neg` and `Mul` operators; NaN /
 /// Inf propagate per IEEE 754 on the real and imaginary components.
-impl UnaryArith for crate::complex::Complex<f32> {
+impl UnaryArith for Complex<f32> {
     #[inline]
     fn neg_step(x: Self) -> Self {
         -x
@@ -204,7 +210,7 @@ impl UnaryArith for crate::complex::Complex<f32> {
 
 /// Unary step for `Complex<f64>`: standard `Neg` and `Mul` operators; NaN /
 /// Inf propagate per IEEE 754 on the real and imaginary components.
-impl UnaryArith for crate::complex::Complex<f64> {
+impl UnaryArith for Complex<f64> {
     #[inline]
     fn neg_step(x: Self) -> Self {
         -x
@@ -229,7 +235,7 @@ impl UnaryArith for crate::complex::Complex<f64> {
 /// impls (`i32` / `i64` / `f32` / `f64`) already implement `SimdElement`,
 /// so the supertrait does not narrow the sealed set.
 trait OrderedUnaryArith:
-    Numeric + OrderedCompareElement + crate::element::SimdElement + 'static
+    Numeric + OrderedCompareElement + SimdElement + 'static
 {
     /// Element-wise absolute value; integer path panics on `MIN`.
     fn abs_step(x: Self) -> Self;
@@ -380,7 +386,6 @@ where
     pub fn abs(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
@@ -401,7 +406,6 @@ where
     pub fn signum(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
@@ -440,13 +444,12 @@ where
     pub fn neg(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
                     self,
                     |x| <A as UnaryArith>::neg_step(x),
-                    Some(crate::simd::UnaryOp::Neg),
+                    Some(UnaryOp::Neg),
                 );
             }
         }
@@ -460,7 +463,6 @@ where
     pub fn square(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_unary_with_dispatch(
@@ -608,7 +610,7 @@ where
                 {
                     let strat = ParallelExecStrategy::auto();
                     let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                    crate::parallel::unary::par_map(self, &strat, g, |x| !*x)
+                    par_map(self, &strat, g, |x| !*x)
                 }
                 #[cfg(not(feature = "parallel"))]
                 {
@@ -695,7 +697,7 @@ where
 /// of this helper always falls through to scalar.
 ///
 /// **Real acceleration today**: Parallel path via
-/// `crate::parallel::unary::par_map` when the `parallel` feature is
+/// `par_map` when the `parallel` feature is
 /// enabled and `select_exec_path` returns `ExecPath::Parallel`.
 ///
 /// **Future-proof**: When SIMD coverage is extended (e.g. a new
@@ -725,7 +727,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
+                par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -747,10 +749,10 @@ where
 fn apply_unary_with_dispatch<A, S, D, F>(
     input: &TensorBase<S, D>,
     op: F,
-    op_tag: Option<crate::simd::UnaryOp>,
+    op_tag: Option<UnaryOp>,
 ) -> Tensor<A, D>
 where
-    A: Element + crate::element::SimdElement,
+    A: Element + SimdElement,
     S: Storage<Elem = A>,
     D: Dimension,
     F: Fn(A) -> A + Copy + Send + Sync,
@@ -770,7 +772,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
+                par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -787,10 +789,10 @@ where
 #[cfg(feature = "simd")]
 fn try_simd_unary_via_slice<A, S, D>(
     input: &TensorBase<S, D>,
-    op_tag: Option<crate::simd::UnaryOp>,
+    op_tag: Option<UnaryOp>,
 ) -> Option<Tensor<A, D>>
 where
-    A: Element + crate::element::SimdElement,
+    A: Element + SimdElement,
     S: Storage<Elem = A>,
     D: Dimension,
 {
@@ -798,7 +800,7 @@ where
     let src: &[A] = input.as_slice()?;
     let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
-    if crate::simd::dispatch_vector_unary_op(tag, src, dst) {
+    if dispatch_vector_unary_op(tag, src, dst) {
         Some(result)
     } else {
         None
@@ -814,6 +816,7 @@ mod tests {
     use super::*;
     use crate::dimension::Ix1;
     use crate::tensor::Tensor;
+    use std::panic::catch_unwind;
 
     /// `abs` on an `i32` tensor returns the non-negative magnitude of each
     /// element (`abs(-3) == 3`, `abs(0) == 0`, `abs(5) == 5`).
@@ -862,7 +865,7 @@ mod tests {
         // UnaryArith::square_step for i32.
         let t =
             Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
-        let result = std::panic::catch_unwind(|| t.square());
+        let result = catch_unwind(|| t.square());
         assert!(result.is_err(), "i32::MAX squared must panic on overflow");
     }
 
