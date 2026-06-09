@@ -10,7 +10,7 @@ use crate::complex::Complex;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::error::Result;
 use crate::math::BinaryArith;
-use crate::storage::Owned;
+use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
 use super::scalar::Scalar;
@@ -260,6 +260,238 @@ where
 // Unit tests (W23T6)
 // ==========================================================================
 
+// ==========================================================================
+// TensorView — SUB (W23T9–T10)
+// ==========================================================================
+
+
+// ==========================================================================
+// Sub — TensorView × tensor (W23T9)
+// ==========================================================================
+
+impl<'a, 'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::sub(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Sub<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn sub(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::sub(self, rhs)
+    }
+}
+
+impl<'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::sub(self, rhs)
+    }
+}
+
+
+
+// ==========================================================================
+// Sub — TensorView right scalar (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Sub<A> for TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: A) -> Self::Output {
+        self.sub_scalar(rhs)
+    }
+}
+
+impl<'a, 'b, A, D> Sub<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: A) -> Self::Output {
+        self.sub_scalar(rhs)
+    }
+}
+
+
+
+// ==========================================================================
+// Sub — TensorView Scalar<A> left (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self.0)
+    }
+}
+
+impl<'a, 'b, A, D> Sub<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self.0)
+    }
+}
+
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,5 +530,14 @@ mod tests {
     fn test_sub_native_left_scalar_f64() {
         let tensor = Tensor::from_shape_vec([2], vec![5.0f64, 7.0]).expect("valid test input");
         assert_eq!((10.0f64 - tensor).as_slice().expect("c"), &[5.0, 3.0]);
+    }
+
+    // ---- W23T9-T10: TensorView ----
+    #[test]
+    fn test_view_sub_left_scalar_noncommutative() {
+        let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");
+        let v = t.view();
+        assert_eq!((Scalar(10.0) - &v).as_slice().expect("c"), &[7.0, 3.0]);
+        assert_eq!((10.0 - &v).as_slice().expect("c"), &[7.0, 3.0]);
     }
 }
