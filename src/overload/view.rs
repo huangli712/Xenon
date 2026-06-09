@@ -17,134 +17,415 @@ use crate::tensor::{Tensor, TensorBase};
 use super::scalar::Scalar;
 
 // ==========================================================================
-// TensorView — tensor × tensor (W23T9)
+// Add — TensorView × tensor (W23T9)
 // ==========================================================================
 
-macro_rules! view_tensor_binop {
-    ($trait:ident, $method:ident) => {
-        // &TensorView + &TensorView
-        impl<'a, 'b, A, D, E> $trait<&'b TensorBase<ViewRepr<'b, A>, E>>
-            for &'a TensorBase<ViewRepr<'a, A>, D>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<E>,
-            E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-        {
-            type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-            fn $method(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
-                TensorBase::$method(self, rhs)
-            }
-        }
-
-        // &TensorView + &Tensor
-        impl<'a, 'b, A, D, E> $trait<&'b TensorBase<Owned<A>, E>>
-            for &'a TensorBase<ViewRepr<'a, A>, D>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<E>,
-            E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-        {
-            type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
-
-            fn $method(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
-                TensorBase::$method(self, rhs)
-            }
-        }
-
-        // &Tensor + &TensorView
-        impl<'a, 'b, A, D, E> $trait<&'b TensorBase<ViewRepr<'b, A>, E>>
-            for &'a TensorBase<Owned<A>, D>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<E>,
-            E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-        {
-            type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
-
-            fn $method(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
-                TensorBase::$method(self, rhs)
-            }
-        }
-    };
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::add(self, rhs)
+    }
 }
 
-view_tensor_binop!(Add, add);
-view_tensor_binop!(Sub, sub);
-view_tensor_binop!(Mul, mul);
-view_tensor_binop!(Div, div);
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-// ==========================================================================
-// TensorView — right scalar (W23T10)
-// ==========================================================================
-
-macro_rules! view_right_scalar {
-    ($trait:ident, $method:ident, $delegate:ident) => {
-        impl<'a, A, D> $trait<A> for TensorBase<ViewRepr<'a, A>, D>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<Ix0, Output = D>,
-            Ix0: BroadcastDim<D, Output = D>,
-        {
-            type Output = Tensor<A, D>;
-            fn $method(self, rhs: A) -> Self::Output {
-                self.$delegate(rhs)
-            }
-        }
-        impl<'a, 'b, A, D> $trait<A> for &'b TensorBase<ViewRepr<'a, A>, D>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<Ix0, Output = D>,
-            Ix0: BroadcastDim<D, Output = D>,
-        {
-            type Output = Tensor<A, D>;
-            fn $method(self, rhs: A) -> Self::Output {
-                self.$delegate(rhs)
-            }
-        }
-    };
+    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::add(self, rhs)
+    }
 }
 
-view_right_scalar!(Add, add, add_scalar);
-view_right_scalar!(Sub, sub, sub_scalar);
-view_right_scalar!(Mul, mul, mul_scalar);
-view_right_scalar!(Div, div, div_scalar);
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-// ==========================================================================
-// TensorView — Scalar<A> left (W23T10)
-// ==========================================================================
-
-macro_rules! view_scalar_left {
-    ($trait:ident, $method:ident, $delegate:ident) => {
-        impl<'a, A, D> $trait<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<Ix0, Output = D>,
-            Ix0: BroadcastDim<D, Output = D>,
-        {
-            type Output = Tensor<A, D>;
-            fn $method(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
-                rhs.$delegate(self.0)
-            }
-        }
-        impl<'a, 'b, A, D> $trait<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
-        where
-            A: BinaryArith,
-            D: Dimension + BroadcastDim<Ix0, Output = D>,
-            Ix0: BroadcastDim<D, Output = D>,
-        {
-            type Output = Tensor<A, D>;
-            fn $method(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
-                rhs.$delegate(self.0)
-            }
-        }
-    };
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::add(self, rhs)
+    }
 }
 
-view_scalar_left!(Add, add, add_scalar);
-view_scalar_left!(Sub, sub, sub_from_scalar);
-view_scalar_left!(Mul, mul, mul_scalar);
-view_scalar_left!(Div, div, div_from_scalar);
+// ==========================================================================
+// Sub — TensorView × tensor (W23T9)
+// ==========================================================================
+
+impl<'a, 'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::sub(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Sub<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn sub(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::sub(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::sub(self, rhs)
+    }
+}
+
+// ==========================================================================
+// Mul — TensorView × tensor (W23T9)
+// ==========================================================================
+
+impl<'a, 'b, A, D, E> Mul<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::mul(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Mul<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn mul(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::mul(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Mul<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::mul(self, rhs)
+    }
+}
+
+// ==========================================================================
+// Div — TensorView × tensor (W23T9)
+// ==========================================================================
+
+impl<'a, 'b, A, D, E> Div<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::div(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Div<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        TensorBase::div(self, rhs)
+    }
+}
+
+impl<'a, 'b, A, D, E> Div<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<Owned<A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        TensorBase::div(self, rhs)
+    }
+}
+
+
+// ==========================================================================
+// Add — TensorView right scalar (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Add<A> for TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn add(self, rhs: A) -> Self::Output {
+        self.add_scalar(rhs)
+    }
+}
+
+impl<'a, 'b, A, D> Add<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn add(self, rhs: A) -> Self::Output {
+        self.add_scalar(rhs)
+    }
+}
+
+// ==========================================================================
+// Sub — TensorView right scalar (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Sub<A> for TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: A) -> Self::Output {
+        self.sub_scalar(rhs)
+    }
+}
+
+impl<'a, 'b, A, D> Sub<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: A) -> Self::Output {
+        self.sub_scalar(rhs)
+    }
+}
+
+// ==========================================================================
+// Mul — TensorView right scalar (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Mul<A> for TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn mul(self, rhs: A) -> Self::Output {
+        self.mul_scalar(rhs)
+    }
+}
+
+impl<'a, 'b, A, D> Mul<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn mul(self, rhs: A) -> Self::Output {
+        self.mul_scalar(rhs)
+    }
+}
+
+// ==========================================================================
+// Div — TensorView right scalar (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Div<A> for TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn div(self, rhs: A) -> Self::Output {
+        self.div_scalar(rhs)
+    }
+}
+
+impl<'a, 'b, A, D> Div<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn div(self, rhs: A) -> Self::Output {
+        self.div_scalar(rhs)
+    }
+}
+
+
+// ==========================================================================
+// Add — TensorView Scalar<A> left (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Add<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.add_scalar(self.0)
+    }
+}
+
+impl<'a, 'b, A, D> Add<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.add_scalar(self.0)
+    }
+}
+
+// ==========================================================================
+// Sub — TensorView Scalar<A> left (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self.0)
+    }
+}
+
+impl<'a, 'b, A, D> Sub<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self.0)
+    }
+}
+
+// ==========================================================================
+// Mul — TensorView Scalar<A> left (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Mul<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.mul_scalar(self.0)
+    }
+}
+
+impl<'a, 'b, A, D> Mul<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.mul_scalar(self.0)
+    }
+}
+
+// ==========================================================================
+// Div — TensorView Scalar<A> left (W23T10)
+// ==========================================================================
+
+impl<'a, A, D> Div<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.div_from_scalar(self.0)
+    }
+}
+
+impl<'a, 'b, A, D> Div<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: BinaryArith,
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<A, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.div_from_scalar(self.0)
+    }
+}
+
 
 // ==========================================================================
 // TensorView — native left scalar per-type (W23T10)
