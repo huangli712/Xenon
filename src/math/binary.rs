@@ -9,6 +9,8 @@ use crate::dispatch::ParallelExecStrategy;
 use crate::dispatch::{ExecPath, select_exec_path};
 #[cfg(feature = "simd")]
 use crate::simd::BinaryOp;
+#[cfg(feature = "simd")]
+use core::any::TypeId;
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
 use crate::storage::Storage;
@@ -308,7 +310,6 @@ where
     {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
@@ -341,7 +342,6 @@ where
     {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
@@ -374,7 +374,6 @@ where
     {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
@@ -407,7 +406,6 @@ where
     {
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
@@ -510,7 +508,6 @@ where
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
@@ -539,7 +536,6 @@ where
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         #[cfg(feature = "simd")]
         {
-            use core::any::TypeId;
             if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
             {
                 return apply_arith_with_dispatch(
@@ -656,8 +652,8 @@ where
     // methods above gate on TypeId before invoking this helper; this
     // assertion catches accidental misuse during development.
     debug_assert!(
-        core::any::TypeId::of::<A>() != core::any::TypeId::of::<i32>()
-            && core::any::TypeId::of::<A>() != core::any::TypeId::of::<i64>(),
+        TypeId::of::<A>() != TypeId::of::<i32>()
+            && TypeId::of::<A>() != TypeId::of::<i64>(),
         "apply_arith_with_dispatch must not be called with integer types; \
          use apply_binary_indexed instead to preserve per-element \
          diagnostic context"
@@ -731,6 +727,7 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix1, Ix2};
     use crate::tensor::Tensor;
+    use std::panic::catch_unwind;
 
     /// Element-wise `i32` addition over rank-1 tensors produces the
     /// pairwise sums.
@@ -790,7 +787,7 @@ mod tests {
         let a =
             Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
         let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![1]).expect("valid tensor shape");
-        let result = std::panic::catch_unwind(|| a.add(&b));
+        let result = catch_unwind(|| a.add(&b));
         assert!(result.is_err(), "i32::MAX + 1 must panic");
     }
 
