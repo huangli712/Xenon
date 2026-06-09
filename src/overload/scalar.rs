@@ -1,14 +1,15 @@
 //! Operator overloading shared types.
 //!
-//! Contains the [`Scalar`] newtype wrapper used by both
-//! [`super::owned`] and [`super::view`].
+//! Contains the [`Scalar`] newtype wrapper used by the
+//! operator overload modules ([`super::add`], [`super::sub`],
+//! [`super::mul`], [`super::div`]).
 
 /// Newtype wrapper for scalar values, enabling a generic left-scalar path.
 ///
 /// Rust orphan rules forbid blanket impls such as
 /// `impl<T> Add<TensorBase<...>> for T`. Concrete primitive left-hand sides
 /// like `impl Add<Tensor<f32, D>> for f32` remain legal and are provided for
-/// Xenon's supported scalar set in .
+/// Xenon's supported scalar types.
 ///
 /// Exported via `xenon::overload::Scalar` only — intentionally excluded from
 /// the prelude and top-level re-exports.
