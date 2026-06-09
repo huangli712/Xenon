@@ -1,7 +1,5 @@
 //! Binary element-wise operations: arithmetic (add/sub/mul/div) and
 //! the shared broadcast-aware traversal skeleton.
-//!
-//! Implemented by W16T2 (shared skeleton) and W16T6 (arithmetic methods).
 
 use crate::broadcast::broadcast_shape;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
@@ -18,22 +16,21 @@ use crate::tensor::{Tensor, TensorBase};
 // Private per-type dispatch trait for binary arithmetic
 // ============================================================================
 
-/// Per-type binary arithmetic step for add / sub / mul / div.
+/// Per-type binary arithmetic dispatch for add / sub / mul / div.
 ///
-/// Design reference: 11-math §5.3 (signatures) and §10 (panic fields).
 /// - Integer types (`i32`, `i64`): checked arithmetic via
 ///   `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedDiv`; overflow,
-///   division-by-zero, `MIN / -1` → panic with diagnostic text per §10.
+///   division-by-zero, and `MIN / -1` panic with diagnostic text that
+///   includes the operation, type, operand values, element index, and
+///   broadcast shape.
 /// - Floating types (`f32`, `f64`): ordinary `+` / `-` / `*` / `/`;
 ///   NaN / Inf propagation by IEEE 754.
 /// - Complex types (`Complex<f32>`, `Complex<f64>`): ordinary `+` / `-`
 ///   / `*` / `/` from the `Add` / `Sub` / `Mul` / `Div` supertraits on
 ///   `Numeric`; float-driven NaN propagation.
 ///
-/// Sealed via `Numeric: Sealed` (03-element §5.2). Consumers cannot add
-/// new impls; all six concrete `Numeric` types provide their own impl
-/// in this file.
-/// Per-type binary arithmetic dispatch trait.
+/// Sealed via `Numeric: Sealed`. Consumers cannot add new impls; all six
+/// concrete `Numeric` types provide their own impl in this file.
 ///
 /// `SimdElement` is included as a supertrait so the compiler can resolve
 /// `apply_arith_with_dispatch`'s `A: SimdElement` bound when the caller
@@ -41,11 +38,11 @@ use crate::tensor::{Tensor, TensorBase};
 /// `crate::element` (ungated), this bound holds in every feature
 /// configuration — only the SIMD kernels under `crate::simd` are gated
 /// behind the `simd` feature. All six concrete impls (i32/i64/f32/f64/
-/// Complex<f32>/Complex<f64>) already implement `SimdElement` per W14T1,
-/// so adding it as a supertrait does not narrow the sealed set.
+/// Complex<f32>/Complex<f64>) already implement `SimdElement`, so adding
+/// it as a supertrait does not narrow the sealed set.
 pub(crate) trait BinaryArith: Numeric + crate::element::SimdElement + 'static {
-    /// Context-aware add step. `idx` / `shape` consumed by integer
-    /// monomorphizations for panic diagnostics per 11-math §10.
+    /// Context-aware add step. `idx` and `shape` are consumed by integer
+    /// monomorphizations for overflow panic diagnostics.
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
     fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
     fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
@@ -54,6 +51,9 @@ pub(crate) trait BinaryArith: Numeric + crate::element::SimdElement + 'static {
 
 // ========== Integer impls (checked arithmetic with diagnostic panic) ==========
 
+/// `BinaryArith` for `i32`: checked arithmetic. Overflow, division by
+/// zero, and `i32::MIN / -1` panic with operation, type, operand values,
+/// element index, and broadcast shape in the message.
 impl BinaryArith for i32 {
     #[inline]
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
@@ -115,6 +115,9 @@ impl BinaryArith for i32 {
     }
 }
 
+/// `BinaryArith` for `i64`: checked arithmetic. Overflow, division by
+/// zero, and `i64::MIN / -1` panic with operation, type, operand values,
+/// element index, and broadcast shape in the message.
 impl BinaryArith for i64 {
     #[inline]
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
@@ -178,6 +181,8 @@ impl BinaryArith for i64 {
 
 // ========== Float impls (IEEE 754, never panic) ==========
 
+/// `BinaryArith` for `f32`: ordinary IEEE 754 `+` / `-` / `*` / `/`;
+/// never panics. NaN and Inf propagate per IEEE 754.
 impl BinaryArith for f32 {
     #[inline]
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
@@ -197,6 +202,8 @@ impl BinaryArith for f32 {
     }
 }
 
+/// `BinaryArith` for `f64`: ordinary IEEE 754 `+` / `-` / `*` / `/`;
+/// never panics. NaN and Inf propagate per IEEE 754.
 impl BinaryArith for f64 {
     #[inline]
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
@@ -218,6 +225,9 @@ impl BinaryArith for f64 {
 
 // ========== Complex impls ==========
 
+/// `BinaryArith` for `Complex<f32>`: ordinary `+` / `-` / `*` / `/`
+/// inherited from the `Numeric` supertraits; never panics. NaN
+/// propagation follows the underlying `f32` IEEE 754 semantics.
 impl BinaryArith for crate::complex::Complex<f32> {
     #[inline]
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
@@ -237,6 +247,9 @@ impl BinaryArith for crate::complex::Complex<f32> {
     }
 }
 
+/// `BinaryArith` for `Complex<f64>`: ordinary `+` / `-` / `*` / `/`
+/// inherited from the `Numeric` supertraits; never panics. NaN
+/// propagation follows the underlying `f64` IEEE 754 semantics.
 impl BinaryArith for crate::complex::Complex<f64> {
     #[inline]
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
@@ -272,14 +285,15 @@ where
 {
     /// Element-wise addition with broadcast.
     ///
-    /// W16T11 Step 7: integer types (i32/i64) retain `apply_binary_indexed`
-    /// for §10 `element_index` panic diagnostics. Float/complex types route
-    /// through `apply_arith_with_dispatch` to access SIMD + parallel paths.
+    /// Integer types (i32/i64) use `apply_binary_indexed` so overflow
+    /// panics can report the offending element index and broadcast
+    /// shape. Float/complex types route through
+    /// `apply_arith_with_dispatch` to access SIMD and parallel paths.
     ///
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn add<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -312,7 +326,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn sub<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -345,7 +359,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn mul<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -378,7 +392,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn div<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
@@ -483,11 +497,12 @@ where
     }
 
     /// Element-wise `scalar - element` (left-scalar subtraction).
-    /// Internal helper for `19-overload.md §5` non-commutative left-scalar
-    /// operator dispatch. NOT part of the public API surface.
     ///
-    /// W16T11 Step 7: float/complex route through `apply_arith_with_dispatch`
-    /// for SIMD; integers retain `apply_binary_indexed` for §10 diagnostics.
+    /// Internal helper for non-commutative left-scalar operator dispatch.
+    /// NOT part of the public API surface. Float/complex types route
+    /// through `apply_arith_with_dispatch` for SIMD; integers retain
+    /// `apply_binary_indexed` so overflow panics keep their per-element
+    /// diagnostic context.
     pub(crate) fn sub_from_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         #[cfg(feature = "simd")]
@@ -514,8 +529,9 @@ where
     }
 
     /// Element-wise `scalar / element` (left-scalar division).
-    /// Internal helper for `19-overload.md §5`; NOT part of the public
-    /// API surface.
+    ///
+    /// Internal helper for non-commutative left-scalar operator dispatch;
+    /// NOT part of the public API surface.
     pub(crate) fn div_from_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         #[cfg(feature = "simd")]
@@ -546,8 +562,9 @@ where
 // ============================================================================
 
 /// Broadcast-aware binary traversal with element-index + shape context
-/// propagated into the kernel closure — needed by integer panic diagnostics
-/// per 11-math §10.
+/// propagated into the kernel closure — needed so integer overflow /
+/// div-by-zero panics can report the offending element index and the
+/// broadcast output shape.
 ///
 /// `O = A` for arithmetic; kept generic to support heterogeneous output type.
 fn apply_binary_indexed<A, O, S1, S2, D1, D2, F>(
@@ -582,7 +599,7 @@ where
 }
 
 // ============================================================================
-// W16T11: Dispatch-aware helpers for arithmetic
+// Dispatch-aware helpers for arithmetic
 // ============================================================================
 
 /// Non-broadcasting binary traversal helper. Assumes `a` and `b` have
@@ -608,11 +625,13 @@ where
     result
 }
 
-/// Dispatch-aware broadcast arithmetic helper for W16T6 float/complex
-/// types (`add`/`sub`/`mul`/`div`). Homogeneous `A → A`. SIMD path is
-/// available when the `simd` feature is enabled and W14 facade covers the
-/// op. Integer types must NOT use this helper — they retain
-/// `apply_binary_indexed` for §10 `element_index` diagnostics.
+/// Dispatch-aware broadcast arithmetic helper for float/complex types
+/// (`add`/`sub`/`mul`/`div`). Homogeneous `A → A`. The SIMD path is
+/// available when the `simd` feature is enabled and the SIMD facade
+/// covers the op. Integer types must NOT use this helper — they retain
+/// `apply_binary_indexed` to preserve the per-element panic diagnostic
+/// context (`element_index`, broadcast `shape`) on overflow and
+/// div-by-zero.
 #[cfg(feature = "simd")]
 pub(in crate::math) fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
@@ -628,17 +647,17 @@ where
     D2: Dimension,
     F: Fn(A, A) -> A + Copy + Send + Sync,
 {
-    // §10 element_index carve-out: integer types must NOT enter this
-    // helper — they would lose the per-element panic diagnostic context
-    // required by 11-math §10 line 785. Callers in `binary.rs` arithmetic
-    // methods gate on TypeId before invoking this helper; this assertion
-    // catches accidental misuse during development.
+    // Integer carve-out: integer types must NOT enter this helper —
+    // they would lose the per-element panic diagnostic context required
+    // for overflow / div-by-zero messages. Callers in the arithmetic
+    // methods above gate on TypeId before invoking this helper; this
+    // assertion catches accidental misuse during development.
     debug_assert!(
         core::any::TypeId::of::<A>() != core::any::TypeId::of::<i32>()
             && core::any::TypeId::of::<A>() != core::any::TypeId::of::<i64>(),
         "apply_arith_with_dispatch must not be called with integer types; \
-         use apply_binary_indexed instead per 11-math §10 element_index \
-         requirement"
+         use apply_binary_indexed instead to preserve per-element \
+         diagnostic context"
     );
 
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
@@ -673,8 +692,9 @@ where
     Ok(result)
 }
 
-/// Homogeneous arithmetic SIMD helper. Returns `None` if op_tag is None,
-/// W14 kernel returned false, or views are non-contiguous.
+/// Homogeneous arithmetic SIMD helper. Returns `None` if `op_tag` is
+/// `None`, the SIMD kernel reports it did not handle the op, or either
+/// view is non-contiguous.
 #[cfg(feature = "simd")]
 fn try_simd_arith<A, S1, S2, D>(
     a: &TensorBase<S1, D>,
@@ -709,6 +729,8 @@ mod tests {
     use crate::dimension::{Ix1, Ix2};
     use crate::tensor::Tensor;
 
+    /// Element-wise `i32` addition over rank-1 tensors produces the
+    /// pairwise sums.
     #[test]
     fn test_add_i32() {
         let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3]).expect("valid tensor shape");
@@ -719,6 +741,8 @@ mod tests {
         assert_eq!(*c.get(&[2]).expect("valid index"), 9);
     }
 
+    /// Element-wise `f64` addition over rank-1 tensors produces the
+    /// pairwise sums.
     #[test]
     fn test_add_f64() {
         let a =
@@ -730,6 +754,8 @@ mod tests {
         assert!((*c.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
     }
 
+    /// Broadcasting rank-2 inputs of shapes `[3, 1]` and `[1, 4]` yields
+    /// an output of shape `[3, 4]` with element-wise sums.
     #[test]
     fn test_add_broadcast() {
         let a = Tensor::<f64, Ix2>::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0])
@@ -742,6 +768,8 @@ mod tests {
         assert!((*val - 11.0).abs() < 1e-10);
     }
 
+    /// `mul_scalar` multiplies every element of the tensor by the given
+    /// scalar.
     #[test]
     fn test_mul_scalar() {
         let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0])
@@ -752,6 +780,8 @@ mod tests {
         assert!((*r.get(&[2]).expect("valid index") - 7.5).abs() < 1e-10);
     }
 
+    /// `i32::MAX + 1` triggers an integer-overflow panic during
+    /// element-wise add.
     #[test]
     fn test_add_i32_overflow_panic() {
         let a =
@@ -761,10 +791,10 @@ mod tests {
         assert!(result.is_err(), "i32::MAX + 1 must panic");
     }
 
-    // ── W16T11: Dispatch path consistency tests ──
+    // Dispatch path consistency tests
 
     /// Cross-path consistency: the dispatch-wired `equal` method produces
-    /// correct results regardless of which ExecPath is selected internally.
+    /// correct results regardless of which `ExecPath` is selected internally.
     #[test]
     fn test_dispatch_path_consistency_equal() {
         let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0])
@@ -779,8 +809,8 @@ mod tests {
         assert!(!*result.get(&[2]).expect("valid index"));
     }
 
-    /// The `apply_binary_scalar` helper (W16T11 Step 4) is used as the
-    /// scalar fallback inside dispatch helpers. Validate it independently.
+    /// `apply_binary_scalar` is the scalar fallback used inside dispatch
+    /// helpers; validate it independently produces element-wise sums.
     #[test]
     fn test_apply_binary_scalar() {
         let a =
@@ -792,15 +822,15 @@ mod tests {
         assert!((*r.get(&[1]).expect("valid index") - 6.0).abs() < 1e-10);
     }
 
-    /// W16T11 Step 11: validates that the SIMD-on path produces results
-    /// identical (within tolerance) to the SIMD-off baseline. Runs only
-    /// when the `simd` feature is enabled.
+    /// The SIMD-on `add` path produces results matching a precomputed
+    /// scalar reference (within `1e-10`). Runs only when the `simd`
+    /// feature is enabled.
     ///
     /// The test does not call SIMD kernels directly. Instead it compares
-    /// the public `add` method (which goes through `apply_arith_with_dispatch`)
-    /// against a precomputed scalar reference vector, ensuring the
-    /// dispatch wiring routes through the SIMD path without breaking
-    /// semantics.
+    /// the public `add` method (which goes through
+    /// `apply_arith_with_dispatch`) against a precomputed scalar
+    /// reference vector, ensuring the dispatch wiring routes through
+    /// the SIMD path without breaking semantics.
     #[cfg(feature = "simd")]
     #[test]
     fn test_add_simd_vs_scalar() {
@@ -819,14 +849,11 @@ mod tests {
         }
     }
 
-    /// W16T11 Step 11: cross-path consistency. SIMD-off (default) and
-    /// SIMD-on builds must produce the same byte-level result for
-    /// integer ops, per 11-math §10 line 787 ("path consistency").
-    ///
-    /// i32 add is exact (no float tolerance), so byte-level equality is
-    /// required across Serial / SIMD / Parallel paths. Integer types
-    /// always retain `apply_binary_indexed` per the §10 element_index
-    /// carve-out (W16T11 Step 7).
+    /// Cross-path consistency for integer add. `i32` add is exact (no
+    /// float tolerance), so byte-level equality is required across the
+    /// Serial / SIMD / Parallel paths. Integer types always retain
+    /// `apply_binary_indexed` so `element_index` panic diagnostics are
+    /// preserved.
     #[test]
     fn test_add_path_consistency_i32() {
         let a = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).collect())

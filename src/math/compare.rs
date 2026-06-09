@@ -1,6 +1,5 @@
-//! Comparison operations returning bool tensors:
-//! equal/not_equal (W16T8), less/less_equal (W16T9),
-//! greater/greater_equal (W16T10).
+//! Element-wise comparison operations producing boolean tensors:
+//! equal, not_equal, less, less_equal, greater, greater_equal.
 
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::element::{Element, OrderedCompareElement};
@@ -16,7 +15,7 @@ use crate::dispatch::ParallelExecStrategy;
 use super::binary::apply_binary_scalar;
 
 // ============================================================================
-// W16T8: equal / not_equal for Element + PartialEq types
+// equal / not_equal for Element + PartialEq types
 // ============================================================================
 
 impl<S, D, A> TensorBase<S, D>
@@ -33,7 +32,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -52,7 +51,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn not_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -106,8 +105,7 @@ where
 }
 
 // ============================================================================
-// W16T9 / W16T10: less / less_equal / greater / greater_equal
-// for OrderedCompareElement types
+// less / less_equal / greater / greater_equal for OrderedCompareElement types
 // ============================================================================
 
 impl<S, D, A> TensorBase<S, D>
@@ -120,12 +118,12 @@ where
     ///
     /// **Type bound**: `A: OrderedCompareElement`, which is sealed to
     /// `i32` / `i64` / `f32` / `f64`. Complex and bool tensors are
-    /// excluded at compile time (see `03-element.md §5.5`).
+    /// excluded at compile time.
     ///
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn less<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -139,13 +137,13 @@ where
     }
 
     /// Element-wise less-or-equal comparison.
-    /// Single broadcast traversal: combines `<` and `==` at each lane
-    /// per 11-math §5.8 line 425, avoiding intermediate bool tensors.
+    /// Uses a single broadcast traversal that evaluates `<=` directly,
+    /// avoiding intermediate bool tensors.
     ///
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn less_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -163,7 +161,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn greater<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -177,13 +175,13 @@ where
     }
 
     /// Element-wise greater-or-equal comparison.
-    /// Single broadcast traversal: combines `>` and `==` at each lane
-    /// per 11-math §5.8 line 425, avoiding intermediate bool tensors.
+    /// Uses a single broadcast traversal that evaluates `>=` directly,
+    /// avoiding intermediate bool tensors.
     ///
     /// # Errors
     ///
     /// Returns `XenonError::BroadcastError` if `self.shape()` and
-    /// `other.shape()` are not broadcast-compatible (see `15-broadcast.md §6.2`).
+    /// `other.shape()` are not broadcast-compatible.
     pub fn greater_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
@@ -262,16 +260,16 @@ where
 }
 
 // ============================================================================
-// W16T11: Dispatch-aware comparison helper
+// Dispatch-aware comparison helper
 // ============================================================================
 
-/// Dispatch-aware broadcast comparison helper for W16T8/T9/T10.
-/// Output is always `bool`. W14 does not expose comparison SIMD kernels,
-/// so `ExecPath::Simd` falls through to the scalar loop.
+/// Dispatch-aware broadcast comparison helper used by all comparison
+/// operators. Output is always `bool`. No SIMD kernels are exposed for
+/// comparison, so `ExecPath::Simd` falls through to the scalar loop.
 ///
-/// Parallel path delegates to [`crate::parallel::par_zip_checked`] (W15T3)
+/// The parallel path delegates to [`crate::parallel::par_zip_checked`]
 /// when the `parallel` feature is enabled and `select_exec_path` returns
-/// `ExecPath::Parallel`. Otherwise falls back to scalar.
+/// `ExecPath::Parallel`. Otherwise falls back to the scalar loop.
 pub(in crate::math) fn apply_compare_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
@@ -325,8 +323,9 @@ mod tests {
     use crate::dimension::Ix1;
     use crate::tensor::Tensor;
 
-    // ── W16T8 tests ──
+    // equal / not_equal tests
 
+    /// `equal` returns true for matching f64 elements and false for NaN == NaN per IEEE 754.
     #[test]
     fn test_equal_f64() {
         let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN])
@@ -348,6 +347,7 @@ mod tests {
         );
     }
 
+    /// `not_equal(NaN, NaN)` returns true per IEEE 754.
     #[test]
     fn test_not_equal_nan() {
         let a =
@@ -361,6 +361,7 @@ mod tests {
         );
     }
 
+    /// `equal_scalar` matches only the element equal to the scalar.
     #[test]
     fn test_equal_scalar() {
         let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3]).expect("valid tensor shape");
@@ -370,8 +371,9 @@ mod tests {
         assert!(!*r.get(&[2]).expect("valid index"));
     }
 
-    // ── W16T9 tests ──
+    // less / less_equal tests
 
+    /// `less` returns true only where the left lane is strictly less than the right lane.
     #[test]
     fn test_less_i32() {
         let a =
@@ -392,6 +394,7 @@ mod tests {
         );
     }
 
+    /// `less_equal` returns true for both strictly-less and equal lanes.
     #[test]
     fn test_less_equal_i32() {
         let a =
@@ -403,8 +406,9 @@ mod tests {
         assert!(!r.get(&[2]).expect("valid index"));
     }
 
-    // ── W16T10 tests ──
+    // greater / greater_equal tests
 
+    /// `greater` returns false for any comparison involving NaN per IEEE 754.
     #[test]
     fn test_nan_comparison() {
         let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![f64::NAN, 1.0])
@@ -422,6 +426,7 @@ mod tests {
         );
     }
 
+    /// `greater_equal` returns true for both strictly-greater and equal lanes.
     #[test]
     fn test_greater_equal_f64() {
         let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![2.0, 5.0, 1.0])

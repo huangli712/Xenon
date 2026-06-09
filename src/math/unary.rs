@@ -1,13 +1,15 @@
-//! Unary element-wise operations: abs, neg, signum, square (W16T3),
-//! math functions sin/sqrt/exp/ln/floor/ceil (W16T4),
-//! complex conjugate/modulus (W16T5), logical not (W16T7).
+//! Unary element-wise operations: abs, neg, signum, square,
+//! math functions sin/sqrt/exp/ln/floor/ceil,
+//! complex conjugate/modulus, logical not.
 
 use crate::complex::{Complex, ComplexFloat};
 use crate::dimension::Dimension;
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 use crate::dispatch::{ExecPath, select_exec_path};
-use crate::element::{CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar};
+use crate::element::{
+    CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar,
+};
 
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
@@ -16,30 +18,29 @@ use crate::tensor::{Tensor, TensorBase};
 // Private per-type dispatch traits
 // ============================================================================
 
-/// Per-type unary step for abs / neg / square.
+/// Per-type unary step for `neg` and `square`.
 ///
-/// - Integer types (`i32`, `i64`): checked arithmetic; overflow / `i{32,64}::MIN`
-///   等不可表示情形 panic，符合 11-math §5.4 line 257-259 的整数规约。
-/// - Floating types (`f32`, `f64`): delegate to `RealScalar` intrinsics.
-/// - Complex types (`Complex<f32>`, `Complex<f64>`): use `Neg` /
-///   `Mul` 标准运算符（IEEE 754 传播 NaN / Inf）；`abs` / `signum` 不覆盖
-///   复数（trait bound `OrderedCompareElement` 编译期排除）。
+/// - Integer types (`i32`, `i64`): use checked arithmetic; overflow cases such
+///   as negating `i{32,64}::MIN` panic with a diagnostic message.
+/// - Floating types (`f32`, `f64`): delegate to the native operators; NaN /
+///   Inf propagate per IEEE 754.
+/// - Complex types (`Complex<f32>`, `Complex<f64>`): use the `Neg` / `Mul`
+///   standard operators. `abs` / `signum` do not cover complex numbers (the
+///   trait bound `OrderedCompareElement` excludes them at compile time).
 ///
-/// Sealed via `Numeric: Sealed` (03-element §5.2). Consumers cannot add
-/// new impls; all six concrete `Numeric` types provide their own impl in
-/// this file.
+/// Sealed via `Numeric: Sealed`. Consumers cannot add new impls; all six
+/// concrete `Numeric` types provide their own impl in this file.
 ///
-/// `*_step_with_ctx` variants propagate `element_index` + `shape` into
-/// integer panic text per 11-math §10 line 785-790. Default implementations
-/// forward to context-free `*_step` (zero cost on non-integer paths after
-/// `#[inline]`); integer impls override these to embed the full diagnostic
-/// fields.
-/// `SimdElement` supertrait — see `BinaryArith` for the rationale. Since
-/// `SimdElement` lives in `crate::element` (ungated), the bound holds in
-/// every feature configuration. All six `UnaryArith` impls
-/// (i32/i64/f32/f64/Complex<f32>/Complex<f64>) already implement
-/// `SimdElement` per W14T1, so adding the supertrait does not narrow
-/// the sealed set.
+/// The `*_step_with_ctx` variants propagate `element_index` and `shape` into
+/// the integer panic text. Default implementations forward to the
+/// context-free `*_step` (zero cost on non-integer paths after `#[inline]`);
+/// integer impls override these to embed the full diagnostic fields.
+///
+/// The `SimdElement` supertrait keeps this trait usable from SIMD-aware
+/// callers without adding a feature gate. All six `UnaryArith` impls
+/// (`i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>`) already
+/// implement `SimdElement`, so adding the supertrait does not narrow the
+/// sealed set.
 trait UnaryArith: Numeric + crate::element::SimdElement + 'static {
     /// Element-wise negation; integer path panics on `MIN`.
     fn neg_step(x: Self) -> Self;
@@ -47,13 +48,14 @@ trait UnaryArith: Numeric + crate::element::SimdElement + 'static {
     fn square_step(x: Self) -> Self;
 
     /// Context-aware variant used by integer monomorphizations to embed
-    /// `element_index` + `shape` into panic text per 11-math §10. Default
-    /// impl forwards to the context-free `*_step` (non-integer types have
-    /// no panic path, so the index / shape are simply dropped).
+    /// `element_index` and `shape` into panic text. The default impl
+    /// forwards to the context-free `*_step` (non-integer types have no
+    /// panic path, so the index and shape are simply dropped).
     #[inline]
     fn neg_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
         Self::neg_step(x)
     }
+    /// Context-aware variant of `square_step`; see `neg_step_with_ctx`.
     #[inline]
     fn square_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
         Self::square_step(x)
@@ -64,6 +66,9 @@ trait UnaryArith: Numeric + crate::element::SimdElement + 'static {
 // Integer impls (checked arithmetic)
 // ============================================================================
 
+/// Checked-arithmetic unary step for `i32`: `neg` and `square` panic with a
+/// diagnostic message on overflow (`i32::MIN` for `neg`, large magnitudes
+/// for `square`).
 impl UnaryArith for i32 {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -105,6 +110,9 @@ impl UnaryArith for i32 {
     }
 }
 
+/// Checked-arithmetic unary step for `i64`: `neg` and `square` panic with a
+/// diagnostic message on overflow (`i64::MIN` for `neg`, large magnitudes
+/// for `square`).
 impl UnaryArith for i64 {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -150,6 +158,8 @@ impl UnaryArith for i64 {
 // Float impls (IEEE 754)
 // ============================================================================
 
+/// IEEE 754 unary step for `f32`: native `-x` and `x * x`, NaN / Inf
+/// propagate.
 impl UnaryArith for f32 {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -161,6 +171,8 @@ impl UnaryArith for f32 {
     }
 }
 
+/// IEEE 754 unary step for `f64`: native `-x` and `x * x`, NaN / Inf
+/// propagate.
 impl UnaryArith for f64 {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -174,10 +186,11 @@ impl UnaryArith for f64 {
 
 // ============================================================================
 // Complex impls (only neg / square; abs / signum excluded at compile time
-// via `OrderedCompareElement` — Complex does NOT implement it per
-// 03-element §5.5).
+// via `OrderedCompareElement` — Complex does NOT implement it).
 // ============================================================================
 
+/// Unary step for `Complex<f32>`: standard `Neg` and `Mul` operators; NaN /
+/// Inf propagate per IEEE 754 on the real and imaginary components.
 impl UnaryArith for crate::complex::Complex<f32> {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -189,6 +202,8 @@ impl UnaryArith for crate::complex::Complex<f32> {
     }
 }
 
+/// Unary step for `Complex<f64>`: standard `Neg` and `Mul` operators; NaN /
+/// Inf propagate per IEEE 754 on the real and imaginary components.
 impl UnaryArith for crate::complex::Complex<f64> {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -200,36 +215,46 @@ impl UnaryArith for crate::complex::Complex<f64> {
     }
 }
 
-/// Per-type unary step for abs / signum, restricted to ordered types.
+/// Per-type unary step for `abs` and `signum`, restricted to ordered types.
 ///
-/// Trait bound `Numeric + OrderedCompareElement` 在 03-element §5.5 sealed
-/// 到 `i32` / `i64` / `f32` / `f64`；复数编译时被排除。
+/// The trait bound `Numeric + OrderedCompareElement` is sealed to `i32`,
+/// `i64`, `f32`, and `f64`; complex types are excluded at compile time.
 ///
-/// `*_step_with_ctx` variants follow the same contract as `UnaryArith`:
+/// The `*_step_with_ctx` variants follow the same contract as `UnaryArith`:
 /// default implementations forward to `*_step`; integer impls override to
-/// embed `element_index` + `shape` into panic text per 11-math §10.
-/// `SimdElement` supertrait. Since `SimdElement` lives in `crate::element`
-/// (ungated), the bound holds in every feature configuration. All four
-/// `OrderedUnaryArith` impls (i32/i64/f32/f64) already implement
-/// `SimdElement` per W14T1, so the supertrait does not narrow the
-/// sealed set.
-trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::element::SimdElement + 'static {
+/// embed `element_index` and `shape` into panic text.
+///
+/// The `SimdElement` supertrait keeps this trait usable from SIMD-aware
+/// callers without adding a feature gate. All four `OrderedUnaryArith`
+/// impls (`i32` / `i64` / `f32` / `f64`) already implement `SimdElement`,
+/// so the supertrait does not narrow the sealed set.
+trait OrderedUnaryArith:
+    Numeric + OrderedCompareElement + crate::element::SimdElement + 'static
+{
     /// Element-wise absolute value; integer path panics on `MIN`.
     fn abs_step(x: Self) -> Self;
     /// Element-wise signum. Integers: `-1` / `0` / `1`.
     /// Floats: delegates to `RealScalar::signum` (IEEE 754).
     fn signum_step(x: Self) -> Self;
 
+    /// Context-aware variant of `abs_step`; integer impls override to embed
+    /// `element_index` and `shape` into panic text.
     #[inline]
     fn abs_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
         Self::abs_step(x)
     }
+    /// Context-aware variant of `signum_step`; default impl forwards to the
+    /// context-free `signum_step` since neither integers nor floats have a
+    /// panic path.
     #[inline]
     fn signum_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
         Self::signum_step(x)
     }
 }
 
+/// Ordered unary step for `i32`: `abs` returns the non-negative value via
+/// checked negation and panics on `i32::MIN`; `signum` returns `-1`, `0`,
+/// or `1`.
 impl OrderedUnaryArith for i32 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -264,6 +289,9 @@ impl OrderedUnaryArith for i32 {
     }
 }
 
+/// Ordered unary step for `i64`: `abs` returns the non-negative value via
+/// checked negation and panics on `i64::MIN`; `signum` returns `-1`, `0`,
+/// or `1`.
 impl OrderedUnaryArith for i64 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -298,6 +326,8 @@ impl OrderedUnaryArith for i64 {
     }
 }
 
+/// Ordered unary step for `f32`: `abs` and `signum` delegate to
+/// `RealScalar`, following IEEE 754 (NaN propagates, signed zeros handled).
 impl OrderedUnaryArith for f32 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -309,6 +339,8 @@ impl OrderedUnaryArith for f32 {
     }
 }
 
+/// Ordered unary step for `f64`: `abs` and `signum` delegate to
+/// `RealScalar`, following IEEE 754 (NaN propagates, signed zeros handled).
 impl OrderedUnaryArith for f64 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -324,6 +356,8 @@ impl OrderedUnaryArith for f64 {
 // Public unary methods on TensorBase
 // ============================================================================
 
+/// Tensor methods for `abs` and `signum`, available on ordered element types
+/// (`i32` / `i64` / `f32` / `f64`).
 // abs / signum: ordered types (i32/i64/f32/f64).
 #[expect(
     private_bounds,
@@ -335,13 +369,14 @@ where
     D: Dimension,
     A: OrderedUnaryArith,
 {
-    /// Element-wise absolute value. Integer path panics on `MIN`;
+    /// Element-wise absolute value. The integer path panics on `MIN`; the
     /// float path follows IEEE 754 (`abs(NaN) = NaN`).
     ///
-    /// W16T11 Step 2: integer types retain `apply_unary_indexed` for §10
-    /// `element_index` diagnostics. Float types route through
-    /// `apply_unary_with_dispatch` (op_tag=None — W14 has no abs SIMD
-    /// kernel yet, so Serial/Simd both fall to scalar; Parallel deferred).
+    /// Integer types retain the indexed traversal so that overflow panics
+    /// can carry `element_index` and `shape` diagnostics. Float types route
+    /// through the dispatch-aware helper (no SIMD kernel for `abs` yet, so
+    /// the SIMD path falls back to scalar; parallel acceleration kicks in
+    /// when the executor selects it).
     pub fn abs(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
@@ -360,9 +395,9 @@ where
         })
     }
 
-    /// Element-wise signum. Integers: sign-based `-1` / `0` / `1`.
-    /// Floats: IEEE 754 semantics via `RealScalar::signum` (handles
-    /// ±0.0 and NaN per 11-math §5.4).
+    /// Element-wise signum. Integers return sign-based `-1` / `0` / `1`.
+    /// Floats follow IEEE 754 semantics via `RealScalar::signum` (handles
+    /// signed zeros and NaN).
     pub fn signum(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
@@ -382,6 +417,8 @@ where
     }
 }
 
+/// Tensor methods for `neg` and `square`, available on every `Numeric`
+/// element type (including complex).
 // neg / square: all Numeric (including Complex).
 #[expect(
     private_bounds,
@@ -393,12 +430,13 @@ where
     D: Dimension,
     A: UnaryArith,
 {
-    /// Element-wise negation. Integer path panics on `MIN`; float path
-    /// uses `-x` (IEEE 754); complex path uses `Neg` operator.
+    /// Element-wise negation. The integer path panics on `MIN`; the float
+    /// path uses `-x` (IEEE 754); the complex path uses the `Neg`
+    /// operator.
     ///
-    /// W16T11 Step 2: integer types retain `apply_unary_indexed`; float
-    /// types route through `apply_unary_with_dispatch` with op_tag=Some(Neg)
-    /// — W14's only unary SIMD kernel per W14T1 Step 4.
+    /// Integer types retain the indexed traversal for overflow diagnostics.
+    /// Float types route through the dispatch-aware helper with a SIMD
+    /// `Neg` op tag, so the SIMD path can accelerate when available.
     pub fn neg(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
@@ -417,8 +455,8 @@ where
         })
     }
 
-    /// Element-wise square: `x * x`. Integer path panics on overflow;
-    /// float / complex path uses `*` (IEEE 754 propagation).
+    /// Element-wise square (`x * x`). The integer path panics on overflow;
+    /// the float and complex paths use `*` with IEEE 754 propagation.
     pub fn square(&self) -> Tensor<A, D> {
         #[cfg(feature = "simd")]
         {
@@ -439,9 +477,11 @@ where
 }
 
 // ============================================================================
-// W16T4: Math functions for RealScalar (f32, f64)
+// Math functions for RealScalar (f32, f64)
 // ============================================================================
 
+/// Tensor methods that compute element-wise real-valued math functions
+/// (`sin`, `sqrt`, `exp`, `ln`, `floor`, `ceil`) on `RealScalar` elements.
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -450,9 +490,9 @@ where
 {
     /// Element-wise sine. IEEE 754 NaN propagates: `sin(NaN) = NaN`.
     ///
-    /// W16T11 Step 2: routes through `apply_unary_real_dispatch` for
-    /// parallel acceleration on large tensors. W14 has no SIMD kernel
-    /// for `sin` yet, so the SIMD path falls back to scalar.
+    /// Routes through `apply_unary_real_dispatch` so that large tensors can
+    /// benefit from parallel acceleration. No SIMD kernel for `sin` is
+    /// available yet, so the SIMD path falls back to scalar.
     pub fn sin(&self) -> Tensor<A, D> {
         apply_unary_real_dispatch(self, |x| x.sin())
     }
@@ -484,9 +524,11 @@ where
 }
 
 // ============================================================================
-// W16T5: Complex ops — modulus (type-changing Complex<T> → T)
+// Complex ops — modulus (type-changing Complex<T> → T)
 // ============================================================================
 
+/// Tensor method that computes the element-wise modulus of a complex tensor,
+/// returning a real tensor of the same shape.
 impl<S, D, T> TensorBase<S, D>
 where
     S: Storage<Elem = Complex<T>>,
@@ -502,9 +544,10 @@ where
 }
 
 // ============================================================================
-// W16T5: Complex ops — conjugate (single generic impl)
+// Complex ops — conjugate (single generic impl)
 // ============================================================================
 
+/// Tensor method that computes the element-wise complex conjugate.
 impl<S, D, T> TensorBase<S, D>
 where
     S: Storage<Elem = Complex<T>>,
@@ -512,12 +555,12 @@ where
     T: ComplexFloat,
     Complex<T>: Element + Numeric,
 {
-    /// Element-wise complex conjugate: `(a + bi) → (a - bi)`.
-    /// Delegates to `Numeric::conjugate` per 03-element §5.2.
+    /// Element-wise complex conjugate: `(a + bi) → (a - bi)`. Delegates to
+    /// `Numeric::conjugate`.
     ///
-    /// W16T11 Step 2: routes through `apply_unary_real_dispatch` for
-    /// parallel acceleration on large tensors. W14 has no SIMD kernel
-    /// for `conjugate` yet (requires cross-lane operations), so the
+    /// Routes through `apply_unary_real_dispatch` so that large tensors can
+    /// benefit from parallel acceleration. No SIMD kernel for `conjugate`
+    /// is available yet (it would require cross-lane operations), so the
     /// SIMD path falls back to scalar.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D> {
         apply_unary_real_dispatch(self, <Complex<T> as Numeric>::conjugate)
@@ -525,9 +568,11 @@ where
 }
 
 // ============================================================================
-// W16T7 + W16T11: Logical NOT for bool tensors with dispatch wiring
+// Logical NOT for bool tensors with dispatch wiring
 // ============================================================================
 
+/// Tensor method that computes the element-wise logical NOT of a bool
+/// tensor, with execution-path dispatch.
 impl<S, D> TensorBase<S, D>
 where
     S: Storage<Elem = bool>,
@@ -535,10 +580,10 @@ where
 {
     /// Element-wise logical NOT. Returns a bool tensor of the same shape.
     ///
-    /// Dispatch wiring per W16T11 Step 10: `select_exec_path` routes
-    /// between Serial and SIMD (both fall to scalar — W14 has no bool
-    /// SIMD kernel), with Parallel path deferred to a future wave when
-    /// the `par_map` API is finalized.
+    /// `select_exec_path` routes between Serial and SIMD (both fall back to
+    /// the scalar baseline because no bool SIMD kernel exists), and selects
+    /// the Parallel path via `par_map` when the `parallel` feature is
+    /// enabled and the executor chooses it.
     ///
     /// # Panics
     ///
@@ -551,9 +596,9 @@ where
         let alignment_ok = self.is_aligned();
         let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
         match path {
-            // No bool SIMD kernel in W14; Serial and Simd fall through to
-            // the scalar `apply_unary_map` baseline. Parallel routes through
-            // par_map (W15).
+            // No bool SIMD kernel exists; Serial and Simd both fall through
+            // to the scalar `apply_unary_map` baseline. Parallel routes
+            // through `par_map`.
             ExecPath::Serial | ExecPath::Simd => {
                 let _ = guard;
                 apply_unary_map(self, |x| !x)
@@ -576,10 +621,10 @@ where
 }
 
 // ============================================================================
-// Shared traversal helpers (merged from helpers.rs)
+// Shared traversal helpers
 // ============================================================================
 
-/// Element-wise unary traversal — per 11-math §6.1 lines 537-546.
+/// Element-wise unary traversal.
 ///
 /// Maps each input element through `f`, producing an output tensor of the
 /// same shape. The output element type `O` may differ from the input type
@@ -603,19 +648,16 @@ where
 }
 
 /// Same-type unary traversal with element-index and shape context — variant
-/// of `apply_unary_map` that propagates `(idx, &shape)` into the kernel closure.
+/// of `apply_unary_map` that propagates `(idx, &shape)` into the kernel
+/// closure.
 ///
-/// Required by W16T3 integer monomorphizations of `abs` / `neg` / `square`
-/// so that panic messages can embed `element_index` + `shape` per 11-math
-/// §10 line 785–790 ("panic 信息至少包含 `operation`、`type`、`trigger`、
-/// `element_index`，并在适用时附带 `shape`"). Non-integer monomorphizations
-/// have no panic path; the `idx` / `shape` parameters are zero-cost dropped
-/// after inlining.
+/// Required by the integer monomorphizations of `abs` / `neg` / `square`
+/// so that panic messages can embed `operation`, `type`, `trigger`,
+/// `element_index`, and (when applicable) `shape`. Non-integer
+/// monomorphizations have no panic path; the `idx` / `shape` parameters
+/// are zero-cost dropped after inlining.
 #[inline]
-fn apply_unary_indexed<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    mut f: F,
-) -> Tensor<A, D>
+fn apply_unary_indexed<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
@@ -633,7 +675,7 @@ where
 }
 
 // ============================================================================
-// W16T11: Dispatch-aware unary helper (serial/SIMD/parallel routing)
+// Dispatch-aware unary helper (serial/SIMD/parallel routing)
 // ============================================================================
 
 /// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
@@ -641,23 +683,22 @@ where
 /// `SimdElement` in their supertrait set.
 ///
 /// **Why this exists**: The user-facing math API (`sin`, `sqrt`, `exp`,
-/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by public `RealScalar`
-/// (`03-element.md §5.3`) and `ComplexFloat` (`02-complex.md`) traits.
-/// These traits intentionally do NOT include the `pub(crate) SimdElement`
-/// trait as a supertrait, because `08-simd.md §5.1` mandates that SIMD
-/// types must not appear in the public API surface (`pub(crate)` only).
-/// Therefore `apply_unary_with_dispatch` (which requires
+/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by the public
+/// `RealScalar` and `ComplexFloat` traits. These traits intentionally do
+/// NOT include the `pub(crate) SimdElement` trait as a supertrait, because
+/// SIMD types must not appear in the public API surface (`pub(crate)`
+/// only). Therefore `apply_unary_with_dispatch` (which requires
 /// `A: SimdElement`) cannot be called from these methods.
 ///
-/// **Coverage today**: W14T1 line 132 reserves `Sin`/`Sqrt`/`Exp`/`Ln`/
-/// `Floor`/`Ceil`/`Conjugate` for future SIMD coverage. So the SIMD
-/// branch of this helper always falls through to scalar.
+/// **Coverage today**: `Sin` / `Sqrt` / `Exp` / `Ln` / `Floor` / `Ceil` /
+/// `Conjugate` are reserved for future SIMD coverage, so the SIMD branch
+/// of this helper always falls through to scalar.
 ///
 /// **Real acceleration today**: Parallel path via
-/// `crate::parallel::unary::par_map` (W15T3) when `parallel` feature is
+/// `crate::parallel::unary::par_map` when the `parallel` feature is
 /// enabled and `select_exec_path` returns `ExecPath::Parallel`.
 ///
-/// **Future-proof**: When W14 extends coverage (e.g. adds
+/// **Future-proof**: When SIMD coverage is extended (e.g. a new
 /// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
 /// `dispatch_vector_unary_op` for the supported types without changing
 /// any method body (since the public bound `A: RealScalar` remains).
@@ -673,8 +714,8 @@ where
     let alignment_ok = input.is_aligned();
     let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
     match path {
-        // W14 has no SIMD kernel for these ops yet; Serial and Simd both
-        // route to the scalar baseline.
+        // No SIMD kernel for these ops yet; Serial and Simd both route to
+        // the scalar baseline.
         ExecPath::Serial | ExecPath::Simd => {
             let _ = guard;
             apply_unary_map(input, op)
@@ -695,12 +736,13 @@ where
     }
 }
 
-/// Dispatch-aware variant of `apply_unary_map` — routes between Serial, SIMD,
-/// and Parallel paths per 11-math §5.2 / §6.3. The scalar baseline
-/// `apply_unary_map` (W16T1 helpers) is the SIMD-fallback target.
+/// Dispatch-aware variant of `apply_unary_map` — routes between Serial,
+/// SIMD, and Parallel paths. The scalar baseline `apply_unary_map` is the
+/// SIMD-fallback target.
 ///
 /// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
-/// `None` → SIMD path is skipped, falling back to Serial/Parallel.
+/// `None` causes the SIMD path to be skipped, falling back to Serial /
+/// Parallel.
 #[cfg(feature = "simd")]
 fn apply_unary_with_dispatch<A, S, D, F>(
     input: &TensorBase<S, D>,
@@ -739,9 +781,9 @@ where
     }
 }
 
-/// Helper: attempt a slice-based SIMD unary kernel. Returns `None` if
-/// op_tag is None, the kernel returned false, or the input cannot be
-/// viewed as `&[A]` (non-contiguous — defense-in-depth).
+/// Attempt a slice-based SIMD unary kernel. Returns `None` if `op_tag` is
+/// `None`, the kernel returned false, or the input cannot be viewed as
+/// `&[A]` (non-contiguous — defense-in-depth).
 #[cfg(feature = "simd")]
 fn try_simd_unary_via_slice<A, S, D>(
     input: &TensorBase<S, D>,
@@ -773,6 +815,8 @@ mod tests {
     use crate::dimension::Ix1;
     use crate::tensor::Tensor;
 
+    /// `abs` on an `i32` tensor returns the non-negative magnitude of each
+    /// element (`abs(-3) == 3`, `abs(0) == 0`, `abs(5) == 5`).
     #[test]
     fn test_abs() {
         // abs(-3) = 3 for i32; abs(-2.5) = 2.5 for f64.
@@ -784,6 +828,8 @@ mod tests {
         assert_eq!(*r.get(&[2]).expect("valid index"), 5);
     }
 
+    /// `neg` on an `f64` tensor flips the sign of each element; `-0.0`
+    /// compares equal to `0.0` even though the bit pattern differs.
     #[test]
     fn test_neg() {
         let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, -2.0, 0.0])
@@ -795,9 +841,11 @@ mod tests {
         assert_eq!(*r.get(&[2]).expect("valid index"), 0.0);
     }
 
+    /// `signum` on an `i32` tensor returns `-1` for negatives, `0` for
+    /// zero, and `1` for positives.
     #[test]
     fn test_signum() {
-        // i32: -1 / 0 / 1; f64: follows IEEE 754 signum (NaN→NaN, ±0.0→±1.0).
+        // i32: -1 / 0 / 1; f64 follows IEEE 754 signum (NaN→NaN, ±0.0→±1.0).
         let t =
             Tensor::<i32, Ix1>::from_shape_vec([3], vec![-7, 0, 4]).expect("valid tensor shape");
         let r = t.signum();
@@ -806,18 +854,21 @@ mod tests {
         assert_eq!(*r.get(&[2]).expect("valid index"), 1);
     }
 
+    /// `square` on an `i32` tensor containing `i32::MAX` panics because
+    /// `i32::MAX * i32::MAX` overflows the checked multiplication.
     #[test]
     fn test_square_checked_overflow() {
         // i32::MAX squared overflows i32 — square() must panic via
-        // UnaryArith::square_step for i32 (Step 2 per-type impl).
+        // UnaryArith::square_step for i32.
         let t =
             Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
         let result = std::panic::catch_unwind(|| t.square());
         assert!(result.is_err(), "i32::MAX squared must panic on overflow");
     }
 
-    // ── W16T4: Math function tests ──
+    // ── Math function tests ──
 
+    /// `sin` on `[0.0, π/2]` returns `[0.0, 1.0]` within a 1e-10 tolerance.
     #[test]
     fn test_sin() {
         let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.0, std::f64::consts::FRAC_PI_2])
@@ -827,6 +878,7 @@ mod tests {
         assert!((*r.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
     }
 
+    /// `sqrt` returns 2.0 for `4.0` and NaN for `-1.0` per IEEE 754.
     #[test]
     fn test_sqrt() {
         let t =
@@ -836,6 +888,8 @@ mod tests {
         assert!(r.get(&[1]).expect("valid index").is_nan());
     }
 
+    /// `ln` then `exp` recovers the original value (`exp(ln(2.0)) ≈ 2.0`)
+    /// within a 1e-10 tolerance.
     #[test]
     fn test_exp_ln_roundtrip() {
         let t = Tensor::<f64, Ix1>::from_shape_vec([1], vec![2.0]).expect("valid tensor shape");
@@ -843,6 +897,7 @@ mod tests {
         assert!((*r.get(&[0]).expect("valid index") - 2.0).abs() < 1e-10);
     }
 
+    /// `floor(1.7) == 1.0` and `ceil(1.3) == 2.0`.
     #[test]
     fn test_floor_ceil() {
         let t =
@@ -853,8 +908,10 @@ mod tests {
         assert_eq!(*c.get(&[1]).expect("valid index"), 2.0);
     }
 
-    // ── W16T5: Complex op tests ──
+    // ── Complex op tests ──
 
+    /// `modulus` of `3 + 4i` returns `5.0` (within a 1e-10 tolerance) and
+    /// produces a real tensor of the same shape.
     #[test]
     fn test_modulus() {
         let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(3.0_f64, 4.0)])
@@ -867,6 +924,8 @@ mod tests {
         );
     }
 
+    /// `conjugate` of `1 + 2i` returns `1 - 2i` (real part unchanged,
+    /// imaginary part negated).
     #[test]
     fn test_conjugate() {
         let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0_f64, 2.0)])
@@ -876,8 +935,10 @@ mod tests {
         assert_eq!(r.get(&[0]).expect("valid index").im(), -2.0);
     }
 
-    // ── W16T7: Logical NOT test ──
+    // ── Logical NOT test ──
 
+    /// `not` on a bool tensor flips each element (`true → false`,
+    /// `false → true`) and preserves the shape.
     #[test]
     fn test_not_bool() {
         let t = Tensor::<bool, Ix1>::from_shape_vec([3], vec![true, false, true])
