@@ -1,4 +1,4 @@
-//! Element-wise math operations (arithmetic, unary, comparison).
+//! Element-wise math operations: arithmetic, unary, and comparison.
 //!
 //! Public API is exposed as inherent methods on `TensorBase` from
 //! the `binary`, `unary`, and `compare` submodules. No `pub use`
