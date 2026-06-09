@@ -256,46 +256,6 @@ impl BinaryArith for crate::complex::Complex<f64> {
 }
 
 // ============================================================================
-// Broadcast-aware binary helper with index/shape context
-// ============================================================================
-
-/// Broadcast-aware binary traversal with element-index + shape context
-/// propagated into the kernel closure — needed by integer panic diagnostics
-/// per 11-math §10.
-///
-/// `O = A` for arithmetic; kept generic to support heterogeneous output type.
-fn apply_binary_indexed<A, O, S1, S2, D1, D2, F>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-    mut f: F,
-) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
-where
-    A: crate::element::Element,
-    O: crate::element::Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-    F: FnMut(A, A, usize, &[usize]) -> O,
-{
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated the output shape");
-    let a_view = a.broadcast_to(out_dim.clone())?;
-    let b_view = b.broadcast_to(out_dim.clone())?;
-    let shape_slice: Vec<usize> = out_dim.slice().to_vec();
-    let mut result = Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
-    for (idx, (dst, (a_val, b_val))) in result
-        .iter_mut()
-        .zip(a_view.iter().zip(b_view.iter()))
-        .enumerate()
-    {
-        *dst = f(*a_val, *b_val, idx, &shape_slice);
-    }
-    Ok(result)
-}
-
-// ============================================================================
 // Public arithmetic methods: tensor-tensor add/sub/mul/div
 // ============================================================================
 
@@ -578,6 +538,46 @@ where
         })
         .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
+}
+
+// ============================================================================
+// Broadcast-aware binary helper with index/shape context
+// ============================================================================
+
+/// Broadcast-aware binary traversal with element-index + shape context
+/// propagated into the kernel closure — needed by integer panic diagnostics
+/// per 11-math §10.
+///
+/// `O = A` for arithmetic; kept generic to support heterogeneous output type.
+fn apply_binary_indexed<A, O, S1, S2, D1, D2, F>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
+    mut f: F,
+) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+where
+    A: crate::element::Element,
+    O: crate::element::Element,
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    D1: Dimension + BroadcastDim<D2>,
+    D2: Dimension,
+    F: FnMut(A, A, usize, &[usize]) -> O,
+{
+    let out_shape = broadcast_shape(a.shape(), b.shape())?;
+    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+        .expect("broadcast_shape validated the output shape");
+    let a_view = a.broadcast_to(out_dim.clone())?;
+    let b_view = b.broadcast_to(out_dim.clone())?;
+    let shape_slice: Vec<usize> = out_dim.slice().to_vec();
+    let mut result = Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
+    for (idx, (dst, (a_val, b_val))) in result
+        .iter_mut()
+        .zip(a_view.iter().zip(b_view.iter()))
+        .enumerate()
+    {
+        *dst = f(*a_val, *b_val, idx, &shape_slice);
+    }
+    Ok(result)
 }
 
 // ============================================================================
