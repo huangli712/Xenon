@@ -20,7 +20,7 @@ where
 {
     let mut out = Vec::new();
     for value in tensor.iter().copied() {
-        if !out.iter().any(|seen| value == *seen) {
+        if !out.contains(&value) {
             out.push(value);
         }
     }
@@ -36,7 +36,7 @@ where
 {
     /// Returns unique elements as a 1D owned tensor.
     ///
-    /// See [`UniqueElement`] for supported types and equality semantics.
+    /// See `UniqueElement` for supported types and equality semantics.
     pub fn unique(&self) -> Tensor<A, Ix1> {
         unique_impl(self)
     }
