@@ -6,10 +6,10 @@
 
 use core::ops::Div;
 
-use crate::complex::Complex;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::error::Result;
 use crate::math::BinaryArith;
+use crate::complex::Complex;
+use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
@@ -41,7 +41,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `division` between two tensors with broadcasting. Both operands are borrowed.
+    /// Performs element-wise `division` between two tensors with broadcasting.
+    /// Both operands are borrowed.
     fn div(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::div(self, rhs)
     }
@@ -55,7 +56,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `division` with broadcasting. Borrows the right operand, consumes the left.
+    /// Performs element-wise `division` with broadcasting. Borrows the right
+    /// operand, consumes the left.
     fn div(self, rhs: &'a TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::div(&self, rhs)
     }
@@ -69,7 +71,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `division` with broadcasting. Borrows the left operand, consumes the right.
+    /// Performs element-wise `division` with broadcasting. Borrows the left
+    /// operand, consumes the right.
     fn div(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::div(self, &rhs)
     }
@@ -119,7 +122,8 @@ where
 {
     type Output = Tensor<A, D>;
 
-    /// Applies `division` with a [`Scalar`] value as the left operand to each element of the tensor.
+    /// Applies `division` with a [`Scalar`] value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.div_from_scalar(self.0)
     }
@@ -133,7 +137,8 @@ where
 {
     type Output = Tensor<A, D>;
 
-    /// Applies `division` with a [`Scalar`] value as the left operand to each element of the tensor.
+    /// Applies `division` with a [`Scalar`] value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.div_from_scalar(self.0)
     }
@@ -149,7 +154,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -161,7 +168,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -173,7 +182,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -185,7 +196,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -197,7 +210,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -209,7 +224,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -221,7 +238,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -233,7 +252,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -245,7 +266,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }
@@ -257,7 +280,9 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
-    /// Applies `division` with this scalar value as the left operand to each element of the tensor.
+    
+    /// Applies `division` with this scalar value as the left operand to
+    /// each element of the tensor.
     fn div(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
         rhs.div_from_scalar(self)
     }

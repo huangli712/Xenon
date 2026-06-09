@@ -16,7 +16,7 @@ use crate::tensor::{Tensor, TensorBase};
 use super::scalar::Scalar;
 
 // ----------------------------------------------------------------------------
-// Add — owned tensor × owned tensor
+// Add — tensor × tensor
 // ----------------------------------------------------------------------------
 
 impl<A, D, E> Add<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
@@ -76,7 +76,7 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Add — right scalar: Tensor + A, &Tensor + A
+// Add — right scalar
 // ----------------------------------------------------------------------------
 
 impl<A, D> Add<A> for TensorBase<Owned<A>, D>
@@ -108,7 +108,7 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Add — Scalar<A> left: Scalar<A> + Tensor, Scalar<A> + &Tensor
+// Add — Scalar<A> left (commutative)
 // ----------------------------------------------------------------------------
 
 impl<A, D> Add<TensorBase<Owned<A>, D>> for Scalar<A>
@@ -665,21 +665,21 @@ mod tests {
     /// Verifies native `i32` left-scalar `addition`.
     #[test]
     fn test_add_native_left_scalar_i32() {
-        let tensor = Tensor::from_shape_vec([2], vec![1i32, 2i32]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec([2], vec![1i32, 2]).expect("valid test input");
         assert_eq!((5i32 + tensor).as_slice().expect("c"), &[6i32, 7i32]);
     }
 
     /// Verifies native `i64` left-scalar `addition`.
     #[test]
     fn test_add_native_left_scalar_i64() {
-        let tensor = Tensor::from_shape_vec([2], vec![1i64, 2i64]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec([2], vec![1i64, 2]).expect("valid test input");
         assert_eq!((5i64 + tensor).as_slice().expect("c"), &[6i64, 7i64]);
     }
 
     /// Verifies native `f32` left-scalar `addition`.
     #[test]
     fn test_add_native_left_scalar_f32() {
-        let tensor = Tensor::from_shape_vec([2], vec![1.0f32, 2.0f32]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec([2], vec![1.0, 2.0f32]).expect("valid test input");
         assert_eq!((5.0f32 + tensor).as_slice().expect("c"), &[6.0f32, 7.0f32]);
     }
 
