@@ -738,4 +738,24 @@ mod tests {
         let v = t.view();
         assert_eq!((5.0 + &v).as_slice().expect("c"), &[6.0, 7.0]);
     }
+
+    #[test]
+    fn test_add_right_scalar_ref() {
+        let tensor = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
+        assert_eq!((&tensor + 5).as_slice().expect("c"), &[6, 7]);
+    }
+
+
+    #[test]
+    fn test_add_native_left_scalar_f32() {
+        let tensor = Tensor::from_shape_vec([2], vec![1.0, 2.0f32]).expect("valid test input");
+        assert_eq!((5.0f32 + tensor).as_slice().expect("c"), &[6.0, 7.0f32]);
+    }
+
+    #[test]
+    fn test_native_scalar_add_tensor_i64() {
+        let tensor = Tensor::from_shape_vec([2], vec![1i64, 2i64]).expect("valid test input");
+        assert_eq!((5i64 + tensor).as_slice().expect("c"), &[6i64, 7i64]);
+    }
+
 }
