@@ -553,7 +553,7 @@ mod tests {
     use super::*;
     use crate::tensor::Tensor;
 
-    // ---- Scalar ----
+    // ---- Scalar ------------------------------------------------------------
 
     #[test]
     fn test_scalar_wrapper_construct() {
@@ -561,7 +561,7 @@ mod tests {
         assert_eq!(scalar.0, 2);
     }
 
-    // ---- Owned — tensor ----
+    // ---- Owned — tensor ----------------------------------------------------
 
     #[test]
     fn test_sub_basic() {
@@ -606,7 +606,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[2, 3]);
     }
 
-    // ---- Owned — right scalar ----
+    // ---- Owned — right scalar ----------------------------------------------
 
     #[test]
     fn test_sub_right_scalar() {
@@ -620,7 +620,7 @@ mod tests {
         assert_eq!((&tensor - 2).as_slice().expect("c"), &[3, 5]);
     }
 
-    // ---- Owned — Scalar left ----
+    // ---- Owned — Scalar left -----------------------------------------------
 
     #[test]
     fn test_sub_scalar_wrapper_left() {
@@ -635,7 +635,7 @@ mod tests {
         assert_eq!(tensor.as_slice().expect("c"), &[5.0f64, 7.0]);
     }
 
-    // ---- Owned — per-type left scalar ----
+    // ---- Owned — per-type left scalar --------------------------------------
 
     #[test]
     fn test_sub_native_left_scalar_f64() {
@@ -668,7 +668,7 @@ mod tests {
         assert_eq!((10.0f32 - tensor).as_slice().expect("c"), &[5.0f32, 3.0f32]);
     }
 
-    // ---- View — tensor ----
+    // ---- View — tensor -----------------------------------------------------
 
     #[test]
     fn test_view_sub_view() {
@@ -699,7 +699,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[4, 4, 4, 4]);
     }
 
-    // ---- View — right scalar ----
+    // ---- View — right scalar -----------------------------------------------
 
     #[test]
     fn test_view_sub_right_scalar() {
@@ -708,7 +708,7 @@ mod tests {
         assert_eq!((&v - 2.0).as_slice().expect("c"), &[3.0, 5.0]);
     }
 
-    // ---- View — Scalar left ----
+    // ---- View — Scalar left ------------------------------------------------
 
     #[test]
     fn test_view_sub_scalar_wrapper_left() {
@@ -717,7 +717,7 @@ mod tests {
         assert_eq!((Scalar(10.0) - &v).as_slice().expect("c"), &[7.0, 3.0]);
     }
 
-    // ---- View — per-type left scalar ----
+    // ---- View — per-type left scalar ---------------------------------------
 
     #[test]
     fn test_view_sub_native_left_scalar_f64() {
