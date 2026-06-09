@@ -7,6 +7,8 @@ use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "simd")]
 use crate::dispatch::{ExecPath, select_exec_path};
+#[cfg(feature = "simd")]
+use crate::simd::BinaryOp;
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
 use crate::storage::Storage;
@@ -229,7 +231,7 @@ impl BinaryArith for f64 {
 /// `BinaryArith` for `Complex<f32>`: ordinary `+` / `-` / `*` / `/`
 /// inherited from the `Numeric` supertraits; never panics. NaN
 /// propagation follows the underlying `f32` IEEE 754 semantics.
-impl BinaryArith for crate::complex::Complex<f32> {
+impl BinaryArith for Complex<f32> {
     #[inline]
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a + b
@@ -313,7 +315,7 @@ where
                     self,
                     other,
                     |x, y| <A as BinaryArith>::add_step(x, y, 0, &[]),
-                    Some(crate::simd::BinaryOp::Add),
+                    Some(BinaryOp::Add),
                 );
             }
         }
@@ -346,7 +348,7 @@ where
                     self,
                     other,
                     |x, y| <A as BinaryArith>::sub_step(x, y, 0, &[]),
-                    Some(crate::simd::BinaryOp::Sub),
+                    Some(BinaryOp::Sub),
                 );
             }
         }
@@ -379,7 +381,7 @@ where
                     self,
                     other,
                     |x, y| <A as BinaryArith>::mul_step(x, y, 0, &[]),
-                    Some(crate::simd::BinaryOp::Mul),
+                    Some(BinaryOp::Mul),
                 );
             }
         }
@@ -412,7 +414,7 @@ where
                     self,
                     other,
                     |x, y| <A as BinaryArith>::div_step(x, y, 0, &[]),
-                    Some(crate::simd::BinaryOp::Div),
+                    Some(BinaryOp::Div),
                 );
             }
         }
@@ -515,7 +517,7 @@ where
                     &other,
                     self,
                     |x, y| <A as BinaryArith>::sub_step(x, y, 0, &[]),
-                    Some(crate::simd::BinaryOp::Sub),
+                    Some(BinaryOp::Sub),
                 )
                 .expect(
                     "scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility",
@@ -544,7 +546,7 @@ where
                     &other,
                     self,
                     |x, y| <A as BinaryArith>::div_step(x, y, 0, &[]),
-                    Some(crate::simd::BinaryOp::Div),
+                    Some(BinaryOp::Div),
                 )
                 .expect(
                     "scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility",
@@ -638,7 +640,7 @@ pub(in crate::math) fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     op: F,
-    op_tag: Option<crate::simd::BinaryOp>,
+    op_tag: Option<BinaryOp>,
 ) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
 where
     A: Element + SimdElement + 'static,
@@ -700,7 +702,7 @@ where
 fn try_simd_arith<A, S1, S2, D>(
     a: &TensorBase<S1, D>,
     b: &TensorBase<S2, D>,
-    op_tag: Option<crate::simd::BinaryOp>,
+    op_tag: Option<BinaryOp>,
 ) -> Option<Tensor<A, D>>
 where
     A: Element + SimdElement,
