@@ -548,21 +548,16 @@ mod tests {
 
     // ---- Scalar ----
 
-#[test]
+    #[test]
     fn test_scalar_wrapper_construct() {
         let scalar = Scalar(2i32);
         assert_eq!(scalar.0, 2);
     }
 
 
-
-
-
-
-
     // ---- Owned — tensor ----
 
-#[test]
+    #[test]
     fn test_add_basic() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
@@ -585,8 +580,7 @@ mod tests {
     // [11,22,33,14,25,36]; that sample is inconsistent with Xenon's
     // F-order baseline and is corrected here to the F-order value.
 
-
-#[test]
+    #[test]
     fn test_add_broadcast() {
         let left = Tensor::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
         let right = Tensor::from_shape_vec([3], vec![10, 20, 30]).expect("valid test input");
@@ -599,7 +593,7 @@ mod tests {
     }
 
 
-#[test]
+    #[test]
     fn test_add_ref_ref() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
@@ -609,8 +603,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
 
-
-#[test]
+    #[test]
     fn test_add_owned_ref() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
@@ -619,8 +612,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
 
-
-#[test]
+    #[test]
     fn test_add_ref_owned() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
@@ -631,93 +623,72 @@ mod tests {
 
 
 
-
-
-
-
     // ---- Owned — right scalar ----
 
-#[test]
+    #[test]
     fn test_add_right_scalar() {
         let tensor = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         assert_eq!((tensor + 5).as_slice().expect("c"), &[6, 7]);
     }
 
-
-#[test]
+    #[test]
     fn test_add_right_scalar_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         assert_eq!((&tensor + 5).as_slice().expect("c"), &[6, 7]);
     }
 
-
-
-
-
     // ---- Owned — Scalar left ----
 
-#[test]
+    #[test]
     fn test_add_scalar_wrapper_left() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0, 2.0]).expect("valid test input");
         assert_eq!((Scalar(5.0) + tensor).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
-
-#[test]
+    #[test]
     fn test_add_scalar_wrapper_left_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0, 2.0]).expect("valid test input");
         assert_eq!((Scalar(5.0) + &tensor).as_slice().expect("c"), &[6.0, 7.0]);
         assert_eq!(tensor.as_slice().expect("c"), &[1.0, 2.0]);
     }
 
-
-
-
-
     // ---- Owned — per-type left scalar ----
 
-#[test]
+    #[test]
     fn test_add_native_left_scalar_f64() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
         assert_eq!((5.0f64 + tensor).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
-
-#[test]
+    #[test]
     fn test_add_native_left_scalar_f64_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
         assert_eq!((5.0f64 + &tensor).as_slice().expect("c"), &[6.0, 7.0]);
         assert_eq!(tensor.as_slice().expect("c"), &[1.0, 2.0]);
     }
 
-
-
-#[test]
+    #[test]
     fn test_add_native_left_scalar_i32() {
         let tensor = Tensor::from_shape_vec([2], vec![1i32, 2i32]).expect("valid test input");
         assert_eq!((5i32 + tensor).as_slice().expect("c"), &[6i32, 7i32]);
     }
 
 
-#[test]
+    #[test]
     fn test_add_native_left_scalar_i64() {
         let tensor = Tensor::from_shape_vec([2], vec![1i64, 2i64]).expect("valid test input");
         assert_eq!((5i64 + tensor).as_slice().expect("c"), &[6i64, 7i64]);
     }
 
-
-#[test]
+    #[test]
     fn test_add_native_left_scalar_f32() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0f32, 2.0f32]).expect("valid test input");
         assert_eq!((5.0f32 + tensor).as_slice().expect("c"), &[6.0f32, 7.0f32]);
     }
 
-
-
-
     // ---- View — tensor ----
 
-#[test]
+    #[test]
     fn test_view_add_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
         let right = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
@@ -728,8 +699,7 @@ mod tests {
         assert_eq!(left.as_slice().expect("c"), &[1, 2, 3, 4]);
     }
 
-
-#[test]
+    #[test]
     fn test_view_add_owned() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
         let right = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
@@ -738,9 +708,8 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[6, 8, 10, 12]);
     }
 
-
-#[test]
-    fn test_view_owned_add_view() {
+    #[test]
+    fn test_add_owned_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
         let right = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
         let rv = right.view();
@@ -749,52 +718,42 @@ mod tests {
     }
 
 
-
-
-
-
     // ---- View — right scalar ----
 
-#[test]
+    #[test]
     fn test_view_add_right_scalar() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
         let v = t.view();
         assert_eq!((&v + 5.0).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
-
-
-
-
     // ---- View — Scalar left ----
 
-#[test]
+    #[test]
     fn test_view_add_scalar_wrapper_left() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
         let v = t.view();
         assert_eq!((Scalar(5.0) + &v).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
-
-
-
-
     // ---- View — per-type left scalar ----
 
-#[test]
+    #[test]
     fn test_view_add_native_left_scalar_f64() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
         let v = t.view();
         assert_eq!((5.0 + &v).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
-
-#[test]
+    #[test]
     fn test_view_add_combined() {
-        let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
-        let v = t.view();
-        assert_eq!((&v + 5.0).as_slice().expect("c"), &[6.0, 7.0]);
-        assert_eq!((Scalar(5.0) + &v).as_slice().expect("c"), &[6.0, 7.0]);
-        assert_eq!((5.0 + &v).as_slice().expect("c"), &[6.0, 7.0]);
+        let a = Tensor::from_shape_vec([2], vec![8.0f64, 9.0]).expect("valid test input");
+        let b = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
+        let av = a.view();
+        let bv = b.view();
+        assert_eq!((&av - &bv).expect("broadcast succeeds").as_slice().expect("c"), &[6.0, 6.0]);
+        assert_eq!((&av * &bv).expect("broadcast succeeds").as_slice().expect("c"), &[16.0, 27.0]);
+        assert_eq!((&av / &bv).expect("broadcast succeeds").as_slice().expect("c"), &[4.0, 3.0]);
     }
+
 }
