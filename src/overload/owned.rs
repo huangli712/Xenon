@@ -14,7 +14,7 @@ use crate::storage::Owned;
 use crate::tensor::{Tensor, TensorBase};
 
 use super::scalar::Scalar;
- use super::scalar::native_left_scalar_owned_all;
+use super::scalar::native_left_scalar_owned_all;
 
 // ==========================================================================
 // Scalar bound shorthand — both directions of BroadcastDim required by
