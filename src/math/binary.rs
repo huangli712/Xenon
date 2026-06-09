@@ -10,6 +10,10 @@ use crate::dispatch::{ExecPath, select_exec_path};
 #[cfg(feature = "simd")]
 use crate::simd::BinaryOp;
 #[cfg(feature = "simd")]
+use crate::simd::dispatch_vector_binary_op;
+#[cfg(all(feature = "simd", feature = "parallel"))]
+use crate::parallel::binary::par_zip_checked;
+#[cfg(feature = "simd")]
 use core::any::TypeId;
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
@@ -679,7 +683,7 @@ where
             {
                 let strat = ParallelExecStrategy::auto();
                 let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::binary::par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -711,7 +715,7 @@ where
     let rhs_slice: &[A] = b.as_slice()?;
     let mut result = Tensor::<A, _>::zeros(a.raw_dim()).expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
-    if crate::simd::dispatch_vector_binary_op(tag, lhs_slice, rhs_slice, dst) {
+    if dispatch_vector_binary_op(tag, lhs_slice, rhs_slice, dst) {
         Some(result)
     } else {
         None
