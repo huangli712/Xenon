@@ -94,131 +94,203 @@ trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::element::SimdE
 // Integer impls (checked arithmetic)
 // ============================================================================
 
-macro_rules! impl_unary_int {
-    ($t:ty) => {
-        impl UnaryArith for $t {
-            #[inline]
-            fn neg_step(x: Self) -> Self {
-                <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=neg, type={}, trigger={}",
-                        stringify!($t),
-                        x
-                    )
-                })
-            }
-            #[inline]
-            fn square_step(x: Self) -> Self {
-                x.checked_mul(x).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=square, type={}, trigger={}",
-                        stringify!($t),
-                        x
-                    )
-                })
-            }
-            #[inline]
-            fn neg_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-                <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=neg, type={}, trigger={}, \
-                         element_index={}, shape={:?}",
-                        stringify!($t),
-                        x,
-                        idx,
-                        shape
-                    )
-                })
-            }
-            #[inline]
-            fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-                x.checked_mul(x).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=square, type={}, trigger={}, \
-                         element_index={}, shape={:?}",
-                        stringify!($t),
-                        x,
-                        idx,
-                        shape
-                    )
-                })
-            }
-        }
-
-        impl OrderedUnaryArith for $t {
-            #[inline]
-            fn abs_step(x: Self) -> Self {
-                if x >= 0 {
-                    x
-                } else {
-                    <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
-                        panic!(
-                            "integer overflow: operation=abs, type={}, trigger={}",
-                            stringify!($t),
-                            x
-                        )
-                    })
-                }
-            }
-            #[inline]
-            fn signum_step(x: Self) -> Self {
-                x.signum()
-            }
-            #[inline]
-            fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-                if x >= 0 {
-                    x
-                } else {
-                    <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
-                        panic!(
-                            "integer overflow: operation=abs, type={}, trigger={}, \
-                             element_index={}, shape={:?}",
-                            stringify!($t),
-                            x,
-                            idx,
-                            shape
-                        )
-                    })
-                }
-            }
-        }
-    };
+impl UnaryArith for i32 {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=neg, type={}, trigger={}",
+                "i32", x
+            )
+        })
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x.checked_mul(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=square, type={}, trigger={}",
+                "i32", x
+            )
+        })
+    }
+    #[inline]
+    fn neg_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=neg, type={}, trigger={}, \
+                 element_index={}, shape={:?}",
+                "i32", x, idx, shape
+            )
+        })
+    }
+    #[inline]
+    fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        x.checked_mul(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=square, type={}, trigger={}, \
+                 element_index={}, shape={:?}",
+                "i32", x, idx, shape
+            )
+        })
+    }
 }
 
-impl_unary_int!(i32);
-impl_unary_int!(i64);
+impl OrderedUnaryArith for i32 {
+    #[inline]
+    fn abs_step(x: Self) -> Self {
+        if x >= 0 {
+            x
+        } else {
+            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+                panic!(
+                    "integer overflow: operation=abs, type={}, trigger={}",
+                    "i32", x
+                )
+            })
+        }
+    }
+    #[inline]
+    fn signum_step(x: Self) -> Self {
+        x.signum()
+    }
+    #[inline]
+    fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        if x >= 0 {
+            x
+        } else {
+            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+                panic!(
+                    "integer overflow: operation=abs, type={}, trigger={}, \
+                     element_index={}, shape={:?}",
+                    "i32", x, idx, shape
+                )
+            })
+        }
+    }
+}
+
+impl UnaryArith for i64 {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=neg, type={}, trigger={}",
+                "i64", x
+            )
+        })
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x.checked_mul(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=square, type={}, trigger={}",
+                "i64", x
+            )
+        })
+    }
+    #[inline]
+    fn neg_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=neg, type={}, trigger={}, \
+                 element_index={}, shape={:?}",
+                "i64", x, idx, shape
+            )
+        })
+    }
+    #[inline]
+    fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        x.checked_mul(x).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=square, type={}, trigger={}, \
+                 element_index={}, shape={:?}",
+                "i64", x, idx, shape
+            )
+        })
+    }
+}
+
+impl OrderedUnaryArith for i64 {
+    #[inline]
+    fn abs_step(x: Self) -> Self {
+        if x >= 0 {
+            x
+        } else {
+            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+                panic!(
+                    "integer overflow: operation=abs, type={}, trigger={}",
+                    "i64", x
+                )
+            })
+        }
+    }
+    #[inline]
+    fn signum_step(x: Self) -> Self {
+        x.signum()
+    }
+    #[inline]
+    fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        if x >= 0 {
+            x
+        } else {
+            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+                panic!(
+                    "integer overflow: operation=abs, type={}, trigger={}, \
+                     element_index={}, shape={:?}",
+                    "i64", x, idx, shape
+                )
+            })
+        }
+    }
+}
 
 // ============================================================================
 // Float impls (IEEE 754)
 // ============================================================================
 
-macro_rules! impl_unary_float {
-    ($t:ty) => {
-        impl UnaryArith for $t {
-            #[inline]
-            fn neg_step(x: Self) -> Self {
-                -x
-            }
-            #[inline]
-            fn square_step(x: Self) -> Self {
-                x * x
-            }
-        }
-        impl OrderedUnaryArith for $t {
-            #[inline]
-            fn abs_step(x: Self) -> Self {
-                <Self as RealScalar>::abs(x)
-            }
-            #[inline]
-            fn signum_step(x: Self) -> Self {
-                <Self as RealScalar>::signum(x)
-            }
-        }
-    };
+impl UnaryArith for f32 {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
 }
 
-impl_unary_float!(f32);
-impl_unary_float!(f64);
+impl OrderedUnaryArith for f32 {
+    #[inline]
+    fn abs_step(x: Self) -> Self {
+        <Self as RealScalar>::abs(x)
+    }
+    #[inline]
+    fn signum_step(x: Self) -> Self {
+        <Self as RealScalar>::signum(x)
+    }
+}
+
+impl UnaryArith for f64 {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
+}
+
+impl OrderedUnaryArith for f64 {
+    #[inline]
+    fn abs_step(x: Self) -> Self {
+        <Self as RealScalar>::abs(x)
+    }
+    #[inline]
+    fn signum_step(x: Self) -> Self {
+        <Self as RealScalar>::signum(x)
+    }
+}
 
 // ============================================================================
 // Complex impls (only neg / square; abs / signum excluded at compile time
@@ -226,23 +298,27 @@ impl_unary_float!(f64);
 // 03-element §5.5).
 // ============================================================================
 
-macro_rules! impl_unary_complex {
-    ($t:ty) => {
-        impl UnaryArith for $t {
-            #[inline]
-            fn neg_step(x: Self) -> Self {
-                -x
-            }
-            #[inline]
-            fn square_step(x: Self) -> Self {
-                x * x
-            }
-        }
-    };
+impl UnaryArith for crate::complex::Complex<f32> {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
 }
 
-impl_unary_complex!(crate::complex::Complex<f32>);
-impl_unary_complex!(crate::complex::Complex<f64>);
+impl UnaryArith for crate::complex::Complex<f64> {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
+}
 
 // ============================================================================
 // Shared traversal helpers (merged from helpers.rs)
