@@ -555,6 +555,7 @@ mod tests {
 
     // ---- Scalar ------------------------------------------------------------
 
+    /// Verifies `Scalar` newtype wrapper construction and field access.
     #[test]
     fn test_scalar_wrapper_construct() {
         let scalar = Scalar(2i32);
@@ -563,6 +564,7 @@ mod tests {
 
     // ---- Owned — tensor ----------------------------------------------------
 
+    /// Verifies element-wise `addition` between two same-shaped tensors.
     #[test]
     fn test_add_basic() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -570,6 +572,7 @@ mod tests {
         assert_eq!((left + right).expect("broadcast succeeds").as_slice().expect("c"), &[4, 6]);
     }
 
+    /// Verifies element-wise `addition` with broadcasting support.
     #[test]
     fn test_add_broadcast() {
         let left = Tensor::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
@@ -579,6 +582,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("contiguous"), &[11, 12, 23, 24, 35, 36]);
     }
 
+    /// Verifies `addition` between two borrowed tensors.
     #[test]
     fn test_add_ref_ref() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -588,6 +592,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
 
+    /// Verifies `addition` consuming the left operand and borrowing the right.
     #[test]
     fn test_add_owned_ref() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -597,6 +602,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
 
+    /// Verifies `addition` borrowing the left operand and consuming the right.
     #[test]
     fn test_add_ref_owned() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -608,12 +614,14 @@ mod tests {
 
     // ---- Owned — right scalar ----------------------------------------------
 
+    /// Verifies `addition` of a scalar to each element of an owned tensor.
     #[test]
     fn test_add_right_scalar() {
         let tensor = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         assert_eq!((tensor + 5).as_slice().expect("c"), &[6, 7]);
     }
 
+    /// Verifies `addition` of a scalar to each element of a borrowed tensor.
     #[test]
     fn test_add_right_scalar_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -622,12 +630,14 @@ mod tests {
 
     // ---- Owned — Scalar left -----------------------------------------------
 
+    /// Verifies `addition` with `Scalar` as the left operand and an owned tensor.
     #[test]
     fn test_add_scalar_wrapper_left() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0, 2.0]).expect("valid test input");
         assert_eq!((Scalar(5.0) + tensor).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
+    /// Verifies `addition` with `Scalar` as the left operand and a borrowed tensor.
     #[test]
     fn test_add_scalar_wrapper_left_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0, 2.0]).expect("valid test input");
@@ -637,12 +647,14 @@ mod tests {
 
     // ---- Owned — per-type left scalar --------------------------------------
 
+    /// Verifies native `f64` left-scalar `addition` with an owned tensor.
     #[test]
     fn test_add_native_left_scalar_f64() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
         assert_eq!((5.0f64 + tensor).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
+    /// Verifies native `f64` left-scalar `addition` with a borrowed tensor.
     #[test]
     fn test_add_native_left_scalar_f64_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
@@ -650,18 +662,21 @@ mod tests {
         assert_eq!(tensor.as_slice().expect("c"), &[1.0, 2.0]);
     }
 
+    /// Verifies native `i32` left-scalar `addition`.
     #[test]
     fn test_add_native_left_scalar_i32() {
         let tensor = Tensor::from_shape_vec([2], vec![1i32, 2i32]).expect("valid test input");
         assert_eq!((5i32 + tensor).as_slice().expect("c"), &[6i32, 7i32]);
     }
 
+    /// Verifies native `i64` left-scalar `addition`.
     #[test]
     fn test_add_native_left_scalar_i64() {
         let tensor = Tensor::from_shape_vec([2], vec![1i64, 2i64]).expect("valid test input");
         assert_eq!((5i64 + tensor).as_slice().expect("c"), &[6i64, 7i64]);
     }
 
+    /// Verifies native `f32` left-scalar `addition`.
     #[test]
     fn test_add_native_left_scalar_f32() {
         let tensor = Tensor::from_shape_vec([2], vec![1.0f32, 2.0f32]).expect("valid test input");
@@ -670,6 +685,7 @@ mod tests {
 
     // ---- View — tensor -----------------------------------------------------
 
+    /// Verifies `addition` between two tensor views.
     #[test]
     fn test_view_add_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
@@ -681,6 +697,7 @@ mod tests {
         assert_eq!(left.as_slice().expect("c"), &[1, 2, 3, 4]);
     }
 
+    /// Verifies `addition` between a tensor view and an owned tensor.
     #[test]
     fn test_view_add_owned() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
@@ -690,6 +707,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[6, 8, 10, 12]);
     }
 
+    /// Verifies `addition` between an owned tensor and a tensor view.
     #[test]
     fn test_view_owned_add_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
@@ -701,6 +719,7 @@ mod tests {
 
     // ---- View — right scalar -----------------------------------------------
 
+    /// Verifies `addition` of a scalar to each element of a tensor view.
     #[test]
     fn test_view_add_right_scalar() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
@@ -710,6 +729,7 @@ mod tests {
 
     // ---- View — Scalar left ------------------------------------------------
 
+    /// Verifies `addition` with `Scalar` as the left operand and a tensor view.
     #[test]
     fn test_view_add_scalar_wrapper_left() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
@@ -719,6 +739,7 @@ mod tests {
 
     // ---- View — per-type left scalar ---------------------------------------
 
+    /// Verifies native `f64` left-scalar `addition` with a tensor view.
     #[test]
     fn test_view_add_native_left_scalar_f64() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
@@ -726,6 +747,7 @@ mod tests {
         assert_eq!((5.0 + &v).as_slice().expect("c"), &[6.0, 7.0]);
     }
 
+    /// Verifies combined scalar `addition` paths on a tensor view.
     #[test]
     fn test_view_add_combined() {
         let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");

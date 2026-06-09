@@ -555,6 +555,7 @@ mod tests {
 
     // ---- Scalar ------------------------------------------------------------
 
+    /// Verifies `Scalar` newtype wrapper construction and field access.
     #[test]
     fn test_scalar_wrapper_construct() {
         let scalar = Scalar(2i32);
@@ -563,6 +564,7 @@ mod tests {
 
     // ---- Owned — tensor ----------------------------------------------------
 
+    /// Verifies element-wise `multiplication` between two same-shaped tensors.
     #[test]
     fn test_mul_basic() {
         let left = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
@@ -570,6 +572,7 @@ mod tests {
         assert_eq!((left * right).expect("broadcast succeeds").as_slice().expect("c"), &[8, 15]);
     }
 
+    /// Verifies element-wise `multiplication` with broadcasting support.
     #[test]
     fn test_mul_broadcast() {
         let left = Tensor::from_shape_vec([2, 3], vec![2, 3, 4, 5, 6, 7]).expect("valid test input");
@@ -579,6 +582,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("contiguous"), &[20, 30, 80, 100, 180, 210]);
     }
 
+    /// Verifies `multiplication` between two borrowed tensors.
     #[test]
     fn test_mul_ref_ref() {
         let left = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
@@ -588,6 +592,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[8, 15]);
     }
 
+    /// Verifies `multiplication` consuming the left operand and borrowing the right.
     #[test]
     fn test_mul_owned_ref() {
         let left = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
@@ -597,6 +602,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[8, 15]);
     }
 
+    /// Verifies `multiplication` borrowing the left operand and consuming the right.
     #[test]
     fn test_mul_ref_owned() {
         let left = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
@@ -608,12 +614,14 @@ mod tests {
 
     // ---- Owned — right scalar ----------------------------------------------
 
+    /// Verifies `multiplication` of a scalar to each element of an owned tensor.
     #[test]
     fn test_mul_right_scalar() {
         let tensor = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
         assert_eq!((tensor * 4).as_slice().expect("c"), &[8, 12]);
     }
 
+    /// Verifies `multiplication` of a scalar to each element of a borrowed tensor.
     #[test]
     fn test_mul_right_scalar_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
@@ -622,12 +630,14 @@ mod tests {
 
     // ---- Owned — Scalar left -----------------------------------------------
 
+    /// Verifies `multiplication` with `Scalar` as the left operand and an owned tensor.
     #[test]
     fn test_mul_scalar_wrapper_left() {
         let tensor = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
         assert_eq!((Scalar(4) * tensor).as_slice().expect("c"), &[8, 12]);
     }
 
+    /// Verifies `multiplication` with `Scalar` as the left operand and a borrowed tensor.
     #[test]
     fn test_mul_scalar_wrapper_left_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
@@ -637,12 +647,14 @@ mod tests {
 
     // ---- Owned — per-type left scalar --------------------------------------
 
+    /// Verifies native `f64` left-scalar `multiplication` with an owned tensor.
     #[test]
     fn test_mul_native_left_scalar_f64() {
         let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
         assert_eq!((4.0f64 * tensor).as_slice().expect("c"), &[8.0, 12.0]);
     }
 
+    /// Verifies native `f64` left-scalar `multiplication` with a borrowed tensor.
     #[test]
     fn test_mul_native_left_scalar_f64_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
@@ -650,18 +662,21 @@ mod tests {
         assert_eq!(tensor.as_slice().expect("c"), &[2.0f64, 3.0]);
     }
 
+    /// Verifies native `i32` left-scalar `multiplication`.
     #[test]
     fn test_mul_native_left_scalar_i32() {
         let tensor = Tensor::from_shape_vec([2], vec![2i32, 3]).expect("valid test input");
         assert_eq!((4i32 * tensor).as_slice().expect("c"), &[8i32, 12i32]);
     }
 
+    /// Verifies native `i64` left-scalar `multiplication`.
     #[test]
     fn test_mul_native_left_scalar_i64() {
         let tensor = Tensor::from_shape_vec([2], vec![2i64, 3]).expect("valid test input");
         assert_eq!((4i64 * tensor).as_slice().expect("c"), &[8i64, 12i64]);
     }
 
+    /// Verifies native `f32` left-scalar `multiplication`.
     #[test]
     fn test_mul_native_left_scalar_f32() {
         let tensor = Tensor::from_shape_vec([2], vec![2.0, 3.0f32]).expect("valid test input");
@@ -670,6 +685,7 @@ mod tests {
 
     // ---- View — tensor -----------------------------------------------------
 
+    /// Verifies `multiplication` between two tensor views.
     #[test]
     fn test_view_mul_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![2, 3, 4, 5]).expect("valid test input");
@@ -681,6 +697,7 @@ mod tests {
         assert_eq!(left.as_slice().expect("c"), &[2, 3, 4, 5]);
     }
 
+    /// Verifies `multiplication` between a tensor view and an owned tensor.
     #[test]
     fn test_view_mul_owned() {
         let left = Tensor::from_shape_vec([2, 2], vec![2, 3, 4, 5]).expect("valid test input");
@@ -690,6 +707,7 @@ mod tests {
         assert_eq!(result.as_slice().expect("c"), &[12, 21, 32, 45]);
     }
 
+    /// Verifies `multiplication` between an owned tensor and a tensor view.
     #[test]
     fn test_view_owned_mul_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![2, 3, 4, 5]).expect("valid test input");
@@ -701,6 +719,7 @@ mod tests {
 
     // ---- View — right scalar -----------------------------------------------
 
+    /// Verifies `multiplication` of a scalar to each element of a tensor view.
     #[test]
     fn test_view_mul_right_scalar() {
         let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
@@ -710,6 +729,7 @@ mod tests {
 
     // ---- View — Scalar left ------------------------------------------------
 
+    /// Verifies `multiplication` with `Scalar` as the left operand and a tensor view.
     #[test]
     fn test_view_mul_scalar_wrapper_left() {
         let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
@@ -719,6 +739,7 @@ mod tests {
 
     // ---- View — per-type left scalar ---------------------------------------
 
+    /// Verifies native `f64` left-scalar `multiplication` with a tensor view.
     #[test]
     fn test_view_mul_native_left_scalar_f64() {
         let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
@@ -726,6 +747,7 @@ mod tests {
         assert_eq!((4.0 * &v).as_slice().expect("c"), &[8.0, 12.0]);
     }
 
+    /// Verifies combined scalar `multiplication` paths on a tensor view.
     #[test]
     fn test_view_mul_combined() {
         let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
