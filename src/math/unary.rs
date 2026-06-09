@@ -497,7 +497,7 @@ where
     /// Element-wise modulus: `|a + bi| = sqrt(a*a + b*b)`.
     /// Returns a real tensor of the same dimension.
     pub fn modulus(&self) -> Tensor<T, D> {
-        apply_complex_to_real(self, |c| c.norm())
+        apply_unary_map(self, |c| c.norm())
     }
 }
 
@@ -588,42 +588,22 @@ where
 // Shared traversal helpers (merged from helpers.rs)
 // ============================================================================
 
-/// Same-type unary traversal — per 11-math §6.1 lines 537-543.
+/// Element-wise unary traversal — per 11-math §6.1 lines 537-546.
 ///
-/// Output element type equals input element type. Type-changing
-/// traversal (`Complex<T> → T`) is handled by `apply_complex_to_real`.
+/// Maps each input element through `f`, producing an output tensor of the
+/// same shape. The output element type `O` may differ from the input type
+/// `A`, covering both same-type ops (`A → A`, e.g. `neg` / `square`) and
+/// type-changing ops (`Complex<T> → T`, e.g. `modulus`).
 #[inline]
-fn apply_unary<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
+fn apply_unary_map<A, O, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<O, D>
 where
     A: Element,
+    O: Element,
     S: Storage<Elem = A>,
     D: Dimension,
-    F: FnMut(A) -> A,
+    F: FnMut(A) -> O,
 {
-    let mut result = Tensor::<A, D>::zeros(input.raw_dim())
-        .expect("input dimension must be valid since input tensor exists");
-    for (dst, src) in result.iter_mut().zip(input.iter()) {
-        *dst = f(*src);
-    }
-    result
-}
-
-/// Type-changing traversal for `Complex<T> → T` — per 11-math §6.1 line 546.
-///
-/// Used by `modulus()` (W16T5). Input is a complex tensor; output is a
-/// real tensor of the same shape.
-#[inline]
-fn apply_complex_to_real<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    mut f: F,
-) -> Tensor<<A as ComplexScalar>::Real, D>
-where
-    A: ComplexScalar,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: FnMut(A) -> <A as ComplexScalar>::Real,
-{
-    let mut result = Tensor::<<A as ComplexScalar>::Real, D>::zeros(input.raw_dim())
+    let mut result = Tensor::<O, D>::zeros(input.raw_dim())
         .expect("input dimension must be valid since input tensor exists");
     for (dst, src) in result.iter_mut().zip(input.iter()) {
         *dst = f(*src);
@@ -632,7 +612,7 @@ where
 }
 
 /// Same-type unary traversal with element-index and shape context — variant
-/// of `apply_unary` that propagates `(idx, &shape)` into the kernel closure.
+/// of `apply_unary_map` that propagates `(idx, &shape)` into the kernel closure.
 ///
 /// Required by W16T3 integer monomorphizations of `abs` / `neg` / `square`
 /// so that panic messages can embed `element_index` + `shape` per 11-math
@@ -706,7 +686,7 @@ where
         // route to the scalar baseline.
         ExecPath::Serial | ExecPath::Simd => {
             let _ = guard;
-            apply_unary(input, op)
+            apply_unary_map(input, op)
         },
         ExecPath::Parallel => {
             #[cfg(feature = "parallel")]
@@ -718,15 +698,15 @@ where
             #[cfg(not(feature = "parallel"))]
             {
                 let _ = guard;
-                apply_unary(input, op)
+                apply_unary_map(input, op)
             }
         },
     }
 }
 
-/// Dispatch-aware variant of `apply_unary` — routes between Serial, SIMD,
+/// Dispatch-aware variant of `apply_unary_map` — routes between Serial, SIMD,
 /// and Parallel paths per 11-math §5.2 / §6.3. The scalar baseline
-/// `apply_unary` (W16T1 helpers) is the SIMD-fallback target.
+/// `apply_unary_map` (W16T1 helpers) is the SIMD-fallback target.
 ///
 /// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
 /// `None` → SIMD path is skipped, falling back to Serial/Parallel.
@@ -748,9 +728,9 @@ where
 
     let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
     match path {
-        ExecPath::Serial => apply_unary(input, op),
+        ExecPath::Serial => apply_unary_map(input, op),
         ExecPath::Simd => {
-            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary(input, op))
+            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary_map(input, op))
         },
         ExecPath::Parallel => {
             #[cfg(feature = "parallel")]
@@ -762,7 +742,7 @@ where
             #[cfg(not(feature = "parallel"))]
             {
                 let _ = guard;
-                apply_unary(input, op)
+                apply_unary_map(input, op)
             }
         },
     }
