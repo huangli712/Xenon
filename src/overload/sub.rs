@@ -1,4 +1,4 @@
-//! Owned `Tensor` Sub operator overloading.
+//! Owned `Tensor` Sub operator overloading (W23T6).
 //!
 //! Provides `Sub` implementations for pairs of
 //! `TensorBase<Owned<A>, D>` with broadcast support, right-scalar,
@@ -16,7 +16,7 @@ use crate::tensor::{Tensor, TensorBase};
 use super::scalar::Scalar;
 
 // ----------------------------------------------------------------------------
-// Sub — tensor × tensor
+// Sub — tensor × tensor (W23T6)
 // ----------------------------------------------------------------------------
 
 impl<A, D, E> Sub<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
@@ -27,6 +27,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` between two tensors with broadcasting.
     fn sub(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::sub(&self, &rhs)
     }
@@ -40,6 +41,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` between two tensors with broadcasting. Both operands are borrowed.
     fn sub(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::sub(self, rhs)
     }
@@ -53,6 +55,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` with broadcasting. Borrows the right operand, consumes the left.
     fn sub(self, rhs: &'a TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::sub(&self, rhs)
     }
@@ -66,13 +69,14 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` with broadcasting. Borrows the left operand, consumes the right.
     fn sub(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::sub(self, &rhs)
     }
 }
 
 // ----------------------------------------------------------------------------
-// Sub — right scalar
+// Sub — right scalar (W23T6)
 // ----------------------------------------------------------------------------
 
 impl<A, D> Sub<A> for TensorBase<Owned<A>, D>
@@ -83,6 +87,7 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `subtraction` of a scalar to each element of the tensor.
     fn sub(self, rhs: A) -> Self::Output {
         self.sub_scalar(rhs)
     }
@@ -96,13 +101,14 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `subtraction` of a scalar to each element of the tensor.
     fn sub(self, rhs: A) -> Self::Output {
         self.sub_scalar(rhs)
     }
 }
 
 // ----------------------------------------------------------------------------
-// Sub — Scalar<A> left (non-commutative → sub_from_scalar)
+// Sub — Scalar<A> left (non-commutative → sub_from_scalar) (W23T6)
 // ----------------------------------------------------------------------------
 
 impl<A, D> Sub<TensorBase<Owned<A>, D>> for Scalar<A>
@@ -113,6 +119,7 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `subtraction` with a [`Scalar`] value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.sub_from_scalar(self.0)
     }
@@ -126,13 +133,14 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `subtraction` with a [`Scalar`] value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.sub_from_scalar(self.0)
     }
 }
 
 // ----------------------------------------------------------------------------
-// Sub — native left scalar per-type
+// Sub — native left scalar per-type (W23T6)
 // ----------------------------------------------------------------------------
 
 impl<D> Sub<TensorBase<Owned<f32>, D>> for f32
@@ -141,6 +149,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -151,6 +160,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -161,6 +171,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -171,6 +182,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -181,6 +193,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -191,6 +204,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -201,6 +215,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -211,6 +226,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -221,6 +237,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -231,6 +248,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -241,6 +259,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -251,17 +270,23 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor.
     fn sub(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
 }
 
 // ----------------------------------------------------------------------------
-// TensorView — SUB
+// TensorView — SUB (W23T9–T10)
 // ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-// Sub — TensorView × tensor
+// TensorView — SUB (W23T9–T10)
+// ----------------------------------------------------------------------------
+
+
+// ----------------------------------------------------------------------------
+// Sub — TensorView × tensor (W23T9)
 // ----------------------------------------------------------------------------
 
 impl<'a, 'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
@@ -273,6 +298,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` between two tensor views with broadcasting. Both operands are borrowed.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
         TensorBase::sub(self, rhs)
     }
@@ -287,6 +313,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` between two tensor views with broadcasting. Both operands are borrowed.
     fn sub(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::sub(self, rhs)
     }
@@ -301,14 +328,16 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `subtraction` between two tensor views with broadcasting. Both operands are borrowed.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
         TensorBase::sub(self, rhs)
     }
 }
 
 
+
 // ----------------------------------------------------------------------------
-// Sub — TensorView right scalar
+// Sub — TensorView right scalar (W23T10)
 // ----------------------------------------------------------------------------
 
 impl<'a, A, D> Sub<A> for TensorBase<ViewRepr<'a, A>, D>
@@ -318,6 +347,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `subtraction` of a scalar to each element of the tensor view.
     fn sub(self, rhs: A) -> Self::Output {
         self.sub_scalar(rhs)
     }
@@ -330,14 +360,16 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `subtraction` of a scalar to each element of the tensor view.
     fn sub(self, rhs: A) -> Self::Output {
         self.sub_scalar(rhs)
     }
 }
 
 
+
 // ----------------------------------------------------------------------------
-// Sub — TensorView Scalar<A> left
+// Sub — TensorView Scalar<A> left (W23T10)
 // ----------------------------------------------------------------------------
 
 impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
@@ -347,6 +379,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `subtraction` with a [`Scalar`] value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
         rhs.sub_from_scalar(self.0)
     }
@@ -359,6 +392,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `subtraction` with a [`Scalar`] value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
         rhs.sub_from_scalar(self.0)
     }
@@ -370,6 +404,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -380,6 +415,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -390,6 +426,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -400,6 +437,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -410,6 +448,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -420,6 +459,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -430,6 +470,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -440,6 +481,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -450,6 +492,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -460,6 +503,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -470,6 +514,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
@@ -480,13 +525,14 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `subtraction` with this scalar value as the left operand to each element of the tensor view.
     fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
         rhs.sub_from_scalar(self)
     }
 }
 
 // ----------------------------------------------------------------------------
-// Unit tests
+// Unit tests (W23T6, W23T9–T10)
 // ----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -494,7 +540,7 @@ mod tests {
     use super::*;
     use crate::tensor::Tensor;
 
-    // ---- Sub ----
+    // ---- W23T6: Sub ----
     #[test]
     fn test_sub_basic() {
         let left = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
@@ -529,7 +575,7 @@ mod tests {
         assert_eq!((10.0f64 - tensor).as_slice().expect("c"), &[5.0, 3.0]);
     }
 
-    // ---- TensorView ----
+    // ---- W23T9-T10: TensorView ----
     #[test]
     fn test_view_sub_left_scalar_noncommutative() {
         let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");

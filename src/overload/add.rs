@@ -27,6 +27,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` between two tensors with broadcasting.
     fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(&self, &rhs)
     }
@@ -45,6 +46,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` between two tensors with broadcasting. Both operands are borrowed.
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(self, rhs)
     }
@@ -59,6 +61,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` with broadcasting. Borrows the right operand, consumes the left.
     fn add(self, rhs: &'a TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(&self, rhs)
     }
@@ -73,6 +76,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` with broadcasting. Borrows the left operand, consumes the right.
     fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(self, &rhs)
     }
@@ -90,6 +94,7 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `addition` of a scalar to each element of the tensor.
     fn add(self, rhs: A) -> Self::Output {
         self.add_scalar(rhs)
     }
@@ -103,6 +108,7 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `addition` of a scalar to each element of the tensor.
     fn add(self, rhs: A) -> Self::Output {
         self.add_scalar(rhs)
     }
@@ -120,6 +126,7 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `addition` with a [`Scalar`] value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.add_scalar(self.0)
     }
@@ -133,6 +140,7 @@ where
 {
     type Output = Tensor<A, D>;
 
+    /// Applies `addition` with a [`Scalar`] value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.add_scalar(self.0)
     }
@@ -148,6 +156,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -158,6 +167,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -168,6 +178,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -178,6 +189,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -188,6 +200,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -198,6 +211,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -208,6 +222,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -218,6 +233,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -228,6 +244,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -238,6 +255,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -248,6 +266,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -258,6 +277,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor.
     fn add(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -281,6 +301,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` between two tensor views with broadcasting. Both operands are borrowed.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
         TensorBase::add(self, rhs)
     }
@@ -295,6 +316,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` between two tensor views with broadcasting. Both operands are borrowed.
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(self, rhs)
     }
@@ -309,6 +331,7 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
+    /// Performs element-wise `addition` between two tensor views with broadcasting. Both operands are borrowed.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
         TensorBase::add(self, rhs)
     }
@@ -326,6 +349,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `addition` of a scalar to each element of the tensor view.
     fn add(self, rhs: A) -> Self::Output {
         self.add_scalar(rhs)
     }
@@ -338,6 +362,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `addition` of a scalar to each element of the tensor view.
     fn add(self, rhs: A) -> Self::Output {
         self.add_scalar(rhs)
     }
@@ -355,6 +380,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `addition` with a [`Scalar`] value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
         rhs.add_scalar(self.0)
     }
@@ -367,6 +393,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<A, D>;
+    /// Applies `addition` with a [`Scalar`] value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
         rhs.add_scalar(self.0)
     }
@@ -383,6 +410,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -393,6 +421,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -403,6 +432,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -413,6 +443,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -423,6 +454,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -433,6 +465,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -443,6 +476,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -453,6 +487,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -463,6 +498,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -473,6 +509,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -483,6 +520,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -493,6 +531,7 @@ where
     Ix0: BroadcastDim<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
+    /// Applies `addition` with this scalar value as the left operand to each element of the tensor view.
     fn add(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
         rhs.add_scalar(self)
     }
@@ -535,7 +574,7 @@ mod tests {
     //   (0,2)=5+30=35, (1,2)=6+30=36
     // F-order memory layout: [11, 12, 23, 24, 35, 36].
     //
-    // The original design doc sample expects the C-order layout
+    // The W23T3 design doc Step 2 sample expects the C-order layout
     // [11,22,33,14,25,36]; that sample is inconsistent with Xenon's
     // F-order baseline and is corrected here to the F-order value.
     #[test]
