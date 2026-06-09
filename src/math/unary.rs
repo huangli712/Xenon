@@ -60,36 +60,6 @@ trait UnaryArith: Numeric + crate::element::SimdElement + 'static {
     }
 }
 
-/// Per-type unary step for abs / signum, restricted to ordered types.
-///
-/// Trait bound `Numeric + OrderedCompareElement` 在 03-element §5.5 sealed
-/// 到 `i32` / `i64` / `f32` / `f64`；复数编译时被排除。
-///
-/// `*_step_with_ctx` variants follow the same contract as `UnaryArith`:
-/// default implementations forward to `*_step`; integer impls override to
-/// embed `element_index` + `shape` into panic text per 11-math §10.
-/// `SimdElement` supertrait. Since `SimdElement` lives in `crate::element`
-/// (ungated), the bound holds in every feature configuration. All four
-/// `OrderedUnaryArith` impls (i32/i64/f32/f64) already implement
-/// `SimdElement` per W14T1, so the supertrait does not narrow the
-/// sealed set.
-trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::element::SimdElement + 'static {
-    /// Element-wise absolute value; integer path panics on `MIN`.
-    fn abs_step(x: Self) -> Self;
-    /// Element-wise signum. Integers: `-1` / `0` / `1`.
-    /// Floats: delegates to `RealScalar::signum` (IEEE 754).
-    fn signum_step(x: Self) -> Self;
-
-    #[inline]
-    fn abs_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
-        Self::abs_step(x)
-    }
-    #[inline]
-    fn signum_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
-        Self::signum_step(x)
-    }
-}
-
 // ============================================================================
 // Integer impls (checked arithmetic)
 // ============================================================================
@@ -135,40 +105,6 @@ impl UnaryArith for i32 {
     }
 }
 
-impl OrderedUnaryArith for i32 {
-    #[inline]
-    fn abs_step(x: Self) -> Self {
-        if x >= 0 {
-            x
-        } else {
-            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
-                panic!(
-                    "integer overflow: operation=abs, type={}, trigger={}",
-                    "i32", x
-                )
-            })
-        }
-    }
-    #[inline]
-    fn signum_step(x: Self) -> Self {
-        x.signum()
-    }
-    #[inline]
-    fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-        if x >= 0 {
-            x
-        } else {
-            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
-                panic!(
-                    "integer overflow: operation=abs, type={}, trigger={}, \
-                     element_index={}, shape={:?}",
-                    "i32", x, idx, shape
-                )
-            })
-        }
-    }
-}
-
 impl UnaryArith for i64 {
     #[inline]
     fn neg_step(x: Self) -> Self {
@@ -210,6 +146,124 @@ impl UnaryArith for i64 {
     }
 }
 
+// ============================================================================
+// Float impls (IEEE 754)
+// ============================================================================
+
+impl UnaryArith for f32 {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
+}
+
+impl UnaryArith for f64 {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
+}
+
+// ============================================================================
+// Complex impls (only neg / square; abs / signum excluded at compile time
+// via `OrderedCompareElement` — Complex does NOT implement it per
+// 03-element §5.5).
+// ============================================================================
+
+impl UnaryArith for crate::complex::Complex<f32> {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
+}
+
+impl UnaryArith for crate::complex::Complex<f64> {
+    #[inline]
+    fn neg_step(x: Self) -> Self {
+        -x
+    }
+    #[inline]
+    fn square_step(x: Self) -> Self {
+        x * x
+    }
+}
+
+/// Per-type unary step for abs / signum, restricted to ordered types.
+///
+/// Trait bound `Numeric + OrderedCompareElement` 在 03-element §5.5 sealed
+/// 到 `i32` / `i64` / `f32` / `f64`；复数编译时被排除。
+///
+/// `*_step_with_ctx` variants follow the same contract as `UnaryArith`:
+/// default implementations forward to `*_step`; integer impls override to
+/// embed `element_index` + `shape` into panic text per 11-math §10.
+/// `SimdElement` supertrait. Since `SimdElement` lives in `crate::element`
+/// (ungated), the bound holds in every feature configuration. All four
+/// `OrderedUnaryArith` impls (i32/i64/f32/f64) already implement
+/// `SimdElement` per W14T1, so the supertrait does not narrow the
+/// sealed set.
+trait OrderedUnaryArith: Numeric + OrderedCompareElement + crate::element::SimdElement + 'static {
+    /// Element-wise absolute value; integer path panics on `MIN`.
+    fn abs_step(x: Self) -> Self;
+    /// Element-wise signum. Integers: `-1` / `0` / `1`.
+    /// Floats: delegates to `RealScalar::signum` (IEEE 754).
+    fn signum_step(x: Self) -> Self;
+
+    #[inline]
+    fn abs_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
+        Self::abs_step(x)
+    }
+    #[inline]
+    fn signum_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
+        Self::signum_step(x)
+    }
+}
+
+impl OrderedUnaryArith for i32 {
+    #[inline]
+    fn abs_step(x: Self) -> Self {
+        if x >= 0 {
+            x
+        } else {
+            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+                panic!(
+                    "integer overflow: operation=abs, type={}, trigger={}",
+                    "i32", x
+                )
+            })
+        }
+    }
+    #[inline]
+    fn signum_step(x: Self) -> Self {
+        x.signum()
+    }
+    #[inline]
+    fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
+        if x >= 0 {
+            x
+        } else {
+            <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
+                panic!(
+                    "integer overflow: operation=abs, type={}, trigger={}, \
+                     element_index={}, shape={:?}",
+                    "i32", x, idx, shape
+                )
+            })
+        }
+    }
+}
+
 impl OrderedUnaryArith for i64 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -244,21 +298,6 @@ impl OrderedUnaryArith for i64 {
     }
 }
 
-// ============================================================================
-// Float impls (IEEE 754)
-// ============================================================================
-
-impl UnaryArith for f32 {
-    #[inline]
-    fn neg_step(x: Self) -> Self {
-        -x
-    }
-    #[inline]
-    fn square_step(x: Self) -> Self {
-        x * x
-    }
-}
-
 impl OrderedUnaryArith for f32 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -270,17 +309,6 @@ impl OrderedUnaryArith for f32 {
     }
 }
 
-impl UnaryArith for f64 {
-    #[inline]
-    fn neg_step(x: Self) -> Self {
-        -x
-    }
-    #[inline]
-    fn square_step(x: Self) -> Self {
-        x * x
-    }
-}
-
 impl OrderedUnaryArith for f64 {
     #[inline]
     fn abs_step(x: Self) -> Self {
@@ -289,34 +317,6 @@ impl OrderedUnaryArith for f64 {
     #[inline]
     fn signum_step(x: Self) -> Self {
         <Self as RealScalar>::signum(x)
-    }
-}
-
-// ============================================================================
-// Complex impls (only neg / square; abs / signum excluded at compile time
-// via `OrderedCompareElement` — Complex does NOT implement it per
-// 03-element §5.5).
-// ============================================================================
-
-impl UnaryArith for crate::complex::Complex<f32> {
-    #[inline]
-    fn neg_step(x: Self) -> Self {
-        -x
-    }
-    #[inline]
-    fn square_step(x: Self) -> Self {
-        x * x
-    }
-}
-
-impl UnaryArith for crate::complex::Complex<f64> {
-    #[inline]
-    fn neg_step(x: Self) -> Self {
-        -x
-    }
-    #[inline]
-    fn square_step(x: Self) -> Self {
-        x * x
     }
 }
 
@@ -395,6 +395,137 @@ where
         *dst = f(*src, idx, &shape_slice);
     }
     result
+}
+
+// ============================================================================
+// W16T11: Dispatch-aware unary helper (serial/SIMD/parallel routing)
+// ============================================================================
+
+/// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
+/// `A: ComplexFloat`-derived element traits that do NOT include
+/// `SimdElement` in their supertrait set.
+///
+/// **Why this exists**: The user-facing math API (`sin`, `sqrt`, `exp`,
+/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by public `RealScalar`
+/// (`03-element.md §5.3`) and `ComplexFloat` (`02-complex.md`) traits.
+/// These traits intentionally do NOT include the `pub(crate) SimdElement`
+/// trait as a supertrait, because `08-simd.md §5.1` mandates that SIMD
+/// types must not appear in the public API surface (`pub(crate)` only).
+/// Therefore `apply_unary_with_dispatch` (which requires
+/// `A: SimdElement`) cannot be called from these methods.
+///
+/// **Coverage today**: W14T1 line 132 reserves `Sin`/`Sqrt`/`Exp`/`Ln`/
+/// `Floor`/`Ceil`/`Conjugate` for future SIMD coverage. So the SIMD
+/// branch of this helper always falls through to scalar.
+///
+/// **Real acceleration today**: Parallel path via
+/// `crate::parallel::unary::par_map` (W15T3) when `parallel` feature is
+/// enabled and `select_exec_path` returns `ExecPath::Parallel`.
+///
+/// **Future-proof**: When W14 extends coverage (e.g. adds
+/// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
+/// `dispatch_vector_unary_op` for the supported types without changing
+/// any method body (since the public bound `A: RealScalar` remains).
+fn apply_unary_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
+where
+    A: Element,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: Fn(A) -> A + Copy + Send + Sync,
+{
+    let len = input.len();
+    let is_contiguous = input.is_f_contiguous();
+    let alignment_ok = input.is_aligned();
+    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
+    match path {
+        // W14 has no SIMD kernel for these ops yet; Serial and Simd both
+        // route to the scalar baseline.
+        ExecPath::Serial | ExecPath::Simd => {
+            let _ = guard;
+            apply_unary(input, op)
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_unary(input, op)
+            }
+        },
+    }
+}
+
+/// Dispatch-aware variant of `apply_unary` — routes between Serial, SIMD,
+/// and Parallel paths per 11-math §5.2 / §6.3. The scalar baseline
+/// `apply_unary` (W16T1 helpers) is the SIMD-fallback target.
+///
+/// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
+/// `None` → SIMD path is skipped, falling back to Serial/Parallel.
+#[cfg(feature = "simd")]
+fn apply_unary_with_dispatch<A, S, D, F>(
+    input: &TensorBase<S, D>,
+    op: F,
+    op_tag: Option<crate::simd::UnaryOp>,
+) -> Tensor<A, D>
+where
+    A: Element + crate::element::SimdElement,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: Fn(A) -> A + Copy + Send + Sync,
+{
+    let len = input.len();
+    let is_contiguous = input.is_f_contiguous();
+    let alignment_ok = input.is_aligned();
+
+    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
+    match path {
+        ExecPath::Serial => apply_unary(input, op),
+        ExecPath::Simd => {
+            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary(input, op))
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_unary(input, op)
+            }
+        },
+    }
+}
+
+/// Helper: attempt a slice-based SIMD unary kernel. Returns `None` if
+/// op_tag is None, the kernel returned false, or the input cannot be
+/// viewed as `&[A]` (non-contiguous — defense-in-depth).
+#[cfg(feature = "simd")]
+fn try_simd_unary_via_slice<A, S, D>(
+    input: &TensorBase<S, D>,
+    op_tag: Option<crate::simd::UnaryOp>,
+) -> Option<Tensor<A, D>>
+where
+    A: Element + crate::element::SimdElement,
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    let tag = op_tag?;
+    let src: &[A] = input.as_slice()?;
+    let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
+    let dst: &mut [A] = result.as_mut_slice()?;
+    if crate::simd::dispatch_vector_unary_op(tag, src, dst) {
+        Some(result)
+    } else {
+        None
+    }
 }
 
 // ============================================================================
@@ -658,137 +789,6 @@ where
                 }
             },
         }
-    }
-}
-
-// ============================================================================
-// W16T11: Dispatch-aware unary helper (serial/SIMD/parallel routing)
-// ============================================================================
-
-/// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
-/// `A: ComplexFloat`-derived element traits that do NOT include
-/// `SimdElement` in their supertrait set.
-///
-/// **Why this exists**: The user-facing math API (`sin`, `sqrt`, `exp`,
-/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by public `RealScalar`
-/// (`03-element.md §5.3`) and `ComplexFloat` (`02-complex.md`) traits.
-/// These traits intentionally do NOT include the `pub(crate) SimdElement`
-/// trait as a supertrait, because `08-simd.md §5.1` mandates that SIMD
-/// types must not appear in the public API surface (`pub(crate)` only).
-/// Therefore `apply_unary_with_dispatch` (which requires
-/// `A: SimdElement`) cannot be called from these methods.
-///
-/// **Coverage today**: W14T1 line 132 reserves `Sin`/`Sqrt`/`Exp`/`Ln`/
-/// `Floor`/`Ceil`/`Conjugate` for future SIMD coverage. So the SIMD
-/// branch of this helper always falls through to scalar.
-///
-/// **Real acceleration today**: Parallel path via
-/// `crate::parallel::unary::par_map` (W15T3) when `parallel` feature is
-/// enabled and `select_exec_path` returns `ExecPath::Parallel`.
-///
-/// **Future-proof**: When W14 extends coverage (e.g. adds
-/// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
-/// `dispatch_vector_unary_op` for the supported types without changing
-/// any method body (since the public bound `A: RealScalar` remains).
-fn apply_unary_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
-where
-    A: Element,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: Fn(A) -> A + Copy + Send + Sync,
-{
-    let len = input.len();
-    let is_contiguous = input.is_f_contiguous();
-    let alignment_ok = input.is_aligned();
-    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-    match path {
-        // W14 has no SIMD kernel for these ops yet; Serial and Simd both
-        // route to the scalar baseline.
-        ExecPath::Serial | ExecPath::Simd => {
-            let _ = guard;
-            apply_unary(input, op)
-        },
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_unary(input, op)
-            }
-        },
-    }
-}
-
-/// Dispatch-aware variant of `apply_unary` — routes between Serial, SIMD,
-/// and Parallel paths per 11-math §5.2 / §6.3. The scalar baseline
-/// `apply_unary` (W16T1 helpers) is the SIMD-fallback target.
-///
-/// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
-/// `None` → SIMD path is skipped, falling back to Serial/Parallel.
-#[cfg(feature = "simd")]
-fn apply_unary_with_dispatch<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    op: F,
-    op_tag: Option<crate::simd::UnaryOp>,
-) -> Tensor<A, D>
-where
-    A: Element + crate::element::SimdElement,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: Fn(A) -> A + Copy + Send + Sync,
-{
-    let len = input.len();
-    let is_contiguous = input.is_f_contiguous();
-    let alignment_ok = input.is_aligned();
-
-    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-    match path {
-        ExecPath::Serial => apply_unary(input, op),
-        ExecPath::Simd => {
-            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary(input, op))
-        },
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_unary(input, op)
-            }
-        },
-    }
-}
-
-/// Helper: attempt a slice-based SIMD unary kernel. Returns `None` if
-/// op_tag is None, the kernel returned false, or the input cannot be
-/// viewed as `&[A]` (non-contiguous — defense-in-depth).
-#[cfg(feature = "simd")]
-fn try_simd_unary_via_slice<A, S, D>(
-    input: &TensorBase<S, D>,
-    op_tag: Option<crate::simd::UnaryOp>,
-) -> Option<Tensor<A, D>>
-where
-    A: Element + crate::element::SimdElement,
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
-    let tag = op_tag?;
-    let src: &[A] = input.as_slice()?;
-    let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
-    let dst: &mut [A] = result.as_mut_slice()?;
-    if crate::simd::dispatch_vector_unary_op(tag, src, dst) {
-        Some(result)
-    } else {
-        None
     }
 }
 
