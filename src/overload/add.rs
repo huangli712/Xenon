@@ -741,13 +741,10 @@ mod tests {
 
     #[test]
     fn test_view_add_combined() {
-        let a = Tensor::from_shape_vec([2], vec![8.0f64, 9.0]).expect("valid test input");
-        let b = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");
-        let av = a.view();
-        let bv = b.view();
-        assert_eq!((&av - &bv).expect("broadcast succeeds").as_slice().expect("c"), &[6.0, 6.0]);
-        assert_eq!((&av * &bv).expect("broadcast succeeds").as_slice().expect("c"), &[16.0, 27.0]);
-        assert_eq!((&av / &bv).expect("broadcast succeeds").as_slice().expect("c"), &[4.0, 3.0]);
+        let t = Tensor::from_shape_vec([2], vec![1.0f64, 2.0]).expect("valid test input");
+        let v = t.view();
+        assert_eq!((&v + 5.0).as_slice().expect("c"), &[6.0, 7.0]);
+        assert_eq!((Scalar(5.0) + &v).as_slice().expect("c"), &[6.0, 7.0]);
+        assert_eq!((5.0 + &v).as_slice().expect("c"), &[6.0, 7.0]);
     }
-
 }
