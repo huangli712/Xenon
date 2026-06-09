@@ -6,10 +6,10 @@
 
 use core::ops::Mul;
 
-use crate::complex::Complex;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::error::Result;
 use crate::math::BinaryArith;
+use crate::complex::Complex;
+use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
@@ -27,7 +27,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `multiplication` between two tensors with broadcasting.
+    /// Performs element-wise `multiplication` between two tensors with
+    /// broadcasting.
     fn mul(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::mul(&self, &rhs)
     }
