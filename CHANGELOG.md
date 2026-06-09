@@ -3,6 +3,13 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.36] — 2026-06-09
+
+### Changed
+
+- `unique_impl`: Replaced `iter().any()` manual uniqueness check with idiomatic `Vec::contains`.
+- Fixed intra-doc link on private `UniqueElement` trait in unique method docs.
+
 ## [v0.0.35] — 2026-06-08
 
 ### Removed
