@@ -321,214 +321,6 @@ impl OrderedUnaryArith for f64 {
 }
 
 // ============================================================================
-// Shared traversal helpers (merged from helpers.rs)
-// ============================================================================
-
-/// Same-type unary traversal — per 11-math §6.1 lines 537-543.
-///
-/// Output element type equals input element type. Type-changing
-/// traversal (`Complex<T> → T`) is handled by `apply_complex_to_real`.
-#[inline]
-fn apply_unary<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
-where
-    A: Element,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: FnMut(A) -> A,
-{
-    let mut result = Tensor::<A, D>::zeros(input.raw_dim())
-        .expect("input dimension must be valid since input tensor exists");
-    for (dst, src) in result.iter_mut().zip(input.iter()) {
-        *dst = f(*src);
-    }
-    result
-}
-
-/// Type-changing traversal for `Complex<T> → T` — per 11-math §6.1 line 546.
-///
-/// Used by `modulus()` (W16T5). Input is a complex tensor; output is a
-/// real tensor of the same shape.
-#[inline]
-fn apply_complex_to_real<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    mut f: F,
-) -> Tensor<<A as ComplexScalar>::Real, D>
-where
-    A: ComplexScalar,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: FnMut(A) -> <A as ComplexScalar>::Real,
-{
-    let mut result = Tensor::<<A as ComplexScalar>::Real, D>::zeros(input.raw_dim())
-        .expect("input dimension must be valid since input tensor exists");
-    for (dst, src) in result.iter_mut().zip(input.iter()) {
-        *dst = f(*src);
-    }
-    result
-}
-
-/// Same-type unary traversal with element-index and shape context — variant
-/// of `apply_unary` that propagates `(idx, &shape)` into the kernel closure.
-///
-/// Required by W16T3 integer monomorphizations of `abs` / `neg` / `square`
-/// so that panic messages can embed `element_index` + `shape` per 11-math
-/// §10 line 785–790 ("panic 信息至少包含 `operation`、`type`、`trigger`、
-/// `element_index`，并在适用时附带 `shape`"). Non-integer monomorphizations
-/// have no panic path; the `idx` / `shape` parameters are zero-cost dropped
-/// after inlining.
-#[inline]
-fn apply_unary_indexed<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    mut f: F,
-) -> Tensor<A, D>
-where
-    A: Element,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: FnMut(A, usize, &[usize]) -> A,
-{
-    let dim = input.raw_dim();
-    let shape_slice: Vec<usize> = dim.slice().to_vec();
-    let mut result = Tensor::<A, D>::zeros(dim)
-        .expect("input dimension must be valid since input tensor exists");
-    for (idx, (dst, src)) in result.iter_mut().zip(input.iter()).enumerate() {
-        *dst = f(*src, idx, &shape_slice);
-    }
-    result
-}
-
-// ============================================================================
-// W16T11: Dispatch-aware unary helper (serial/SIMD/parallel routing)
-// ============================================================================
-
-/// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
-/// `A: ComplexFloat`-derived element traits that do NOT include
-/// `SimdElement` in their supertrait set.
-///
-/// **Why this exists**: The user-facing math API (`sin`, `sqrt`, `exp`,
-/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by public `RealScalar`
-/// (`03-element.md §5.3`) and `ComplexFloat` (`02-complex.md`) traits.
-/// These traits intentionally do NOT include the `pub(crate) SimdElement`
-/// trait as a supertrait, because `08-simd.md §5.1` mandates that SIMD
-/// types must not appear in the public API surface (`pub(crate)` only).
-/// Therefore `apply_unary_with_dispatch` (which requires
-/// `A: SimdElement`) cannot be called from these methods.
-///
-/// **Coverage today**: W14T1 line 132 reserves `Sin`/`Sqrt`/`Exp`/`Ln`/
-/// `Floor`/`Ceil`/`Conjugate` for future SIMD coverage. So the SIMD
-/// branch of this helper always falls through to scalar.
-///
-/// **Real acceleration today**: Parallel path via
-/// `crate::parallel::unary::par_map` (W15T3) when `parallel` feature is
-/// enabled and `select_exec_path` returns `ExecPath::Parallel`.
-///
-/// **Future-proof**: When W14 extends coverage (e.g. adds
-/// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
-/// `dispatch_vector_unary_op` for the supported types without changing
-/// any method body (since the public bound `A: RealScalar` remains).
-fn apply_unary_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
-where
-    A: Element,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: Fn(A) -> A + Copy + Send + Sync,
-{
-    let len = input.len();
-    let is_contiguous = input.is_f_contiguous();
-    let alignment_ok = input.is_aligned();
-    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-    match path {
-        // W14 has no SIMD kernel for these ops yet; Serial and Simd both
-        // route to the scalar baseline.
-        ExecPath::Serial | ExecPath::Simd => {
-            let _ = guard;
-            apply_unary(input, op)
-        },
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_unary(input, op)
-            }
-        },
-    }
-}
-
-/// Dispatch-aware variant of `apply_unary` — routes between Serial, SIMD,
-/// and Parallel paths per 11-math §5.2 / §6.3. The scalar baseline
-/// `apply_unary` (W16T1 helpers) is the SIMD-fallback target.
-///
-/// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
-/// `None` → SIMD path is skipped, falling back to Serial/Parallel.
-#[cfg(feature = "simd")]
-fn apply_unary_with_dispatch<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    op: F,
-    op_tag: Option<crate::simd::UnaryOp>,
-) -> Tensor<A, D>
-where
-    A: Element + crate::element::SimdElement,
-    S: Storage<Elem = A>,
-    D: Dimension,
-    F: Fn(A) -> A + Copy + Send + Sync,
-{
-    let len = input.len();
-    let is_contiguous = input.is_f_contiguous();
-    let alignment_ok = input.is_aligned();
-
-    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-    match path {
-        ExecPath::Serial => apply_unary(input, op),
-        ExecPath::Simd => {
-            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary(input, op))
-        },
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_unary(input, op)
-            }
-        },
-    }
-}
-
-/// Helper: attempt a slice-based SIMD unary kernel. Returns `None` if
-/// op_tag is None, the kernel returned false, or the input cannot be
-/// viewed as `&[A]` (non-contiguous — defense-in-depth).
-#[cfg(feature = "simd")]
-fn try_simd_unary_via_slice<A, S, D>(
-    input: &TensorBase<S, D>,
-    op_tag: Option<crate::simd::UnaryOp>,
-) -> Option<Tensor<A, D>>
-where
-    A: Element + crate::element::SimdElement,
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
-    let tag = op_tag?;
-    let src: &[A] = input.as_slice()?;
-    let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
-    let dst: &mut [A] = result.as_mut_slice()?;
-    if crate::simd::dispatch_vector_unary_op(tag, src, dst) {
-        Some(result)
-    } else {
-        None
-    }
-}
-
-// ============================================================================
 // Public unary methods on TensorBase
 // ============================================================================
 
@@ -789,6 +581,214 @@ where
                 }
             },
         }
+    }
+}
+
+// ============================================================================
+// Shared traversal helpers (merged from helpers.rs)
+// ============================================================================
+
+/// Same-type unary traversal — per 11-math §6.1 lines 537-543.
+///
+/// Output element type equals input element type. Type-changing
+/// traversal (`Complex<T> → T`) is handled by `apply_complex_to_real`.
+#[inline]
+fn apply_unary<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
+where
+    A: Element,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: FnMut(A) -> A,
+{
+    let mut result = Tensor::<A, D>::zeros(input.raw_dim())
+        .expect("input dimension must be valid since input tensor exists");
+    for (dst, src) in result.iter_mut().zip(input.iter()) {
+        *dst = f(*src);
+    }
+    result
+}
+
+/// Type-changing traversal for `Complex<T> → T` — per 11-math §6.1 line 546.
+///
+/// Used by `modulus()` (W16T5). Input is a complex tensor; output is a
+/// real tensor of the same shape.
+#[inline]
+fn apply_complex_to_real<A, S, D, F>(
+    input: &TensorBase<S, D>,
+    mut f: F,
+) -> Tensor<<A as ComplexScalar>::Real, D>
+where
+    A: ComplexScalar,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: FnMut(A) -> <A as ComplexScalar>::Real,
+{
+    let mut result = Tensor::<<A as ComplexScalar>::Real, D>::zeros(input.raw_dim())
+        .expect("input dimension must be valid since input tensor exists");
+    for (dst, src) in result.iter_mut().zip(input.iter()) {
+        *dst = f(*src);
+    }
+    result
+}
+
+/// Same-type unary traversal with element-index and shape context — variant
+/// of `apply_unary` that propagates `(idx, &shape)` into the kernel closure.
+///
+/// Required by W16T3 integer monomorphizations of `abs` / `neg` / `square`
+/// so that panic messages can embed `element_index` + `shape` per 11-math
+/// §10 line 785–790 ("panic 信息至少包含 `operation`、`type`、`trigger`、
+/// `element_index`，并在适用时附带 `shape`"). Non-integer monomorphizations
+/// have no panic path; the `idx` / `shape` parameters are zero-cost dropped
+/// after inlining.
+#[inline]
+fn apply_unary_indexed<A, S, D, F>(
+    input: &TensorBase<S, D>,
+    mut f: F,
+) -> Tensor<A, D>
+where
+    A: Element,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: FnMut(A, usize, &[usize]) -> A,
+{
+    let dim = input.raw_dim();
+    let shape_slice: Vec<usize> = dim.slice().to_vec();
+    let mut result = Tensor::<A, D>::zeros(dim)
+        .expect("input dimension must be valid since input tensor exists");
+    for (idx, (dst, src)) in result.iter_mut().zip(input.iter()).enumerate() {
+        *dst = f(*src, idx, &shape_slice);
+    }
+    result
+}
+
+// ============================================================================
+// W16T11: Dispatch-aware unary helper (serial/SIMD/parallel routing)
+// ============================================================================
+
+/// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
+/// `A: ComplexFloat`-derived element traits that do NOT include
+/// `SimdElement` in their supertrait set.
+///
+/// **Why this exists**: The user-facing math API (`sin`, `sqrt`, `exp`,
+/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by public `RealScalar`
+/// (`03-element.md §5.3`) and `ComplexFloat` (`02-complex.md`) traits.
+/// These traits intentionally do NOT include the `pub(crate) SimdElement`
+/// trait as a supertrait, because `08-simd.md §5.1` mandates that SIMD
+/// types must not appear in the public API surface (`pub(crate)` only).
+/// Therefore `apply_unary_with_dispatch` (which requires
+/// `A: SimdElement`) cannot be called from these methods.
+///
+/// **Coverage today**: W14T1 line 132 reserves `Sin`/`Sqrt`/`Exp`/`Ln`/
+/// `Floor`/`Ceil`/`Conjugate` for future SIMD coverage. So the SIMD
+/// branch of this helper always falls through to scalar.
+///
+/// **Real acceleration today**: Parallel path via
+/// `crate::parallel::unary::par_map` (W15T3) when `parallel` feature is
+/// enabled and `select_exec_path` returns `ExecPath::Parallel`.
+///
+/// **Future-proof**: When W14 extends coverage (e.g. adds
+/// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
+/// `dispatch_vector_unary_op` for the supported types without changing
+/// any method body (since the public bound `A: RealScalar` remains).
+fn apply_unary_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
+where
+    A: Element,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: Fn(A) -> A + Copy + Send + Sync,
+{
+    let len = input.len();
+    let is_contiguous = input.is_f_contiguous();
+    let alignment_ok = input.is_aligned();
+    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
+    match path {
+        // W14 has no SIMD kernel for these ops yet; Serial and Simd both
+        // route to the scalar baseline.
+        ExecPath::Serial | ExecPath::Simd => {
+            let _ = guard;
+            apply_unary(input, op)
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_unary(input, op)
+            }
+        },
+    }
+}
+
+/// Dispatch-aware variant of `apply_unary` — routes between Serial, SIMD,
+/// and Parallel paths per 11-math §5.2 / §6.3. The scalar baseline
+/// `apply_unary` (W16T1 helpers) is the SIMD-fallback target.
+///
+/// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
+/// `None` → SIMD path is skipped, falling back to Serial/Parallel.
+#[cfg(feature = "simd")]
+fn apply_unary_with_dispatch<A, S, D, F>(
+    input: &TensorBase<S, D>,
+    op: F,
+    op_tag: Option<crate::simd::UnaryOp>,
+) -> Tensor<A, D>
+where
+    A: Element + crate::element::SimdElement,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: Fn(A) -> A + Copy + Send + Sync,
+{
+    let len = input.len();
+    let is_contiguous = input.is_f_contiguous();
+    let alignment_ok = input.is_aligned();
+
+    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
+    match path {
+        ExecPath::Serial => apply_unary(input, op),
+        ExecPath::Simd => {
+            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary(input, op))
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                crate::parallel::unary::par_map(input, &strat, g, |x| op(*x))
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_unary(input, op)
+            }
+        },
+    }
+}
+
+/// Helper: attempt a slice-based SIMD unary kernel. Returns `None` if
+/// op_tag is None, the kernel returned false, or the input cannot be
+/// viewed as `&[A]` (non-contiguous — defense-in-depth).
+#[cfg(feature = "simd")]
+fn try_simd_unary_via_slice<A, S, D>(
+    input: &TensorBase<S, D>,
+    op_tag: Option<crate::simd::UnaryOp>,
+) -> Option<Tensor<A, D>>
+where
+    A: Element + crate::element::SimdElement,
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    let tag = op_tag?;
+    let src: &[A] = input.as_slice()?;
+    let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
+    let dst: &mut [A] = result.as_mut_slice()?;
+    if crate::simd::dispatch_vector_unary_op(tag, src, dst) {
+        Some(result)
+    } else {
+        None
     }
 }
 
