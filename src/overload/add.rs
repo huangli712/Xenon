@@ -564,21 +564,6 @@ mod tests {
         assert_eq!(result.as_slice().expect("contiguous"), &[4, 6]);
     }
 
-    //
-    // Xenon stores tensors in F-order (column-major) per
-    // `00-coding.md §14 决策 1`. For shape=[2,3] data=[1,2,3,4,5,6]:
-    //   col 0 = [1,2], col 1 = [3,4], col 2 = [5,6]
-    //   logical matrix: [[1,3,5], [2,4,6]]
-    // Broadcasting [3] data=[10,20,30] places right[j] at every (i, j):
-    //   (0,0)=1+10=11, (1,0)=2+10=12,
-    //   (0,1)=3+20=23, (1,1)=4+20=24,
-    //   (0,2)=5+30=35, (1,2)=6+30=36
-    // F-order memory layout: [11, 12, 23, 24, 35, 36].
-    //
-    // The W23T3 design doc Step 2 sample expects the C-order layout
-    // [11,22,33,14,25,36]; that sample is inconsistent with Xenon's
-    // F-order baseline and is corrected here to the F-order value.
-
     #[test]
     fn test_add_broadcast() {
         let left = Tensor::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
