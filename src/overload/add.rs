@@ -709,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_owned_view() {
+    fn test_view_owned_add_view() {
         let left = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
         let right = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
         let rv = right.view();
