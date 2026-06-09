@@ -1,7 +1,7 @@
-//! Owned `Tensor` Mul operator overloading (W23T7).
+//! `Tensor` and `TensorView` multiplication operator overloading.
 //!
-//! Provides `Mul` implementations for pairs of
-//! `TensorBase<Owned<A>, D>` with broadcast support, right-scalar,
+//! Provides `Mul` implementations for owned tensors, tensor views,
+//! and their cross-combinations with broadcast support, right-scalar,
 //! `Scalar<A>` left-scalar, and native per-type left-scalar paths.
 
 use core::ops::Mul;
@@ -16,7 +16,7 @@ use crate::tensor::{Tensor, TensorBase};
 use super::scalar::Scalar;
 
 // ----------------------------------------------------------------------------
-// Mul — tensor × tensor (W23T7)
+// Mul — tensor × tensor
 // ----------------------------------------------------------------------------
 
 impl<A, D, E> Mul<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
@@ -76,7 +76,7 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Mul — right scalar (W23T7)
+// Mul — right scalar
 // ----------------------------------------------------------------------------
 
 impl<A, D> Mul<A> for TensorBase<Owned<A>, D>
@@ -108,7 +108,7 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Mul — Scalar<A> left (commutative) (W23T7)
+// Mul — Scalar<A> left (commutative)
 // ----------------------------------------------------------------------------
 
 impl<A, D> Mul<TensorBase<Owned<A>, D>> for Scalar<A>
@@ -140,7 +140,7 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Mul — native left scalar per-type (W23T7)
+// Mul — native left scalar per-type
 // ----------------------------------------------------------------------------
 
 impl<D> Mul<TensorBase<Owned<f32>, D>> for f32
@@ -154,6 +154,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<&'a TensorBase<Owned<f32>, D>> for f32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -165,6 +166,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<D> Mul<TensorBase<Owned<f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -176,6 +178,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<&'a TensorBase<Owned<f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -187,6 +190,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<D> Mul<TensorBase<Owned<i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -198,6 +202,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<&'a TensorBase<Owned<i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -209,6 +214,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<D> Mul<TensorBase<Owned<i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -220,6 +226,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<&'a TensorBase<Owned<i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -231,6 +238,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<D> Mul<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -242,6 +250,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -253,6 +262,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<D> Mul<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -264,6 +274,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -277,16 +288,11 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// TensorView — MUL (W23T9–T10)
+// TensorView — MUL
 // ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-// TensorView — MUL (W23T9–T10)
-// ----------------------------------------------------------------------------
-
-
-// ----------------------------------------------------------------------------
-// Mul — TensorView × tensor (W23T9)
+// Mul — TensorView × tensor
 // ----------------------------------------------------------------------------
 
 impl<'a, 'b, A, D, E> Mul<&'b TensorBase<ViewRepr<'b, A>, E>>
@@ -334,10 +340,8 @@ where
     }
 }
 
-
-
 // ----------------------------------------------------------------------------
-// Mul — TensorView right scalar (W23T10)
+// Mul — TensorView right scalar
 // ----------------------------------------------------------------------------
 
 impl<'a, A, D> Mul<A> for TensorBase<ViewRepr<'a, A>, D>
@@ -366,10 +370,8 @@ where
     }
 }
 
-
-
 // ----------------------------------------------------------------------------
-// Mul — TensorView Scalar<A> left (W23T10)
+// Mul — TensorView Scalar<A> left
 // ----------------------------------------------------------------------------
 
 impl<'a, A, D> Mul<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
@@ -409,6 +411,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -420,6 +423,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<TensorBase<ViewRepr<'a, f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -431,6 +435,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -442,6 +447,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<TensorBase<ViewRepr<'a, i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -453,6 +459,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -464,6 +471,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<TensorBase<ViewRepr<'a, i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -475,6 +483,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -486,6 +495,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -497,6 +507,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -508,6 +519,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, D> Mul<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -519,6 +531,7 @@ where
         rhs.mul_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -532,7 +545,7 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Unit tests (W23T7, W23T9–T10)
+// Unit tests
 // ----------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -540,7 +553,7 @@ mod tests {
     use super::*;
     use crate::tensor::Tensor;
 
-    // ---- W23T7: Mul ----
+    // ---- Mul ----
     #[test]
     fn test_mul_basic() {
         let left = Tensor::from_shape_vec([2], vec![2, 3]).expect("valid test input");
@@ -575,7 +588,7 @@ mod tests {
         assert_eq!((4.0f64 * tensor).as_slice().expect("c"), &[8.0, 12.0]);
     }
 
-    // ---- W23T9-T10: TensorView ----
+    // ---- TensorView ----
     #[test]
     fn test_view_mul_right_and_left() {
         let t = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");

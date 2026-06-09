@@ -1,9 +1,10 @@
 //! Operator overloading for `Tensor` / `TensorView` arithmetic.
 //!
- //! Public entry per `19-overload.md §5`. Actual `impl` blocks live in
- //! `owned` and `view` sub-modules and are exposed through Rust's usual
- //! trait-impl visibility; only `Scalar` needs to be named explicitly by
- //! user code.
+//! Actual `impl` blocks live in the `add`, `sub`, `mul`, `div`
+//! sub-modules and are exposed through Rust's usual trait-impl
+//! visibility. Each module covers both owned `Tensor` operations
+//! and `TensorView` cross-combinations. Only [`Scalar`] needs to
+//! be named explicitly by user code.
 
 pub mod scalar;
 pub mod add;
