@@ -15,7 +15,7 @@ use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
 use super::scalar::Scalar;
- use super::scalar::native_left_scalar_view_all;
+use super::scalar::native_left_scalar_view_all;
 
 // ==========================================================================
 // TensorView — tensor × tensor (W23T9)
