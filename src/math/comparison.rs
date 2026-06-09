@@ -101,7 +101,8 @@ where
 }
 
 // ============================================================================
-// W16T9: less / less_equal for OrderedCompareElement types
+// W16T9 / W16T10: less / less_equal / greater / greater_equal
+// for OrderedCompareElement types
 // ============================================================================
 
 impl<S, D, A> TensorBase<S, D>
@@ -151,54 +152,7 @@ where
     {
         apply_compare_with_dispatch(self, other, |a, b| a <= b)
     }
-}
 
-// scalar variants for less/less_equal
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    A: OrderedCompareElement,
-{
-    /// Element-wise less-than comparison with a scalar right-hand side.
-    ///
-    /// # Panics
-    ///
-    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
-    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
-    /// guarantees scalar broadcast always succeeds. The `expect` messages
-    /// document the invariant for future refactors.
-    pub fn less_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
-        self.less(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
-    }
-
-    /// Element-wise less-or-equal comparison with a scalar right-hand side.
-    ///
-    /// # Panics
-    ///
-    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
-    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
-    /// guarantees scalar broadcast always succeeds. The `expect` messages
-    /// document the invariant for future refactors.
-    pub fn less_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
-        self.less_equal(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
-    }
-}
-
-// ============================================================================
-// W16T10: greater / greater_equal for OrderedCompareElement types
-// ============================================================================
-
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: OrderedCompareElement,
-{
     /// Element-wise greater-than comparison.
     ///
     /// # Errors
@@ -238,13 +192,41 @@ where
     }
 }
 
-// scalar variants for greater/greater_equal
+// scalar variants for less/less_equal/greater/greater_equal
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension + BroadcastDim<Ix0, Output = D>,
     A: OrderedCompareElement,
 {
+    /// Element-wise less-than comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
+    pub fn less_scalar(&self, scalar: A) -> Tensor<bool, D> {
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        self.less(&other)
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+    }
+
+    /// Element-wise less-or-equal comparison with a scalar right-hand side.
+    ///
+    /// # Panics
+    ///
+    /// Does not panic in practice: `from_scalar` is infallible for `Ix0`,
+    /// and the `BroadcastDim<Ix0, Output = D>` bound on the `impl` block
+    /// guarantees scalar broadcast always succeeds. The `expect` messages
+    /// document the invariant for future refactors.
+    pub fn less_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
+        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        self.less_equal(&other)
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+    }
+
     /// Element-wise greater-than comparison with a scalar right-hand side.
     ///
     /// # Panics
