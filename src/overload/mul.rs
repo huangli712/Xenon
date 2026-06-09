@@ -643,7 +643,6 @@ mod tests {
         assert_eq!((4.0f64 * tensor).as_slice().expect("c"), &[8.0, 12.0]);
     }
 
-
     #[test]
     fn test_mul_native_left_scalar_f64_ref() {
         let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 3.0]).expect("valid test input");

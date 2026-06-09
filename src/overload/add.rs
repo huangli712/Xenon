@@ -554,7 +554,6 @@ mod tests {
         assert_eq!(scalar.0, 2);
     }
 
-
     // ---- Owned — tensor ----
 
     #[test]
@@ -592,7 +591,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_add_ref_ref() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
@@ -620,8 +618,6 @@ mod tests {
         assert_eq!(left.as_slice().expect("c"), &[1, 2]);
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
-
-
 
     // ---- Owned — right scalar ----
 
@@ -673,7 +669,6 @@ mod tests {
         assert_eq!((5i32 + tensor).as_slice().expect("c"), &[6i32, 7i32]);
     }
 
-
     #[test]
     fn test_add_native_left_scalar_i64() {
         let tensor = Tensor::from_shape_vec([2], vec![1i64, 2i64]).expect("valid test input");
@@ -716,7 +711,6 @@ mod tests {
         let result = (&left + &rv).expect("broadcast succeeds");
         assert_eq!(result.as_slice().expect("c"), &[6, 8, 10, 12]);
     }
-
 
     // ---- View — right scalar ----
 
