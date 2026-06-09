@@ -696,4 +696,33 @@ mod tests {
         assert_eq!((10i64 - tensor).as_slice().expect("c"), &[5i64, 3i64]);
     }
 
+    #[test]
+    fn test_sub_broadcast() {
+        let left = Tensor::from_shape_vec([2, 3], vec![5, 6, 7, 8, 9, 10]).expect("valid test input");
+        let right = Tensor::from_shape_vec([3], vec![1, 2, 3]).expect("valid test input");
+        let result = (left - right).expect("broadcast succeeds");
+        assert_eq!(result.shape(), &[2, 3]);
+        assert_eq!(result.as_slice().expect("contiguous"), &[4, 5, 5, 6, 6, 7]);
+    }
+
+    #[test]
+    fn test_view_sub_native_left_scalar_f64() {
+        let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");
+        let v = t.view();
+        assert_eq!((10.0 - &v).as_slice().expect("c"), &[7.0, 3.0]);
+    }
+
+    #[test]
+    fn test_view_sub_scalar_wrapper_left() {
+        let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");
+        let v = t.view();
+        assert_eq!((Scalar(10.0) - &v).as_slice().expect("c"), &[7.0, 3.0]);
+    }
+
+    #[test]
+    fn test_scalar_wrapper_construct() {
+        let scalar = Scalar(2i32);
+        assert_eq!(scalar.0, 2);
+    }
+
 }
