@@ -3,23 +3,20 @@
 
 use crate::broadcast::broadcast_shape;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
-#[cfg(all(feature = "simd", feature = "parallel"))]
-use crate::dispatch::ParallelExecStrategy;
-#[cfg(feature = "simd")]
 use crate::dispatch::{ExecPath, select_exec_path};
-#[cfg(feature = "simd")]
-use crate::simd::BinaryOp;
-#[cfg(feature = "simd")]
-use crate::simd::dispatch_vector_binary_op;
-#[cfg(all(feature = "simd", feature = "parallel"))]
+#[cfg(feature = "parallel")]
+use crate::dispatch::ParallelExecStrategy;
+#[cfg(feature = "parallel")]
 use crate::parallel::binary::par_zip_checked;
+#[cfg(feature = "simd")]
+use crate::simd::{BinaryOp, dispatch_vector_binary_op};
 #[cfg(feature = "simd")]
 use core::any::TypeId;
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::complex::Complex;
-use crate::tensor::{Tensor, TensorBase};
+use crate::tensor::{Tensor, TensorBase, TensorView};
 
 // ----------------------------------------------------------------------------
 // Private per-type dispatch trait for binary arithmetic
@@ -561,36 +558,62 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Broadcast-aware binary helper with index/shape context
+// Broadcast prologue shared by the indexed and dispatch traversals
 // ----------------------------------------------------------------------------
 
-/// Broadcast-aware binary traversal with element-index + shape context
-/// propagated into the kernel closure — needed so integer overflow /
-/// div-by-zero panics can report the offending element index and the
-/// broadcast output shape.
-///
-/// `O = A` for arithmetic; kept generic to support heterogeneous output type.
-fn apply_binary_indexed<A, O, S1, S2, D1, D2, F>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-    mut f: F,
-) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+/// The two broadcast views plus the common output dimension produced by
+/// [`broadcast_pair`].
+type BroadcastViews<'a, 'b, A, D1, D2> = (
+    TensorView<'a, A, <D1 as BroadcastDim<D2>>::Output>,
+    TensorView<'b, A, <D1 as BroadcastDim<D2>>::Output>,
+    <D1 as BroadcastDim<D2>>::Output,
+);
+
+/// Broadcast both operands to their common shape, returning the two
+/// broadcast views together with the output dimension.
+fn broadcast_pair<'a, 'b, A, S1, S2, D1, D2>(
+    a: &'a TensorBase<S1, D1>,
+    b: &'b TensorBase<S2, D2>,
+) -> Result<BroadcastViews<'a, 'b, A, D1, D2>, XenonError>
 where
     A: Element,
-    O: Element,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
     D1: Dimension + BroadcastDim<D2>,
     D2: Dimension,
-    F: FnMut(A, A, usize, &[usize]) -> O,
 {
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
     let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
         .expect("broadcast_shape validated the output shape");
     let a_view = a.broadcast_to(out_dim.clone())?;
     let b_view = b.broadcast_to(out_dim.clone())?;
+    Ok((a_view, b_view, out_dim))
+}
+
+// ----------------------------------------------------------------------------
+// Broadcast-aware binary helper with index/shape context
+// ----------------------------------------------------------------------------
+
+/// Broadcast-aware binary traversal with element-index + shape context
+/// propagated into the kernel closure — needed so integer overflow /
+/// div-by-zero panics can report the offending element index and the
+/// broadcast output shape. Homogeneous `A -> A` (integer arithmetic).
+fn apply_binary_indexed<A, S1, S2, D1, D2, F>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
+    mut f: F,
+) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+where
+    A: Element,
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    D1: Dimension + BroadcastDim<D2>,
+    D2: Dimension,
+    F: FnMut(A, A, usize, &[usize]) -> A,
+{
+    let (a_view, b_view, out_dim) = broadcast_pair(a, b)?;
     let shape_slice: Vec<usize> = out_dim.slice().to_vec();
-    let mut result = Tensor::<O, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
+    let mut result = Tensor::<A, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
     for (idx, (dst, (a_val, b_val))) in result
         .iter_mut()
         .zip(a_view.iter().zip(b_view.iter()))
@@ -628,15 +651,67 @@ where
     result
 }
 
+/// Shared dispatch skeleton for broadcast binary ops. Routes between the
+/// Serial, SIMD, and Parallel execution paths chosen by `select_exec_path`.
+///
+/// `scalar_op` is the per-element kernel used by the Serial path and as the
+/// SIMD / Parallel fallback. `simd_try` attempts a vectorised kernel on the
+/// broadcast views, returning `None` to fall back to scalar; comparison ops
+/// (which have no SIMD kernel) pass a closure that always returns `None`.
+pub(in crate::math) fn dispatch_binary<A, O, S1, S2, D1, D2, FScalar, FSimd>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
+    scalar_op: FScalar,
+    simd_try: FSimd,
+) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+where
+    A: Element,
+    O: Element,
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    D1: Dimension + BroadcastDim<D2>,
+    D2: Dimension,
+    FScalar: Fn(A, A) -> O + Copy + Send + Sync,
+    FSimd: FnOnce(
+        &TensorView<'_, A, <D1 as BroadcastDim<D2>>::Output>,
+        &TensorView<'_, A, <D1 as BroadcastDim<D2>>::Output>,
+    ) -> Option<Tensor<O, <D1 as BroadcastDim<D2>>::Output>>,
+{
+    let (a_view, b_view, out_dim) = broadcast_pair(a, b)?;
+    let len = out_dim.checked_size().expect("broadcast_shape validated");
+    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
+    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
+    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
+
+    let result = match path {
+        ExecPath::Serial => apply_binary_scalar(&a_view, &b_view, scalar_op),
+        ExecPath::Simd => simd_try(&a_view, &b_view)
+            .unwrap_or_else(|| apply_binary_scalar(&a_view, &b_view, scalar_op)),
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(scalar_op(*a, *b)))?
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_binary_scalar(&a_view, &b_view, scalar_op)
+            }
+        },
+    };
+    Ok(result)
+}
+
 /// Dispatch-aware broadcast arithmetic helper for float/complex types
-/// (`add`/`sub`/`mul`/`div`). Homogeneous `A → A`. The SIMD path is
-/// available when the `simd` feature is enabled and the SIMD facade
-/// covers the op. Integer types must NOT use this helper — they retain
-/// `apply_binary_indexed` to preserve the per-element panic diagnostic
-/// context (`element_index`, broadcast `shape`) on overflow and
-/// div-by-zero.
+/// (`add`/`sub`/`mul`/`div`). Homogeneous `A -> A`. Delegates to
+/// `dispatch_binary`, supplying the SIMD kernel attempt. Integer types must
+/// NOT use this helper — they retain `apply_binary_indexed` to preserve the
+/// per-element panic diagnostic context (`element_index`, broadcast `shape`)
+/// on overflow and div-by-zero.
 #[cfg(feature = "simd")]
-pub(in crate::math) fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
+fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     op: F,
@@ -650,49 +725,19 @@ where
     D2: Dimension,
     F: Fn(A, A) -> A + Copy + Send + Sync,
 {
-    // Integer carve-out: integer types must NOT enter this helper —
-    // they would lose the per-element panic diagnostic context required
-    // for overflow / div-by-zero messages. Callers in the arithmetic
-    // methods above gate on TypeId before invoking this helper; this
-    // assertion catches accidental misuse during development.
+    // Integer carve-out: integer types must NOT enter this helper — they
+    // would lose the per-element panic diagnostic context required for
+    // overflow / div-by-zero messages. Callers gate on TypeId before
+    // invoking this helper; this assertion catches accidental misuse.
     debug_assert!(
-        TypeId::of::<A>() != TypeId::of::<i32>()
-            && TypeId::of::<A>() != TypeId::of::<i64>(),
+        TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>(),
         "apply_arith_with_dispatch must not be called with integer types; \
          use apply_binary_indexed instead to preserve per-element \
          diagnostic context"
     );
-
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated");
-    let a_view = a.broadcast_to(out_dim.clone())?;
-    let b_view = b.broadcast_to(out_dim.clone())?;
-
-    let len = out_dim.checked_size().expect("broadcast_shape validated");
-    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
-    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
-    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
-
-    let result = match path {
-        ExecPath::Serial => apply_binary_scalar(&a_view, &b_view, op),
-        ExecPath::Simd => try_simd_arith(&a_view, &b_view, op_tag)
-            .unwrap_or_else(|| apply_binary_scalar(&a_view, &b_view, op)),
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_binary_scalar(&a_view, &b_view, op)
-            }
-        },
-    };
-    Ok(result)
+    dispatch_binary(a, b, op, |a_view, b_view| {
+        try_simd_arith(a_view, b_view, op_tag)
+    })
 }
 
 /// Homogeneous arithmetic SIMD helper. Returns `None` if `op_tag` is

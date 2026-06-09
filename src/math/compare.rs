@@ -7,12 +7,7 @@ use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-use crate::broadcast::broadcast_shape;
-use crate::dispatch::{ExecPath, select_exec_path};
-#[cfg(feature = "parallel")]
-use crate::dispatch::ParallelExecStrategy;
-
-use super::binary::apply_binary_scalar;
+use super::binary::dispatch_binary;
 
 // ----------------------------------------------------------------------------
 // equal / not_equal for Element + PartialEq types
@@ -264,12 +259,10 @@ where
 // ----------------------------------------------------------------------------
 
 /// Dispatch-aware broadcast comparison helper used by all comparison
-/// operators. Output is always `bool`. No SIMD kernels are exposed for
-/// comparison, so `ExecPath::Simd` falls through to the scalar loop.
-///
-/// The parallel path delegates to [`crate::parallel::par_zip_checked`]
-/// when the `parallel` feature is enabled and `select_exec_path` returns
-/// `ExecPath::Parallel`. Otherwise falls back to the scalar loop.
+/// operators. Output is always `bool`. Comparison exposes no SIMD kernel,
+/// so the SIMD path falls through to the scalar loop (the `simd_try`
+/// closure always returns `None`); the Serial and Parallel paths come from
+/// the shared `dispatch_binary` skeleton.
 pub(in crate::math) fn apply_compare_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
@@ -283,35 +276,7 @@ where
     D2: Dimension,
     F: Fn(A, A) -> bool + Copy + Send + Sync,
 {
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated the output shape");
-
-    let a_view = a.broadcast_to(out_dim.clone())?;
-    let b_view = b.broadcast_to(out_dim.clone())?;
-
-    let len = out_dim.checked_size().expect("broadcast_shape validated");
-    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
-    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
-    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
-
-    let result = match path {
-        ExecPath::Serial | ExecPath::Simd => apply_binary_scalar(&a_view, &b_view, op),
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::binary::par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_binary_scalar(&a_view, &b_view, op)
-            }
-        },
-    };
-    Ok(result)
+    dispatch_binary(a, b, op, |_a, _b| None)
 }
 
 // ----------------------------------------------------------------------------

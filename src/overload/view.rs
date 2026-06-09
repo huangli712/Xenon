@@ -15,7 +15,6 @@ use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
 use super::scalar::Scalar;
-use super::scalar::native_left_scalar_view_all;
 
 // ==========================================================================
 // TensorView — tensor × tensor (W23T9)
@@ -151,10 +150,486 @@ view_scalar_left!(Div, div, div_from_scalar);
 // TensorView — native left scalar per-type (W23T10)
 // ==========================================================================
 
-native_left_scalar_view_all!(Add, add, add_scalar);
-native_left_scalar_view_all!(Sub, sub, sub_from_scalar);
-native_left_scalar_view_all!(Mul, mul, mul_scalar);
-native_left_scalar_view_all!(Div, div, div_from_scalar);
+impl<'a, D> Add<TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn add(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn sub(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Mul<TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, 'b, D> Mul<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn mul(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Div<TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Div<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, f32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Div<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, f64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Div<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, i32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Div<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, i64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Div<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f32>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, 'b, D> Div<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn div(self, rhs: &'b TensorBase<ViewRepr<'a, Complex<f64>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
 
 // ==========================================================================
 // Unit tests (W23T9–W23T10)

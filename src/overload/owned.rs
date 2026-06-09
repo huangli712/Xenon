@@ -14,7 +14,6 @@ use crate::storage::Owned;
 use crate::tensor::{Tensor, TensorBase};
 
 use super::scalar::Scalar;
-use super::scalar::native_left_scalar_owned_all;
 
 // ==========================================================================
 // Scalar bound shorthand — both directions of BroadcastDim required by
@@ -146,7 +145,126 @@ where
 // Add — native left scalar per-type (W23T5)
 // ==========================================================================
 
-native_left_scalar_owned_all!(Add, add, add_scalar);
+impl<D> Add<TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn add(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<&'a TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn add(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<D> Add<TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn add(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<&'a TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn add(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<D> Add<TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn add(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<&'a TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn add(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<D> Add<TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn add(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<&'a TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn add(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<D> Add<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn add(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn add(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<D> Add<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn add(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
+impl<'a, D> Add<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn add(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.add_scalar(self)
+    }
+}
 
 // ==========================================================================
 // Sub — tensor × tensor (W23T6)
@@ -268,7 +386,126 @@ where
 // Sub — native left scalar per-type (W23T6)
 // ==========================================================================
 
-native_left_scalar_owned_all!(Sub, sub, sub_from_scalar);
+impl<D> Sub<TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn sub(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<&'a TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn sub(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<D> Sub<TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn sub(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<&'a TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn sub(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<D> Sub<TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn sub(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<&'a TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn sub(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<D> Sub<TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn sub(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<&'a TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn sub(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<D> Sub<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn sub(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn sub(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<D> Sub<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn sub(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
+impl<'a, D> Sub<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn sub(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.sub_from_scalar(self)
+    }
+}
 
 // ==========================================================================
 // Mul — tensor × tensor (W23T7)
@@ -390,7 +627,126 @@ where
 // Mul — native left scalar per-type (W23T7)
 // ==========================================================================
 
-native_left_scalar_owned_all!(Mul, mul, mul_scalar);
+impl<D> Mul<TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn mul(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<&'a TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn mul(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<D> Mul<TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn mul(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<&'a TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn mul(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<D> Mul<TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn mul(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<&'a TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn mul(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<D> Mul<TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn mul(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<&'a TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn mul(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<D> Mul<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn mul(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn mul(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<D> Mul<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn mul(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
+impl<'a, D> Mul<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn mul(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.mul_scalar(self)
+    }
+}
 
 // ==========================================================================
 // Div — tensor × tensor (W23T8)
@@ -512,7 +868,126 @@ where
 // Div — native left scalar per-type (W23T8)
 // ==========================================================================
 
-native_left_scalar_owned_all!(Div, div, div_from_scalar);
+impl<D> Div<TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn div(self, rhs: TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<f32>, D>> for f32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f32, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<f32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn div(self, rhs: TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<f64>, D>> for f64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<f64, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<f64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn div(self, rhs: TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<i32>, D>> for i32
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i32, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<i32>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn div(self, rhs: TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<i64>, D>> for i64
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<i64, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<i64>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn div(self, rhs: TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f32>, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<Complex<f32>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<D> Div<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn div(self, rhs: TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
+impl<'a, D> Div<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
+where
+    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    Ix0: BroadcastDim<D, Output = D>,
+{
+    type Output = Tensor<Complex<f64>, D>;
+    fn div(self, rhs: &'a TensorBase<Owned<Complex<f64>>, D>) -> Self::Output {
+        rhs.div_from_scalar(self)
+    }
+}
 
 // ==========================================================================
 // Unit tests (W23T2–W23T8)
