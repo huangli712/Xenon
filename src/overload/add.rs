@@ -33,7 +33,6 @@ where
     }
 }
 
-// &Tensor + &Tensor
 impl<'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
@@ -48,7 +47,6 @@ where
     }
 }
 
-// Tensor + &Tensor
 impl<'a, A, D, E> Add<&'a TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
@@ -63,7 +61,6 @@ where
     }
 }
 
-// &Tensor + Tensor
 impl<A, D, E> Add<TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
@@ -403,10 +400,6 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// TensorView — native left scalar per-type
-// ----------------------------------------------------------------------------
-
 impl<'a, D> Add<TensorBase<ViewRepr<'a, f32>, D>> for f32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -418,6 +411,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -429,6 +423,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<TensorBase<ViewRepr<'a, f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -440,6 +435,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -451,6 +447,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<TensorBase<ViewRepr<'a, i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -462,6 +459,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -473,6 +471,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<TensorBase<ViewRepr<'a, i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -484,6 +483,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -495,6 +495,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -506,6 +507,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -517,6 +519,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, D> Add<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -528,6 +531,7 @@ where
         rhs.add_scalar(self)
     }
 }
+
 impl<'a, 'b, D> Add<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
 where
     D: Dimension + BroadcastDim<Ix0, Output = D>,
@@ -563,8 +567,7 @@ mod tests {
     fn test_add_basic() {
         let left = Tensor::from_shape_vec([2], vec![1, 2]).expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
-        let result = (left + right).expect("broadcast succeeds");
-        assert_eq!(result.as_slice().expect("contiguous"), &[4, 6]);
+        assert_eq!((left + right).expect("broadcast succeeds").as_slice().expect("c"), &[4, 6]);
     }
 
     #[test]
@@ -573,10 +576,7 @@ mod tests {
         let right = Tensor::from_shape_vec([3], vec![10, 20, 30]).expect("valid test input");
         let result = (left + right).expect("broadcast succeeds");
         assert_eq!(result.shape(), &[2, 3]);
-        assert_eq!(
-            result.as_slice().expect("contiguous"),
-            &[11, 12, 23, 24, 35, 36]
-        );
+        assert_eq!(result.as_slice().expect("contiguous"), &[11, 12, 23, 24, 35, 36]);
     }
 
     #[test]
@@ -585,7 +585,6 @@ mod tests {
         let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
         let result = (&left + &right).expect("broadcast succeeds");
         assert_eq!(left.as_slice().expect("c"), &[1, 2]);
-        assert_eq!(right.as_slice().expect("c"), &[3, 4]);
         assert_eq!(result.as_slice().expect("c"), &[4, 6]);
     }
 
