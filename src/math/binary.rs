@@ -581,7 +581,7 @@ where
 }
 
 // ============================================================================
-// W16T11: Dispatch-aware helpers for arithmetic and comparison
+// W16T11: Dispatch-aware helpers for arithmetic
 // ============================================================================
 
 /// Non-broadcasting binary traversal helper. Assumes `a` and `b` have
@@ -607,56 +607,6 @@ where
     result
 }
 
-/// Dispatch-aware broadcast comparison helper for W16T8/T9/T10.
-/// Output is always `bool`. W14 does not expose comparison SIMD kernels,
-/// so `ExecPath::Simd` falls through to the scalar loop.
-///
-/// Parallel path delegates to [`crate::parallel::par_zip_checked`] (W15T3)
-/// when the `parallel` feature is enabled and `select_exec_path` returns
-/// `ExecPath::Parallel`. Otherwise falls back to scalar.
-pub(in crate::math) fn apply_compare_with_dispatch<A, S1, S2, D1, D2, F>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-    op: F,
-) -> Result<Tensor<bool, <D1 as BroadcastDim<D2>>::Output>, XenonError>
-where
-    A: Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-    F: Fn(A, A) -> bool + Copy + Send + Sync,
-{
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated the output shape");
-
-    let a_view = a.broadcast_to(out_dim.clone())?;
-    let b_view = b.broadcast_to(out_dim.clone())?;
-
-    let len = out_dim.checked_size().expect("broadcast_shape validated");
-    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
-    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
-    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
-
-    let result = match path {
-        ExecPath::Serial | ExecPath::Simd => apply_binary_scalar(&a_view, &b_view, op),
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                crate::parallel::binary::par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_binary_scalar(&a_view, &b_view, op)
-            }
-        },
-    };
-    Ok(result)
-}
 /// Dispatch-aware broadcast arithmetic helper for W16T6 float/complex
 /// types (`add`/`sub`/`mul`/`div`). Homogeneous `A → A`. SIMD path is
 /// available when the `simd` feature is enabled and W14 facade covers the
