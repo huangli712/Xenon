@@ -7,7 +7,7 @@ use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "simd")]
 use crate::dispatch::{ExecPath, select_exec_path};
-use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric};
+use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
@@ -40,7 +40,7 @@ use crate::tensor::{Tensor, TensorBase};
 /// behind the `simd` feature. All six concrete impls (i32/i64/f32/f64/
 /// Complex<f32>/Complex<f64>) already implement `SimdElement`, so adding
 /// it as a supertrait does not narrow the sealed set.
-pub(crate) trait BinaryArith: Numeric + crate::element::SimdElement + 'static {
+pub(crate) trait BinaryArith: Numeric + SimdElement + 'static {
     /// Context-aware add step. `idx` and `shape` are consumed by integer
     /// monomorphizations for overflow panic diagnostics.
     fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self;
@@ -573,8 +573,8 @@ fn apply_binary_indexed<A, O, S1, S2, D1, D2, F>(
     mut f: F,
 ) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
 where
-    A: crate::element::Element,
-    O: crate::element::Element,
+    A: Element,
+    O: Element,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
     D1: Dimension + BroadcastDim<D2>,
@@ -640,7 +640,7 @@ pub(in crate::math) fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
     op_tag: Option<crate::simd::BinaryOp>,
 ) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
 where
-    A: Element + crate::element::SimdElement + 'static,
+    A: Element + SimdElement + 'static,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
     D1: Dimension + BroadcastDim<D2>,
@@ -702,7 +702,7 @@ fn try_simd_arith<A, S1, S2, D>(
     op_tag: Option<crate::simd::BinaryOp>,
 ) -> Option<Tensor<A, D>>
 where
-    A: Element + crate::element::SimdElement,
+    A: Element + SimdElement,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
     D: Dimension,
