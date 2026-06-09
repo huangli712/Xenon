@@ -633,24 +633,45 @@ mod tests {
             .expect("valid test input");
         let right = Tensor::from_shape_vec([2], vec![2.0, 3.0])
             .expect("valid test input");
-        assert_eq!((left / right).expect("broadcast succeeds").as_slice().expect("c"), &[4.0, 3.0]);
+        assert_eq!(
+            (left / right)
+                .expect("broadcast succeeds")
+                .as_slice()
+                .expect("c"),
+            &[4.0, 3.0]
+        );
     }
 
     /// Verifies element-wise `division` with broadcasting support.
     #[test]
     fn test_div_broadcast() {
-        let left = Tensor::from_shape_vec([2, 3], vec![20.0, 30.0, 40.0, 60.0, 60.0, 90.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([3], vec![10.0, 20.0, 30.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 3],
+            vec![20.0, 30.0, 40.0, 60.0, 60.0, 90.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [3],
+            vec![10.0, 20.0, 30.0]
+        ).expect("valid test input");
         let result = (left / right).expect("broadcast succeeds");
         assert_eq!(result.shape(), &[2, 3]);
-        assert_eq!(result.as_slice().expect("contiguous"), &[2.0, 3.0, 2.0, 3.0, 2.0, 3.0]);
+        assert_eq!(
+            result.as_slice().expect("contiguous"),
+            &[2.0, 3.0, 2.0, 3.0, 2.0, 3.0]
+        );
     }
 
     /// Verifies `division` between two borrowed tensors.
     #[test]
     fn test_div_ref_ref() {
-        let left = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![2.0, 3.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2],
+            vec![8.0, 9.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2],
+            vec![2.0, 3.0]
+        ).expect("valid test input");
         let result = (&left / &right).expect("broadcast succeeds");
         assert_eq!(left.as_slice().expect("c"), &[8.0, 9.0]);
         assert_eq!(result.as_slice().expect("c"), &[4.0, 3.0]);
@@ -659,8 +680,14 @@ mod tests {
     /// Verifies `division` consuming the left operand and borrowing the right.
     #[test]
     fn test_div_owned_ref() {
-        let left = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![2.0, 3.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2],
+            vec![8.0, 9.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2],
+            vec![2.0, 3.0]
+        ).expect("valid test input");
         let result = (left / &right).expect("broadcast succeeds");
         assert_eq!(right.as_slice().expect("c"), &[2.0, 3.0]);
         assert_eq!(result.as_slice().expect("c"), &[4.0, 3.0]);
@@ -669,8 +696,14 @@ mod tests {
     /// Verifies `division` borrowing the left operand and consuming the right.
     #[test]
     fn test_div_ref_owned() {
-        let left = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![2.0, 3.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2],
+            vec![8.0, 9.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2],
+            vec![2.0, 3.0]
+        ).expect("valid test input");
         let result = (&left / right).expect("broadcast succeeds");
         assert_eq!(left.as_slice().expect("c"), &[8.0, 9.0]);
         assert_eq!(result.as_slice().expect("c"), &[4.0, 3.0]);
@@ -681,14 +714,20 @@ mod tests {
     /// Verifies `division` of a scalar to each element of an owned tensor.
     #[test]
     fn test_div_right_scalar() {
-        let tensor = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![8.0, 9.0]
+        ).expect("valid test input");
         assert_eq!((tensor / 2.0).as_slice().expect("c"), &[4.0, 4.5]);
     }
 
     /// Verifies `division` of a scalar to each element of a borrowed tensor.
     #[test]
     fn test_div_right_scalar_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![8.0, 9.0]
+        ).expect("valid test input");
         assert_eq!((&tensor / 2.0).as_slice().expect("c"), &[4.0, 4.5]);
     }
 
@@ -697,14 +736,20 @@ mod tests {
     /// Verifies `division` with `Scalar` as the left operand and an owned tensor.
     #[test]
     fn test_div_scalar_wrapper_left() {
-        let tensor = Tensor::from_shape_vec([2], vec![2.0, 4.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2.0, 4.0]
+        ).expect("valid test input");
         assert_eq!((Scalar(8.0) / tensor).as_slice().expect("c"), &[4.0, 2.0]);
     }
 
     /// Verifies `division` with `Scalar` as the left operand and a borrowed tensor.
     #[test]
     fn test_div_scalar_wrapper_left_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2.0f64, 4.0]
+        ).expect("valid test input");
         assert_eq!((Scalar(8.0) / &tensor).as_slice().expect("c"), &[4.0, 2.0]);
         assert_eq!(tensor.as_slice().expect("c"), &[2.0f64, 4.0]);
     }
@@ -714,14 +759,20 @@ mod tests {
     /// Verifies native `f64` left-scalar `division` with an owned tensor.
     #[test]
     fn test_div_native_left_scalar_f64() {
-        let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2.0f64, 4.0]
+        ).expect("valid test input");
         assert_eq!((8.0f64 / tensor).as_slice().expect("c"), &[4.0, 2.0]);
     }
 
     /// Verifies native `f64` left-scalar `division` with a borrowed tensor.
     #[test]
     fn test_div_native_left_scalar_f64_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2.0f64, 4.0]
+        ).expect("valid test input");
         assert_eq!((8.0f64 / &tensor).as_slice().expect("c"), &[4.0, 2.0]);
         assert_eq!(tensor.as_slice().expect("c"), &[2.0f64, 4.0]);
     }
@@ -729,21 +780,30 @@ mod tests {
     /// Verifies native `i32` left-scalar `division`.
     #[test]
     fn test_div_native_left_scalar_i32() {
-        let tensor = Tensor::from_shape_vec([2], vec![2i32, 4]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2i32, 4]
+        ).expect("valid test input");
         assert_eq!((8i32 / tensor).as_slice().expect("c"), &[4i32, 2i32]);
     }
 
     /// Verifies native `i64` left-scalar `division`.
     #[test]
     fn test_div_native_left_scalar_i64() {
-        let tensor = Tensor::from_shape_vec([2], vec![2i64, 4]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2i64, 4]
+        ).expect("valid test input");
         assert_eq!((8i64 / tensor).as_slice().expect("c"), &[4i64, 2i64]);
     }
 
     /// Verifies native `f32` left-scalar `division`.
     #[test]
     fn test_div_native_left_scalar_f32() {
-        let tensor = Tensor::from_shape_vec([2], vec![2.0, 4.0f32]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![2.0, 4.0f32]
+        ).expect("valid test input");
         assert_eq!((8.0f32 / tensor).as_slice().expect("c"), &[4.0f32, 2.0f32]);
     }
 
@@ -752,8 +812,14 @@ mod tests {
     /// Verifies `division` between two tensor views.
     #[test]
     fn test_view_div_view() {
-        let left = Tensor::from_shape_vec([2, 2], vec![8.0, 9.0, 10.0, 12.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2, 2], vec![2.0, 3.0, 2.0, 4.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 2],
+            vec![8.0, 9.0, 10.0, 12.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2, 2],
+            vec![2.0, 3.0, 2.0, 4.0]
+        ).expect("valid test input");
         let lv = left.view();
         let rv = right.view();
         let result = (&lv / &rv).expect("broadcast succeeds");
@@ -764,8 +830,14 @@ mod tests {
     /// Verifies `division` between a tensor view and an owned tensor.
     #[test]
     fn test_view_div_owned() {
-        let left = Tensor::from_shape_vec([2, 2], vec![8.0, 9.0, 10.0, 12.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2, 2], vec![2.0, 3.0, 2.0, 4.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 2],
+            vec![8.0, 9.0, 10.0, 12.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2, 2],
+            vec![2.0, 3.0, 2.0, 4.0]
+        ).expect("valid test input");
         let lv = left.view();
         let result = (&lv / &right).expect("broadcast succeeds");
         assert_eq!(result.as_slice().expect("c"), &[4.0, 3.0, 5.0, 3.0]);
@@ -774,8 +846,14 @@ mod tests {
     /// Verifies `division` between an owned tensor and a tensor view.
     #[test]
     fn test_view_owned_div_view() {
-        let left = Tensor::from_shape_vec([2, 2], vec![8.0, 9.0, 10.0, 12.0]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2, 2], vec![2.0, 3.0, 2.0, 4.0]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 2],
+            vec![8.0, 9.0, 10.0, 12.0]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2, 2],
+            vec![2.0, 3.0, 2.0, 4.0]
+        ).expect("valid test input");
         let rv = right.view();
         let result = (&left / &rv).expect("broadcast succeeds");
         assert_eq!(result.as_slice().expect("c"), &[4.0, 3.0, 5.0, 3.0]);
@@ -786,7 +864,10 @@ mod tests {
     /// Verifies `division` of a scalar to each element of a tensor view.
     #[test]
     fn test_view_div_right_scalar() {
-        let t = Tensor::from_shape_vec([2], vec![8.0f64, 9.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![8.0f64, 9.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((&v / 2.0).as_slice().expect("c"), &[4.0, 4.5]);
     }
@@ -796,7 +877,10 @@ mod tests {
     /// Verifies `division` with `Scalar` as the left operand and a tensor view.
     #[test]
     fn test_view_div_scalar_wrapper_left() {
-        let t = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![2.0f64, 4.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((Scalar(8.0) / &v).as_slice().expect("c"), &[4.0, 2.0]);
     }
@@ -806,7 +890,10 @@ mod tests {
     /// Verifies native `f64` left-scalar `division` with a tensor view.
     #[test]
     fn test_view_div_native_left_scalar_f64() {
-        let t = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![2.0f64, 4.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((8.0 / &v).as_slice().expect("c"), &[4.0, 2.0]);
     }
@@ -814,7 +901,10 @@ mod tests {
     /// Verifies combined scalar `division` paths on a tensor view.
     #[test]
     fn test_view_div_combined() {
-        let t = Tensor::from_shape_vec([2], vec![2.0f64, 4.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![2.0f64, 4.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((Scalar(8.0) / &v).as_slice().expect("c"), &[4.0, 2.0]);
         assert_eq!((8.0 / &v).as_slice().expect("c"), &[4.0, 2.0]);
