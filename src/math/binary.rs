@@ -53,129 +53,207 @@ pub(crate) trait BinaryArith: Numeric + crate::element::SimdElement + 'static {
 
 // ========== Integer impls (checked arithmetic with diagnostic panic) ==========
 
-macro_rules! impl_binary_int {
-    ($t:ty) => {
-        impl BinaryArith for $t {
-            #[inline]
-            fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
-                <$t as CheckedAdd>::checked_add(a, b).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=add, type={}, trigger=overflow, \
-                         lhs={}, rhs={}, element_index={}, shape={:?}",
-                        stringify!($t),
-                        a,
-                        b,
-                        idx,
-                        shape
-                    )
-                })
-            }
-            #[inline]
-            fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
-                <$t as CheckedSub>::checked_sub(a, b).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=sub, type={}, trigger=overflow, \
-                         lhs={}, rhs={}, element_index={}, shape={:?}",
-                        stringify!($t),
-                        a,
-                        b,
-                        idx,
-                        shape
-                    )
-                })
-            }
-            #[inline]
-            fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
-                <$t as CheckedMul>::checked_mul(a, b).unwrap_or_else(|| {
-                    panic!(
-                        "integer overflow: operation=mul, type={}, trigger=overflow, \
-                         lhs={}, rhs={}, element_index={}, shape={:?}",
-                        stringify!($t),
-                        a,
-                        b,
-                        idx,
-                        shape
-                    )
-                })
-            }
-            #[inline]
-            fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
-                <$t as CheckedDiv>::checked_div(a, b).unwrap_or_else(|| {
-                    let trigger = if b == 0 { "div_by_zero" } else { "overflow" };
-                    panic!(
-                        "integer arithmetic error: operation=div, type={}, trigger={}, \
-                         lhs={}, rhs={}, element_index={}, shape={:?}",
-                        stringify!($t),
-                        trigger,
-                        a,
-                        b,
-                        idx,
-                        shape
-                    )
-                })
-            }
-        }
-    };
+impl BinaryArith for i32 {
+    #[inline]
+    fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i32 as CheckedAdd>::checked_add(a, b).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=add, type={}, trigger=overflow, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i32",
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+    #[inline]
+    fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i32 as CheckedSub>::checked_sub(a, b).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=sub, type={}, trigger=overflow, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i32",
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+    #[inline]
+    fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i32 as CheckedMul>::checked_mul(a, b).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=mul, type={}, trigger=overflow, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i32",
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+    #[inline]
+    fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i32 as CheckedDiv>::checked_div(a, b).unwrap_or_else(|| {
+            let trigger = if b == 0 { "div_by_zero" } else { "overflow" };
+            panic!(
+                "integer arithmetic error: operation=div, type={}, trigger={}, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i32",
+                trigger,
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
 }
 
-impl_binary_int!(i32);
-impl_binary_int!(i64);
+impl BinaryArith for i64 {
+    #[inline]
+    fn add_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i64 as CheckedAdd>::checked_add(a, b).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=add, type={}, trigger=overflow, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i64",
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+    #[inline]
+    fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i64 as CheckedSub>::checked_sub(a, b).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=sub, type={}, trigger=overflow, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i64",
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+    #[inline]
+    fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i64 as CheckedMul>::checked_mul(a, b).unwrap_or_else(|| {
+            panic!(
+                "integer overflow: operation=mul, type={}, trigger=overflow, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i64",
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+    #[inline]
+    fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
+        <i64 as CheckedDiv>::checked_div(a, b).unwrap_or_else(|| {
+            let trigger = if b == 0 { "div_by_zero" } else { "overflow" };
+            panic!(
+                "integer arithmetic error: operation=div, type={}, trigger={}, \
+                 lhs={}, rhs={}, element_index={}, shape={:?}",
+                "i64",
+                trigger,
+                a,
+                b,
+                idx,
+                shape
+            )
+        })
+    }
+}
 
 // ========== Float impls (IEEE 754, never panic) ==========
 
-macro_rules! impl_binary_float {
-    ($t:ty) => {
-        impl BinaryArith for $t {
-            #[inline]
-            fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a + b
-            }
-            #[inline]
-            fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a - b
-            }
-            #[inline]
-            fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a * b
-            }
-            #[inline]
-            fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a / b
-            }
-        }
-    };
+impl BinaryArith for f32 {
+    #[inline]
+    fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a + b
+    }
+    #[inline]
+    fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a - b
+    }
+    #[inline]
+    fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a * b
+    }
+    #[inline]
+    fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a / b
+    }
 }
 
-impl_binary_float!(f32);
-impl_binary_float!(f64);
+impl BinaryArith for f64 {
+    #[inline]
+    fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a + b
+    }
+    #[inline]
+    fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a - b
+    }
+    #[inline]
+    fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a * b
+    }
+    #[inline]
+    fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a / b
+    }
+}
 
 // ========== Complex impls ==========
 
-macro_rules! impl_binary_complex {
-    ($t:ty) => {
-        impl BinaryArith for $t {
-            #[inline]
-            fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a + b
-            }
-            #[inline]
-            fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a - b
-            }
-            #[inline]
-            fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a * b
-            }
-            #[inline]
-            fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
-                a / b
-            }
-        }
-    };
+impl BinaryArith for crate::complex::Complex<f32> {
+    #[inline]
+    fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a + b
+    }
+    #[inline]
+    fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a - b
+    }
+    #[inline]
+    fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a * b
+    }
+    #[inline]
+    fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a / b
+    }
 }
 
-impl_binary_complex!(crate::complex::Complex<f32>);
-impl_binary_complex!(crate::complex::Complex<f64>);
+impl BinaryArith for crate::complex::Complex<f64> {
+    #[inline]
+    fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a + b
+    }
+    #[inline]
+    fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a - b
+    }
+    #[inline]
+    fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a * b
+    }
+    #[inline]
+    fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
+        a / b
+    }
+}
 
 // ============================================================================
 // Broadcast-aware binary helper with index/shape context
