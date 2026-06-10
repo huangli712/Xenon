@@ -1,19 +1,22 @@
 //! Element-wise comparison operations producing boolean tensors:
 //! equal, not_equal, less, less_equal, greater, greater_equal.
 
-use crate::broadcast::broadcast_with;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
-use crate::dispatch::{ExecPath, select_exec_path};
-#[cfg(feature = "parallel")]
-use crate::dispatch::ParallelExecStrategy;
-use crate::element::{Element, OrderedCompareElement};
 use crate::error::XenonError;
-#[cfg(feature = "parallel")]
-use crate::parallel::binary::par_zip_checked;
+use crate::broadcast::broadcast_with;
+use crate::dispatch::{ExecPath, select_exec_path};
+
+use super::binary::apply_binary_serial;
+
+use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::element::{Element, OrderedCompareElement};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-use super::binary::apply_binary_serial;
+#[cfg(feature = "parallel")]
+use crate::dispatch::ParallelExecStrategy;
+
+#[cfg(feature = "parallel")]
+use crate::parallel::binary::par_zip_checked;
 
 // ----------------------------------------------------------------------------
 // equal / not_equal for Element + PartialEq types
@@ -85,9 +88,11 @@ where
     /// guarantees scalar broadcast always succeeds. The `expect` messages
     /// document the invariant for future refactors.
     pub fn equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.equal(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 
     /// Element-wise not-equal comparison with a scalar right-hand side.
@@ -99,9 +104,11 @@ where
     /// guarantees scalar broadcast always succeeds. The `expect` messages
     /// document the invariant for future refactors.
     pub fn not_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.not_equal(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 }
 
