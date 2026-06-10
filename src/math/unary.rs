@@ -78,6 +78,7 @@ fn simd_unary_op_tag(op: UnaryArithOp) -> Option<UnaryOp> {
 trait UnaryArith: Numeric + SimdElement + 'static {
     /// Element-wise negation; integer path panics on `MIN`.
     fn neg_step(x: Self) -> Self;
+
     /// Element-wise square `x * x`; integer path panics on overflow.
     fn square_step(x: Self) -> Self;
 
@@ -89,6 +90,7 @@ trait UnaryArith: Numeric + SimdElement + 'static {
     fn neg_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
         Self::neg_step(x)
     }
+
     /// Context-aware variant of `square_step`; see `neg_step_with_ctx`.
     #[inline]
     fn square_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
@@ -113,6 +115,7 @@ impl UnaryArith for i32 {
             )
         })
     }
+
     #[inline]
     fn square_step(x: Self) -> Self {
         x.checked_mul(x).unwrap_or_else(|| {
@@ -122,6 +125,7 @@ impl UnaryArith for i32 {
             )
         })
     }
+
     #[inline]
     fn neg_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
         <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
@@ -132,6 +136,7 @@ impl UnaryArith for i32 {
             )
         })
     }
+
     #[inline]
     fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
         x.checked_mul(x).unwrap_or_else(|| {
