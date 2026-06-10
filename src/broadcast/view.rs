@@ -1,17 +1,13 @@
 //! Broadcast view construction and the shared two-input broadcast prologue.
 
+use crate::error::XenonError;
 use crate::dimension::{BroadcastDim, Dimension, IntoDimension};
 use crate::element::Element;
-use crate::error::XenonError;
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, ViewRepr};
 use crate::tensor::{TensorBase, TensorView};
 
-use crate::broadcast::shape::{broadcast_shape, broadcast_strides};
-
-// ----------------------------------------------------------------------------
-// Two-input broadcast prologue (shared by math binary ops)
-// ----------------------------------------------------------------------------
+use super::shape::{broadcast_shape, broadcast_strides};
 
 /// The two broadcast views plus the common output dimension produced by
 /// [`broadcast_with`].
@@ -43,10 +39,6 @@ where
     let b_view = broadcast_to(b, out_dim.clone())?;
     Ok((a_view, b_view, out_dim))
 }
-
-// ----------------------------------------------------------------------------
-// broadcast_to free-function implementation
-// ----------------------------------------------------------------------------
 
 /// Implementation backing [`TensorBase::broadcast_to`], extracted as a
 /// `pub(crate)` free function so internal call sites can broadcast a single
