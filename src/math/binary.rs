@@ -890,17 +890,19 @@ mod tests {
     /// preserved.
     #[test]
     fn test_add_path_consistency_i32() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).collect())
-            .expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([64], (0..64).map(|x| x * 3).collect())
-            .expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec(
+            [64],
+            (0..64).collect()
+        ).expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec(
+            [64],
+            (0..64).map(|x| x * 3).collect()
+        ).expect("valid tensor shape");
         let r = a.add(&b).expect("broadcast succeeds in test");
         for i in 0..64 {
             assert_eq!(*r.get(&[i]).expect("valid index"), i as i32 + i as i32 * 3);
         }
     }
-
-    // ── Subtraction / multiplication / division value tests ──
 
     /// Element-wise `f64` subtraction yields the pairwise differences.
     #[test]
