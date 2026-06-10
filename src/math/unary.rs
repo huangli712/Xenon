@@ -413,7 +413,11 @@ where
     pub fn abs(&self) -> Tensor<A, D> {
         apply_unary_with_dispatch(
             self,
-            |x, idx, shape| <A as OrderedUnaryArith>::abs_step_with_ctx(x, idx, shape),
+            |x, idx, shape| <A as OrderedUnaryArith>::abs_step_with_ctx(
+                x,
+                idx,
+                shape
+            ),
             UnaryArithOp::Abs,
         )
     }
@@ -424,7 +428,11 @@ where
     pub fn signum(&self) -> Tensor<A, D> {
         apply_unary_with_dispatch(
             self,
-            |x, idx, shape| <A as OrderedUnaryArith>::signum_step_with_ctx(x, idx, shape),
+            |x, idx, shape| <A as OrderedUnaryArith>::signum_step_with_ctx(
+                x,
+                idx,
+                shape
+            ),
             UnaryArithOp::Signum,
         )
     }
