@@ -1,7 +1,7 @@
 //! Binary element-wise operations: arithmetic (add/sub/mul/div) and
 //! the shared broadcast-aware traversal skeleton.
 
-use crate::broadcast::broadcast_shape;
+use crate::broadcast::broadcast_with;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::dispatch::{ExecPath, select_exec_path};
 #[cfg(feature = "parallel")]
@@ -558,39 +558,6 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Broadcast prologue shared by the indexed and dispatch traversals
-// ----------------------------------------------------------------------------
-
-/// The two broadcast views plus the common output dimension produced by
-/// [`broadcast_pair`].
-type BroadcastViews<'a, 'b, A, D1, D2> = (
-    TensorView<'a, A, <D1 as BroadcastDim<D2>>::Output>,
-    TensorView<'b, A, <D1 as BroadcastDim<D2>>::Output>,
-    <D1 as BroadcastDim<D2>>::Output,
-);
-
-/// Broadcast both operands to their common shape, returning the two
-/// broadcast views together with the output dimension.
-fn broadcast_pair<'a, 'b, A, S1, S2, D1, D2>(
-    a: &'a TensorBase<S1, D1>,
-    b: &'b TensorBase<S2, D2>,
-) -> Result<BroadcastViews<'a, 'b, A, D1, D2>, XenonError>
-where
-    A: Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-{
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated the output shape");
-    let a_view = a.broadcast_to(out_dim.clone())?;
-    let b_view = b.broadcast_to(out_dim.clone())?;
-    Ok((a_view, b_view, out_dim))
-}
-
-// ----------------------------------------------------------------------------
 // Broadcast-aware binary helper with index/shape context
 // ----------------------------------------------------------------------------
 
@@ -611,7 +578,7 @@ where
     D2: Dimension,
     F: FnMut(A, A, usize, &[usize]) -> A,
 {
-    let (a_view, b_view, out_dim) = broadcast_pair(a, b)?;
+    let (a_view, b_view, out_dim) = broadcast_with(a, b)?;
     let shape_slice: Vec<usize> = out_dim.slice().to_vec();
     let mut result = Tensor::<A, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
     for (idx, (dst, (a_val, b_val))) in result
@@ -677,7 +644,7 @@ where
         &TensorView<'_, A, <D1 as BroadcastDim<D2>>::Output>,
     ) -> Option<Tensor<O, <D1 as BroadcastDim<D2>>::Output>>,
 {
-    let (a_view, b_view, out_dim) = broadcast_pair(a, b)?;
+    let (a_view, b_view, out_dim) = broadcast_with(a, b)?;
     let len = out_dim.checked_size().expect("broadcast_shape validated");
     let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
     let both_aligned = a_view.is_aligned() && b_view.is_aligned();
