@@ -11,11 +11,11 @@ use std::vec::Vec;
 
 /// Helper for formatting `[usize]` shape/stride slices in error messages.
 ///
-/// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — NumPy style.
+/// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — numpy style.
 struct FmtShape<'a>(&'a [usize]);
 
 impl<'a> Display for FmtShape<'a> {
-    /// Formats the shape slice in NumPy-style bracket notation.
+    /// Formats the shape slice in numpy-style bracket notation.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         for (i, dim) in self.0.iter().enumerate() {

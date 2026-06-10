@@ -506,7 +506,7 @@
 | W30T22 | `src/workspace/mod.rs` | Workspace module-level docs: allocation strategy, borrow guards, split semantics | W30T2 | 29-documentation §5, §6, §7, §8; 24-workspace.md |
 | W30T23 | `src/error.rs` | Error module-level docs: XenonError variants, Result alias, error categories | W30T2 | 29-documentation §5, §6, §7, §8; 26-error.md |
 | W30T24 | `src/convert/mod.rs` | Convert module-level docs: CastTo/ConvertTo traits, lossy/lossless semantics, tiered conversion | W30T2 | 29-documentation §5, §6, §7, §8; 21-type.md |
-| W30T25 | `src/format/mod.rs` | Format module-level docs: NumPy-style output, FormatConfig, truncation helpers | W30T2 | 29-documentation §5, §6, §7, §8; 22-output.md |
+| W30T25 | `src/format/mod.rs` | Format module-level docs: numpy-style output, FormatConfig, truncation helpers | W30T2 | 29-documentation §5, §6, §7, §8; 22-output.md |
 | W30T26 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes | W30T2 | 29-documentation §5, §6, §7, §8; 20-utility.md |
 | W30T27 | `src/simd/mod.rs` | SIMD module-level docs: SimdKernel trait, kernel wiring, feature gate notes | W30T2 | 29-documentation §5, §6, §7, §8; 08-simd.md |
 | W30T28 | `src/parallel/mod.rs` | Parallel module-level docs: ParIter, map/reduce patterns, thread-safety, feature gate | W30T2 | 29-documentation §5, §6, §7, §8; 09-parallel.md |
@@ -589,5 +589,5 @@ W1–W26 ─→ W30 (Documentation)
 8. **No negative strides** — Not supported in current version
 9. **Zero-stride only on broadcast read-only views** — Broadcast zero-stride restricted to read-only/shared-read-only views
 10. **ZST and empty arrays must not cause UB** — All operations on zero-size types and zero-element arrays must be safe
-11. **NumPy-style output** — Display/Debug formatting mimics NumPy conventions with configurable truncation
+11. **numpy-style output** — Display/Debug formatting mimics numpy conventions with configurable truncation
 12. **IEEE 754 compliance** — Floating-point special values (NaN, Inf) handled per standard semantics

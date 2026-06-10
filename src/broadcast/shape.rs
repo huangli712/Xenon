@@ -1,11 +1,11 @@
-//! Shape and stride computation for NumPy-style broadcasting.
+//! Shape and stride computation for numpy-style broadcasting.
 
 use std::borrow::Cow;
 
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::dimension::IxDyn;
 
-/// NumPy-style broadcast compatibility check. Equivalent to
+/// numpy-style broadcast compatibility check. Equivalent to
 /// `broadcast_shape(a, b).is_ok()`.
 pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool {
     broadcast_shape(shape_a, shape_b).is_ok()

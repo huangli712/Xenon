@@ -91,7 +91,7 @@ where
     ///
     /// Bounds are validated before allocation. `NaN` input values pass
     /// through unchanged (both `< min` and `> max` are `false` under
-    /// IEEE 754), matching NumPy `np.clip` semantics. `NaN` bounds or
+    /// IEEE 754), matching numpy `np.clip` semantics. `NaN` bounds or
     /// `min > max` return [`XenonError::InvalidArgument`].
     ///
     /// # Errors
