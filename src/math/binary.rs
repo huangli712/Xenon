@@ -322,7 +322,7 @@ where
     ///
     /// Integer types (i32/i64) keep the serial checked path so overflow
     /// panics can report the offending element index and broadcast shape.
-    /// Float/complex types route through `dispatch_arith` to access the
+    /// Float/complex types route through `apply_binary_with_dispatch` to access the
     /// SIMD and parallel paths.
     ///
     /// # Errors
@@ -338,7 +338,7 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        dispatch_arith(
+        apply_binary_with_dispatch(
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::add_step(x, y, idx, shape),
@@ -361,7 +361,7 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        dispatch_arith(
+        apply_binary_with_dispatch(
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
@@ -384,7 +384,7 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        dispatch_arith(
+        apply_binary_with_dispatch(
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::mul_step(x, y, idx, shape),
@@ -407,7 +407,7 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        dispatch_arith(
+        apply_binary_with_dispatch(
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
@@ -494,13 +494,13 @@ where
     /// Element-wise `scalar - element` (left-scalar subtraction).
     ///
     /// Internal helper for non-commutative left-scalar operator dispatch.
-    /// NOT part of the public API surface. Routes through `dispatch_arith`
+    /// NOT part of the public API surface. Routes through `apply_binary_with_dispatch`
     /// with swapped operands; float/complex types reach the SIMD and
     /// parallel paths, integers keep their per-element panic diagnostics.
     pub(crate) fn sub_from_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         // Swap operand order: compute `scalar - self` element-wise.
-        dispatch_arith(
+        apply_binary_with_dispatch(
             &other,
             self,
             |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
@@ -516,7 +516,7 @@ where
     pub(crate) fn div_from_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
         // Swap operand order: compute `scalar / self` element-wise.
-        dispatch_arith(
+        apply_binary_with_dispatch(
             &other,
             self,
             |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
@@ -603,7 +603,7 @@ where
 /// float path adapts it to a context-free kernel via `|x, y| step(x, y, 0,
 /// &[])`, which is zero-cost since float / complex impls ignore those
 /// parameters.
-fn dispatch_arith<A, S1, S2, D1, D2, F>(
+fn apply_binary_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     step: F,
