@@ -812,13 +812,13 @@ mod tests {
     /// element-wise add.
     #[test]
     fn test_add_i32_overflow_panic() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![1]).expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![1])
+            .expect("valid tensor shape");
         let result = catch_unwind(|| a.add(&b));
         assert!(result.is_err(), "i32::MAX + 1 must panic");
     }
-
-    // Dispatch path consistency tests
 
     /// Cross-path consistency: the dispatch-wired `equal` method produces
     /// correct results regardless of which `ExecPath` is selected internally.
