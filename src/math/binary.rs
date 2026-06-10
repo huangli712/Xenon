@@ -611,8 +611,12 @@ where
     D: Dimension,
     F: FnMut(A, A) -> O,
 {
-    let mut result = Tensor::<O, D>::zeros(a.raw_dim()).expect("input dimension must be valid");
-    for ((dst, &a_val), &b_val) in result.iter_mut().zip(a.iter()).zip(b.iter()) {
+    let mut result = Tensor::<O, D>::zeros(a.raw_dim())
+        .expect("input dimension must be valid");
+    for ((dst, &a_val), &b_val) in result
+        .iter_mut()
+        .zip(a.iter()).zip(b.iter())
+    {
         *dst = op(a_val, b_val);
     }
     result
@@ -634,7 +638,7 @@ where
 /// float path adapts it to a context-free kernel via `|x, y| step(x, y, 0,
 /// &[])`, which is zero-cost since float / complex impls ignore those
 /// parameters.
-fn apply_binary_with_dispatch<A, S1, S2, D1, D2, F>(
+pub(crate) fn apply_binary_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     step: F,
