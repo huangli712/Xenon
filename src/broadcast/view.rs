@@ -323,15 +323,19 @@ mod tests {
     /// broadcast is covered by the integration test `test_broadcast_left_pad`.)
     #[test]
     fn test_broadcast_to_scalar_to_higher_rank() {
-        let scalar: Tensor2<f64> =
-            Tensor2::from_shape_vec([1, 1], vec![42.0]).expect("valid test input");
-        let view = scalar.broadcast_to([2, 3]).expect("valid test input");
+        let scalar: Tensor2<f64> = Tensor2::from_shape_vec(
+            [1, 1],
+            vec![42.0]
+        ).expect("valid test input");
+        let view = scalar
+            .broadcast_to([2, 3])
+            .expect("valid test input");
         assert_eq!(view.shape(), &[2, 3]);
         // Both axes are broadcast: both strides are 0.
         assert_eq!(view.strides(), &[0, 0]);
     }
 
-    // --- broadcast_to error and layout tests ---
+    // --- broadcast_to error and layout tests --------------------------------
 
     /// Tests that broadcasting to an incompatible shape returns a structured
     /// `BroadcastError` with the correct fields.
