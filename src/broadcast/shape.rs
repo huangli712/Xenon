@@ -183,12 +183,12 @@ pub(crate) fn broadcast_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::Dimension;
     use crate::error::XenonError;
+    use crate::dimension::Dimension;
 
     /// Tests that `can_broadcast` returns `true` for compatible shape pairs,
-    /// including same-shape, right-aligned singleton expansion, missing leading
-    /// axes, and cross-rank scenarios.
+    /// including same-shape, right-aligned singleton expansion, missing
+    /// leading axes, and cross-rank scenarios.
     #[test]
     fn test_can_broadcast_compatible() {
         // Same shape.
@@ -203,16 +203,16 @@ mod tests {
         assert!(can_broadcast(&[2, 1, 4], &[3, 2, 5, 4]));
     }
 
-    /// Tests that `can_broadcast` returns `false` for incompatible shape pairs
-    /// where same-rank axes differ with neither being 1.
+    /// Tests that `can_broadcast` returns `false` for incompatible shape
+    /// pairs where same-rank axes differ with neither being 1.
     #[test]
     fn test_can_broadcast_incompatible() {
         assert!(!can_broadcast(&[2, 3], &[4, 3]));
         assert!(!can_broadcast(&[2, 3, 4], &[2, 3, 5]));
     }
 
-    /// Tests compatibility for empty-axis broadcasting where one axis is length 0.
-    /// Compatibility must not special-case axes of length 0.
+    /// Tests compatibility for empty-axis broadcasting where one axis is
+    /// length 0. Compatibility must not special-case axes of length 0.
     #[test]
     fn test_can_broadcast_empty_axis() {
         assert!(can_broadcast(&[0, 3], &[1, 3]));
