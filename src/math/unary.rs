@@ -19,6 +19,30 @@ use crate::simd::{UnaryOp, dispatch_vector_unary_op};
 use crate::parallel::unary::par_map;
 use core::any::TypeId;
 
+/// Selector for the dispatch-routed unary arithmetic ops
+/// (`abs` / `neg` / `square` / `signum`). Defined unconditionally so the
+/// dispatch layer can name an operation without depending on the `simd`
+/// feature.
+#[derive(Copy, Clone)]
+enum UnaryArithOp {
+    Abs,
+    Neg,
+    Square,
+    Signum,
+}
+
+/// Maps the feature-independent [`UnaryArithOp`] selector to the
+/// SIMD-internal [`UnaryOp`] tag. Only `Neg` has a SIMD kernel today; the
+/// rest fall through to scalar. Only compiled when `simd` is enabled.
+#[cfg(feature = "simd")]
+#[inline]
+fn simd_unary_op_tag(op: UnaryArithOp) -> Option<UnaryOp> {
+    match op {
+        UnaryArithOp::Neg => Some(UnaryOp::Neg),
+        UnaryArithOp::Abs | UnaryArithOp::Square | UnaryArithOp::Signum => None,
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Private per-type dispatch traits
 // ----------------------------------------------------------------------------
@@ -711,30 +735,6 @@ where
     F: Fn(A) -> A + Copy + Send + Sync,
 {
     dispatch_unary_elementwise(input, op, |_input| None)
-}
-
-/// Selector for the dispatch-routed unary arithmetic ops
-/// (`abs` / `neg` / `square` / `signum`). Defined unconditionally so the
-/// dispatch layer can name an operation without depending on the `simd`
-/// feature.
-#[derive(Copy, Clone)]
-enum UnaryArithOp {
-    Abs,
-    Neg,
-    Square,
-    Signum,
-}
-
-/// Maps the feature-independent [`UnaryArithOp`] selector to the
-/// SIMD-internal [`UnaryOp`] tag. Only `Neg` has a SIMD kernel today; the
-/// rest fall through to scalar. Only compiled when `simd` is enabled.
-#[cfg(feature = "simd")]
-#[inline]
-fn simd_unary_op_tag(op: UnaryArithOp) -> Option<UnaryOp> {
-    match op {
-        UnaryArithOp::Neg => Some(UnaryOp::Neg),
-        UnaryArithOp::Abs | UnaryArithOp::Square | UnaryArithOp::Signum => None,
-    }
 }
 
 /// Unified unary arithmetic dispatch for `abs` / `neg` / `square` /
