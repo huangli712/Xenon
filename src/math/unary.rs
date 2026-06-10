@@ -610,10 +610,6 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// Shared traversal helpers
-// ----------------------------------------------------------------------------
-
 /// Element-wise unary traversal.
 ///
 /// Maps each input element through `f`, producing an output tensor of the
