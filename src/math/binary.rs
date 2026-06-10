@@ -441,7 +441,7 @@ where
 // Scalar arithmetic variants
 // ----------------------------------------------------------------------------
 
-#[expect(private_bounds, reason = "BinaryArith is a private sealed trait")]
+#[expect(private_bounds)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -464,7 +464,8 @@ where
         // `BroadcastDim<Ix0, Output = D>` guarantees shape compatibility;
         // broadcast can never fail here.
         self.add(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
+                     guarantees compatibility")
     }
 
     /// Element-wise tensor - scalar.
@@ -477,9 +478,11 @@ where
     /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
     /// compatibility.
     pub fn sub_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.sub(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 
     /// Element-wise tensor * scalar.
@@ -492,9 +495,11 @@ where
     /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
     /// compatibility.
     pub fn mul_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.mul(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
+                     guarantees compatibility")
     }
 
     /// Element-wise tensor / scalar.
@@ -507,9 +512,11 @@ where
     /// `BroadcastDim<Ix0, Output = D>` bound guarantees scalar-broadcast
     /// compatibility.
     pub fn div_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.div(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
+                     guarantees compatibility")
     }
 
     /// Element-wise `scalar - element` (left-scalar subtraction).
