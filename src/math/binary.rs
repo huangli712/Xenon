@@ -522,19 +522,21 @@ where
     /// Element-wise `scalar - element` (left-scalar subtraction).
     ///
     /// Internal helper for non-commutative left-scalar operator dispatch.
-    /// NOT part of the public API surface. Routes through `apply_binary_with_dispatch`
-    /// with swapped operands; float/complex types reach the SIMD and
-    /// parallel paths, integers keep their per-element panic diagnostics.
+    /// NOT part of the public API surface. Routes through 
+    /// `apply_binary_with_dispatch` with swapped operands; float/complex
+    /// types reach the SIMD and parallel paths, integers keep their
+    /// per-element panic diagnostics.
     pub(crate) fn sub_from_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         // Swap operand order: compute `scalar - self` element-wise.
         apply_binary_with_dispatch(
             &other,
             self,
             |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
             ArithOp::Sub,
-        )
-        .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+        ).expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
+                  guarantees compatibility")
     }
 
     /// Element-wise `scalar / element` (left-scalar division).
@@ -542,15 +544,16 @@ where
     /// Internal helper for non-commutative left-scalar operator dispatch;
     /// NOT part of the public API surface.
     pub(crate) fn div_from_scalar(&self, scalar: A) -> Tensor<A, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         // Swap operand order: compute `scalar / self` element-wise.
         apply_binary_with_dispatch(
             &other,
             self,
             |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
             ArithOp::Div,
-        )
-        .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+        ).expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
+                  guarantees compatibility")
     }
 }
 
