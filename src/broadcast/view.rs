@@ -299,21 +299,28 @@ mod tests {
     /// zero-copy pointer sharing.
     #[test]
     fn test_broadcast_to_basic() {
-        let tensor: Tensor2<f64> =
-            Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
-        let view = tensor.broadcast_to([2, 3]).expect("valid test input");
+        let tensor: Tensor2<f64> = Tensor2::from_shape_vec(
+            [1, 3],
+            vec![1.0, 2.0, 3.0]
+        ).expect("valid test input");
+        let view = tensor
+            .broadcast_to([2, 3])
+            .expect("valid test input");
         assert_eq!(view.shape(), &[2, 3]);
+        
         // Broadcast axis 0: stride 0.
         assert_eq!(view.strides()[0], 0);
+        
         // Zero-copy: pointer is identical.
         assert_eq!(view.as_ptr(), tensor.as_ptr());
+        
         // Offset preserved.
         assert_eq!(view.offset(), tensor.offset());
     }
 
-    /// Both-singleton same-rank broadcast: a `[1, 1]` source expands *both* axes
-    /// to `[2, 3]`, so both result strides are 0. (True rank-increasing broadcast
-    /// is covered by the integration test `test_broadcast_left_pad`.)
+    /// Both-singleton same-rank broadcast: a `[1, 1]` source expands *both*
+    /// axes to `[2, 3]`, so both result strides are 0. (True rank-increasing
+    /// broadcast is covered by the integration test `test_broadcast_left_pad`.)
     #[test]
     fn test_broadcast_to_scalar_to_higher_rank() {
         let scalar: Tensor2<f64> =
