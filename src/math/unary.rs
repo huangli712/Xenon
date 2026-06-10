@@ -592,7 +592,10 @@ where
 /// `A`, covering both same-type ops (`A → A`, e.g. `neg` / `square`) and
 /// type-changing ops (`Complex<T> → T`, e.g. `modulus`).
 #[inline]
-fn apply_unary_serial<A, O, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<O, D>
+fn apply_unary_serial<A, O, S, D, F>(
+    input: &TensorBase<S, D>,
+    mut f: F
+) -> Tensor<O, D>
 where
     A: Element,
     O: Element,
@@ -638,10 +641,6 @@ where
     result
 }
 
-// ----------------------------------------------------------------------------
-// Dispatch-aware unary helpers (serial/SIMD/parallel routing)
-// ----------------------------------------------------------------------------
-
 /// Dispatch-aware unary helper for ops that have **no SIMD kernel** and so
 /// route only between the Serial baseline and the Parallel path.
 ///
@@ -660,7 +659,10 @@ where
 /// **Acceleration today**: the Parallel path via `par_map` when the
 /// `parallel` feature is enabled and `select_exec_path` returns
 /// `ExecPath::Parallel` — reachable independent of the `simd` feature.
-fn apply_unary_without_simd<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
+fn apply_unary_without_simd<A, S, D, F>(
+    input: &TensorBase<S, D>,
+    op: F
+) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
