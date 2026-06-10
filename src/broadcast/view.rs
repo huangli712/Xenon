@@ -232,8 +232,9 @@ mod tests {
         assert_eq!(view.offset(), tensor.offset());
     }
 
-    /// §8.3 row 2: scalar (rank 0) broadcasting to higher rank. Missing leading
-    /// axes are length 1 per §6.2 step 2.
+    /// Both-singleton same-rank broadcast: a `[1, 1]` source expands *both* axes
+    /// to `[2, 3]`, so both result strides are 0. (True rank-increasing broadcast
+    /// is covered by the integration test `test_broadcast_left_pad`.)
     #[test]
     fn test_broadcast_to_scalar_to_higher_rank() {
         let scalar: Tensor2<f64> =
@@ -301,8 +302,74 @@ mod tests {
         assert_eq!(n, 6);
     }
 
+    // --- broadcast_with (two-input prologue) tests ---
+
+    /// Two-input broadcast where each operand expands a *different* axis:
+    /// `a=[1,3]` broadcasts axis 0, `b=[2,1]` broadcasts axis 1, both reaching
+    /// `[2,3]`. Verifies the prologue broadcasts each side independently.
     #[test]
-    fn test_broadcast_to_signature_compiles() {
-        // Signature is verified at compile time by _check_broadcast_to_sig above.
+    fn test_broadcast_with_mutual() {
+        let a: Tensor2<f64> =
+            Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+        let b: Tensor2<f64> =
+            Tensor2::from_shape_vec([2, 1], vec![10.0, 20.0]).expect("valid test input");
+        let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
+        assert_eq!(out_dim.slice(), &[2, 3]);
+        // a expands axis 0 (stride 0) and keeps axis 1.
+        assert_eq!(a_view.shape(), &[2, 3]);
+        assert_eq!(a_view.strides(), &[0, 1]);
+        // b expands axis 1 (stride 0) and keeps axis 0.
+        assert_eq!(b_view.shape(), &[2, 3]);
+        assert_eq!(b_view.strides(), &[1, 0]);
+        // Zero-copy: each view points at its own source.
+        assert_eq!(a_view.as_ptr(), a.as_ptr());
+        assert_eq!(b_view.as_ptr(), b.as_ptr());
+    }
+
+    /// 3-tuple contract: the returned `out_dim` equals both views' shape.
+    #[test]
+    fn test_broadcast_with_out_dim_matches_views() {
+        let a: Tensor2<f64> =
+            Tensor2::from_shape_vec([1, 4], vec![1.0, 2.0, 3.0, 4.0]).expect("valid test input");
+        let b: Tensor2<f64> =
+            Tensor2::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0]).expect("valid test input");
+        let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
+        assert_eq!(out_dim.slice(), &[3, 4]);
+        assert_eq!(out_dim.slice(), a_view.shape());
+        assert_eq!(out_dim.slice(), b_view.shape());
+        assert_eq!(a_view.shape(), b_view.shape());
+    }
+
+    /// §5.2 line 173 same-shape shortcut: identical input shapes broadcast to the
+    /// same shape with original strides preserved (no zero strides introduced) and
+    /// no `BroadcastView` classification.
+    #[test]
+    fn test_broadcast_with_same_shape_preserves_layout() {
+        let a: Tensor2<f64> = Tensor2::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+            .expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::from_shape_vec([2, 3], vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0])
+            .expect("valid test input");
+        let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
+        assert_eq!(out_dim.slice(), &[2, 3]);
+        // No axis is broadcast: original strides survive, no zero strides.
+        assert_eq!(a_view.strides(), a.strides());
+        assert_eq!(b_view.strides(), b.strides());
+        assert!(!a_view.flags().has_zero_stride());
+        assert_ne!(a_view.layout_state(), LayoutState::BroadcastView);
+    }
+
+    /// Error propagation: incompatible shapes surface `BroadcastError` straight out
+    /// of `broadcast_with` (raised by the internal `broadcast_shape` call).
+    #[test]
+    fn test_broadcast_with_error_propagation() {
+        let a: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::zeros([4, 3]).expect("valid test input");
+        let err = broadcast_with(&a, &b).expect_err("incompatible shapes");
+        match err {
+            XenonError::BroadcastError { operation, .. } => {
+                assert_eq!(operation.as_ref(), "broadcast_shape");
+            },
+            other => panic!("expected BroadcastError, got {:?}", other),
+        }
     }
 }
