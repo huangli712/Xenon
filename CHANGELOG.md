@@ -3,6 +3,32 @@
 All notable changes to this project are documented in this file.
 
 
+## [v0.0.37] — 2026-06-10
+
+### Added
+
+- Tests for scalar ref, broadcast, and view in `overload` module.
+- `#[derive(Debug)]` on `Scalar` struct.
+
+### Removed
+
+- Expanded `math` module macros (`impl_binary_*`, `impl_unary_*`) to explicit impls.
+- Expanded `overload` module macros to explicit impls.
+- `helpers.rs` from `math` module (inlined into unary.rs).
+- Empty test skeleton from `math/mod.rs`.
+
+### Changed
+
+- Split `owned.rs` and merged `view.rs` into per-operator sub-modules.
+- Consolidated `apply_complex_to_real` into `apply_unary_map`.
+- Moved `apply_compare_with_dispatch` to `compare.rs`.
+- Renamed `comparison.rs` to `compare.rs`.
+- Reordered `unary.rs` to top-down layout (types → methods → helpers → tests).
+- Gated dispatch imports with correct `cfg` features.
+- Replaced `crate::` qualified paths with imports in `binary.rs`/`unary.rs`.
+- Consolidated comparison impl blocks and design-doc references.
+- Reorganized tests, renamed functions, standardized rulers in `overload` module.
+- Wrapped long doc comments and test lines across operator and `math` modules.
 ## [v0.0.36] — 2026-06-09
 
 ### Changed
