@@ -407,7 +407,7 @@ where
     /// the SIMD path falls back to scalar; parallel acceleration kicks in
     /// when the executor selects it).
     pub fn abs(&self) -> Tensor<A, D> {
-        dispatch_unary_arith(
+        apply_unary_with_dispatch(
             self,
             |x, idx, shape| <A as OrderedUnaryArith>::abs_step_with_ctx(x, idx, shape),
             UnaryArithOp::Abs,
@@ -418,7 +418,7 @@ where
     /// Floats follow IEEE 754 semantics via `RealScalar::signum` (handles
     /// signed zeros and NaN).
     pub fn signum(&self) -> Tensor<A, D> {
-        dispatch_unary_arith(
+        apply_unary_with_dispatch(
             self,
             |x, idx, shape| <A as OrderedUnaryArith>::signum_step_with_ctx(x, idx, shape),
             UnaryArithOp::Signum,
@@ -447,7 +447,7 @@ where
     /// Float types route through the dispatch-aware helper with a SIMD
     /// `Neg` op tag, so the SIMD path can accelerate when available.
     pub fn neg(&self) -> Tensor<A, D> {
-        dispatch_unary_arith(
+        apply_unary_with_dispatch(
             self,
             |x, idx, shape| <A as UnaryArith>::neg_step_with_ctx(x, idx, shape),
             UnaryArithOp::Neg,
@@ -457,7 +457,7 @@ where
     /// Element-wise square (`x * x`). The integer path panics on overflow;
     /// the float and complex paths use `*` with IEEE 754 propagation.
     pub fn square(&self) -> Tensor<A, D> {
-        dispatch_unary_arith(
+        apply_unary_with_dispatch(
             self,
             |x, idx, shape| <A as UnaryArith>::square_step_with_ctx(x, idx, shape),
             UnaryArithOp::Square,
@@ -734,7 +734,7 @@ where
 /// The `step` closure carries `(idx, &shape)` for the integer path; the
 /// float path adapts it to a context-free kernel via `|x| step(x, 0, &[])`,
 /// which is zero-cost since float / complex impls ignore those parameters.
-fn dispatch_unary_arith<A, S, D, F>(
+fn apply_unary_with_dispatch<A, S, D, F>(
     input: &TensorBase<S, D>,
     step: F,
     op: UnaryArithOp,
