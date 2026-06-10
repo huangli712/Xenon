@@ -805,8 +805,8 @@ mod tests {
     #[test]
     fn test_abs() {
         // abs(-3) = 3 for i32; abs(-2.5) = 2.5 for f64.
-        let t =
-            Tensor::<i32, Ix1>::from_shape_vec([3], vec![-3, 0, 5]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![-3, 0, 5])
+            .expect("valid tensor shape");
         let r = t.abs();
         assert_eq!(*r.get(&[0]).expect("valid index"), 3);
         assert_eq!(*r.get(&[1]).expect("valid index"), 0);
@@ -831,8 +831,8 @@ mod tests {
     #[test]
     fn test_signum() {
         // i32: -1 / 0 / 1; f64 follows IEEE 754 signum (NaN→NaN, ±0.0→±1.0).
-        let t =
-            Tensor::<i32, Ix1>::from_shape_vec([3], vec![-7, 0, 4]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![-7, 0, 4])
+            .expect("valid tensor shape");
         let r = t.signum();
         assert_eq!(*r.get(&[0]).expect("valid index"), -1);
         assert_eq!(*r.get(&[1]).expect("valid index"), 0);
@@ -845,13 +845,11 @@ mod tests {
     fn test_square_checked_overflow() {
         // i32::MAX squared overflows i32 — square() must panic via
         // UnaryArith::square_step for i32.
-        let t =
-            Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX])
+            .expect("valid tensor shape");
         let result = catch_unwind(|| t.square());
         assert!(result.is_err(), "i32::MAX squared must panic on overflow");
     }
-
-    // ── Math function tests ──
 
     /// `sin` on `[0.0, π/2]` returns `[0.0, 1.0]` within a 1e-10 tolerance.
     #[test]
