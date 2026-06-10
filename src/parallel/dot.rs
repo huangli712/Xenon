@@ -447,4 +447,47 @@ mod tests {
         assert!(matches!(result, Err(XenonError::InvalidArgument { .. })));
         reset_parallel_threshold();
     }
+
+    /// `par_dot` integer multiplication overflow panics with the SAME
+    /// element-context diagnostic as the serial path — NOT the raw Rust
+    /// "attempt to multiply with overflow". Guards the parallel
+    /// `dot_mul_step` wiring.
+    #[test]
+    #[should_panic(expected = "dot: integer overflow during multiplication")]
+    fn test_par_dot_int_overflow_mul() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        // Only element 0 overflows (i32::MAX * 2); the rest stay in range.
+        let a_data = [i32::MAX, 1, 1, 1];
+        let b_data = [2i32, 1, 1, 1];
+        let a = unsafe { view_1d(&a_data) };
+        let b = unsafe { view_1d(&b_data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&a);
+        // Threshold restored by `_threshold_guard` on unwind.
+        let _ = par_dot(&a, &b, &strategy, guard);
+    }
+
+    /// `par_dot` integer accumulation overflow during the cross-worker
+    /// reduction panics with a diagnostic message — NOT the raw Rust
+    /// "attempt to add with overflow". Each product is individually in
+    /// range, but their sum exceeds `i32::MAX` regardless of the
+    /// (non-deterministic) reduction order. Guards the parallel
+    /// `dot_reduce_step` wiring.
+    #[test]
+    #[should_panic(expected = "dot: integer overflow during parallel reduction")]
+    fn test_par_dot_int_overflow_reduction() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        // Each product is i32::MAX / 2; summing four overflows i32.
+        let half = i32::MAX / 2;
+        let a_data = [half, half, half, half];
+        let b_data = [1i32, 1, 1, 1];
+        let a = unsafe { view_1d(&a_data) };
+        let b = unsafe { view_1d(&b_data) };
+        let strategy = ParallelExecStrategy::auto();
+        let guard = acquire_guard(&a);
+        // Threshold restored by `_threshold_guard` on unwind.
+        let _ = par_dot(&a, &b, &strategy, guard);
+    }
 }

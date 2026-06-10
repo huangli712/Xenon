@@ -840,10 +840,10 @@ mod tests {
     /// helpers; validate it independently produces element-wise sums.
     #[test]
     fn test_apply_binary_serial() {
-        let a =
-            Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, 2.0]).expect("valid tensor shape");
-        let b =
-            Tensor::<f64, Ix1>::from_shape_vec([2], vec![3.0, 4.0]).expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, 2.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([2], vec![3.0, 4.0])
+            .expect("valid tensor shape");
         let r = apply_binary_serial(&a, &b, |x, y| x + y);
         assert!((*r.get(&[0]).expect("valid index") - 4.0).abs() < 1e-10);
         assert!((*r.get(&[1]).expect("valid index") - 6.0).abs() < 1e-10);
@@ -861,14 +861,21 @@ mod tests {
     #[cfg(feature = "simd")]
     #[test]
     fn test_add_simd_vs_scalar() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([256], (0..256).map(|x| x as f64).collect())
-            .expect("valid tensor shape");
-        let b =
-            Tensor::<f64, Ix1>::from_shape_vec([256], (0..256).map(|x| (x * 2) as f64).collect())
-                .expect("valid tensor shape");
+        let a = Tensor::<f64, Ix1>::from_shape_vec(
+            [256],
+            (0..256).map(|x| x as f64).collect()
+        ).expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec(
+            [256],
+            (0..256).map(|x| (x * 2) as f64).collect()
+        ).expect("valid tensor shape");
         let expected: Vec<f64> = (0..256).map(|x| 3.0 * x as f64).collect();
         let result = a.add(&b).expect("broadcast succeeds in test");
-        for (i, (got, &exp)) in result.iter().zip(expected.iter()).enumerate() {
+        for (i, (got, &exp)) in result
+            .iter()
+            .zip(expected.iter())
+            .enumerate()
+        {
             assert!(
                 (got - exp).abs() < 1e-10,
                 "SIMD path mismatch at index {i}: got {got} expected {exp}",
