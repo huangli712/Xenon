@@ -3,31 +3,6 @@ use std::borrow::Cow;
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::dimension::IxDyn;
 
-/// Constructs `XenonError::BroadcastError` with all fields populated per
-/// `26-error.md §5.1` line 124-130.
-///
-/// - `operation`: caller name (e.g. "broadcast_shape", "broadcast_strides").
-/// - `lhs_shape` / `rhs_shape`: the two compared shapes. For `broadcast_strides`
-///   (single-input broadcast), pass `orig_shape` and `target_shape` respectively.
-/// - `attempted_target_shape`: caller-supplied target if known (only relevant in
-///   `broadcast_to` / `broadcast_strides` paths); `None` for pure `broadcast_shape`.
-/// - `axis`: the conflicting axis index (right-aligned, 0-based on the result rank).
-pub(crate) fn broadcast_error(
-    operation: &'static str,
-    lhs_shape: &[usize],
-    rhs_shape: &[usize],
-    attempted_target_shape: Option<&[usize]>,
-    axis: usize,
-) -> XenonError {
-    XenonError::BroadcastError {
-        operation: Cow::Borrowed(operation),
-        lhs_shape: lhs_shape.to_vec(),
-        rhs_shape: rhs_shape.to_vec(),
-        attempted_target_shape: attempted_target_shape.map(|s| s.to_vec()),
-        axis: Some(axis),
-    }
-}
-
 /// Numpy-style broadcast compatibility check. Semantically equivalent to
 /// `broadcast_shape(a, b).is_ok()` per `15-broadcast.md §8.4` invariant.
 pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool {
@@ -185,19 +160,36 @@ pub fn broadcast_strides(
     Ok(out)
 }
 
+/// Constructs `XenonError::BroadcastError` with all fields populated per
+/// `26-error.md §5.1` line 124-130.
+///
+/// - `operation`: caller name (e.g. "broadcast_shape", "broadcast_strides").
+/// - `lhs_shape` / `rhs_shape`: the two compared shapes. For `broadcast_strides`
+///   (single-input broadcast), pass `orig_shape` and `target_shape` respectively.
+/// - `attempted_target_shape`: caller-supplied target if known (only relevant in
+///   `broadcast_to` / `broadcast_strides` paths); `None` for pure `broadcast_shape`.
+/// - `axis`: the conflicting axis index (right-aligned, 0-based on the result rank).
+pub(crate) fn broadcast_error(
+    operation: &'static str,
+    lhs_shape: &[usize],
+    rhs_shape: &[usize],
+    attempted_target_shape: Option<&[usize]>,
+    axis: usize,
+) -> XenonError {
+    XenonError::BroadcastError {
+        operation: Cow::Borrowed(operation),
+        lhs_shape: lhs_shape.to_vec(),
+        rhs_shape: rhs_shape.to_vec(),
+        attempted_target_shape: attempted_target_shape.map(|s| s.to_vec()),
+        axis: Some(axis),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dimension::Dimension;
     use crate::error::XenonError;
-
-    #[test]
-    fn test_shape_stub_signatures_compile() {
-        type StridesFn = fn(&[usize], &[usize], &[usize]) -> Result<Vec<usize>, XenonError>;
-        let _: fn(&[usize], &[usize]) -> bool = can_broadcast;
-        let _: fn(&[usize], &[usize]) -> Result<IxDyn, XenonError> = broadcast_shape;
-        let _: StridesFn = broadcast_strides;
-    }
 
     #[test]
     fn test_can_broadcast_compatible() {
@@ -224,6 +216,27 @@ mod tests {
     #[test]
     fn test_can_broadcast_empty_axis() {
         assert!(can_broadcast(&[0, 3], &[1, 3]));
+    }
+
+    /// §8.4 invariant: `can_broadcast(a, b) == broadcast_shape(a, b).is_ok()`.
+    #[test]
+    fn test_can_broadcast_matches_broadcast_shape() {
+        let cases = [
+            (&[1, 3][..], &[2, 3][..]),
+            (&[2, 3][..], &[4, 3][..]),
+            (&[][..], &[2, 3][..]),
+            (&[0, 3][..], &[1, 3][..]),
+            (&[2, 1, 4][..], &[3, 2, 5, 4][..]),
+        ];
+        for (a, b) in cases {
+            assert_eq!(
+                can_broadcast(a, b),
+                broadcast_shape(a, b).is_ok(),
+                "mismatch on {:?} vs {:?}",
+                a,
+                b
+            );
+        }
     }
 
     #[test]
@@ -264,25 +277,52 @@ mod tests {
         }
     }
 
-    /// §8.4 invariant: `can_broadcast(a, b) == broadcast_shape(a, b).is_ok()`.
+    /// §6.2 step 3: a conflict at a non-leading (trailing) axis must report that
+    /// axis index, verifying the right-aligned `out_axis` computation.
     #[test]
-    fn test_can_broadcast_matches_broadcast_shape() {
+    fn test_broadcast_shape_error_non_leading_axis() {
+        let err = broadcast_shape(&[2, 3], &[2, 4]).expect_err("axis-1 conflict");
+        match err {
+            XenonError::BroadcastError {
+                operation,
+                lhs_shape,
+                rhs_shape,
+                attempted_target_shape,
+                axis,
+            } => {
+                assert_eq!(operation.as_ref(), "broadcast_shape");
+                assert_eq!(lhs_shape, vec![2, 3]);
+                assert_eq!(rhs_shape, vec![2, 4]);
+                assert_eq!(attempted_target_shape, None);
+                // Axis 0 matches (2 == 2); conflict surfaces at trailing axis 1.
+                assert_eq!(axis, Some(1));
+            },
+            other => panic!("expected BroadcastError, got {:?}", other),
+        }
+    }
+
+    /// §6.2: broadcasting is commutative — the result shape is independent of
+    /// argument order.
+    #[test]
+    fn test_broadcast_shape_commutative() {
         let cases = [
             (&[1, 3][..], &[2, 3][..]),
-            (&[2, 3][..], &[4, 3][..]),
             (&[][..], &[2, 3][..]),
             (&[0, 3][..], &[1, 3][..]),
             (&[2, 1, 4][..], &[3, 2, 5, 4][..]),
         ];
         for (a, b) in cases {
-            assert_eq!(
-                can_broadcast(a, b),
-                broadcast_shape(a, b).is_ok(),
-                "mismatch on {:?} vs {:?}",
-                a,
-                b
-            );
+            let ab = broadcast_shape(a, b).expect("compatible");
+            let ba = broadcast_shape(b, a).expect("compatible");
+            assert_eq!(ab.slice(), ba.slice(), "asymmetry on {:?} vs {:?}", a, b);
         }
+    }
+
+    /// Scalar-to-scalar boundary: two rank-0 shapes broadcast to rank-0.
+    #[test]
+    fn test_broadcast_shape_scalar_scalar() {
+        let r = broadcast_shape(&[], &[]).expect("scalar broadcast");
+        assert!(r.slice().is_empty(), "rank-0 broadcast must be empty");
     }
 
     #[test]
@@ -311,10 +351,11 @@ mod tests {
         assert_eq!(s, vec![0, 0]);
     }
 
-    /// Empty-axis broadcast `1 -> 0`: stride written as 0 per §6.3.
+    /// Empty-axis broadcast `1 -> 0`: a source axis of length 1 broadcasting to a
+    /// target axis of length 0 writes stride 0 per §6.3.
     #[test]
     fn test_broadcast_strides_empty_axis() {
-        let s = broadcast_strides(&[1, 3], &[3, 1], &[2, 3]).expect("compatible strides");
+        let s = broadcast_strides(&[1, 3], &[3, 1], &[0, 3]).expect("compatible strides");
         assert_eq!(s, vec![0, 1]);
     }
 
@@ -358,6 +399,38 @@ mod tests {
             },
             other => panic!("expected BroadcastError, got {:?}", other),
         }
+    }
+
+    /// §6.3: a conflict at a non-leading (trailing) axis must report that axis
+    /// index, verifying the `target_axis` computation.
+    #[test]
+    fn test_broadcast_strides_broadcast_error_non_leading_axis() {
+        let err = broadcast_strides(&[2, 3], &[3, 1], &[2, 5]).expect_err("axis-1 conflict");
+        match err {
+            XenonError::BroadcastError {
+                operation,
+                lhs_shape,
+                rhs_shape,
+                attempted_target_shape,
+                axis,
+            } => {
+                assert_eq!(operation.as_ref(), "broadcast_strides");
+                assert_eq!(lhs_shape, vec![2, 3]);
+                assert_eq!(rhs_shape, vec![2, 5]);
+                assert_eq!(attempted_target_shape, Some(vec![2, 5]));
+                // Axis 0 matches (2 == 2); conflict surfaces at trailing axis 1.
+                assert_eq!(axis, Some(1));
+            },
+            other => panic!("expected BroadcastError, got {:?}", other),
+        }
+    }
+
+    /// §6.3 equal-dim branch with `0 == 0`: an empty axis present on both source
+    /// and target keeps the original stride (does not force stride 0).
+    #[test]
+    fn test_broadcast_strides_equal_empty_axis_keeps_stride() {
+        let s = broadcast_strides(&[0, 3], &[3, 1], &[0, 3]).expect("equal empty axis");
+        assert_eq!(s, vec![3, 1]);
     }
 
     #[test]
