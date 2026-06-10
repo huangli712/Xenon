@@ -383,7 +383,8 @@ mod tests {
     /// `orig_shape.len() != orig_strides.len()`.
     #[test]
     fn test_broadcast_strides_invalid_argument_on_len_mismatch() {
-        let err = broadcast_strides(&[1, 3], &[3], &[2, 3]).expect_err("incompatible strides");
+        let err = broadcast_strides(&[1, 3], &[3], &[2, 3])
+            .expect_err("incompatible strides");
         match err {
             XenonError::InvalidArgument { operation, kind } => {
                 assert_eq!(operation.as_ref(), "broadcast_strides");
