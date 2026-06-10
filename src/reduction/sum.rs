@@ -27,7 +27,7 @@ use crate::parallel::sum::par_sum;
 use crate::complex::Complex;
 
 #[cfg(feature = "simd")]
-use crate::simd::{
+use super::driver::{
     try_sum_f32,
     try_sum_f64,
     try_sum_complex_f32,

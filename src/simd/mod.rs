@@ -5,7 +5,7 @@
 //!
 //! ## Architecture
 //!
-//! - Facade functions (`dispatch_vector_*_op`, `try_sum_*`, `try_dot_*`)
+//! - Facade functions (`dispatch_vector_*_op`, `try_dot_*`)
 //!   admit SIMD execution and return `bool`/`Option<A>` to signal
 //!   acceptance. The caller **must** run its own scalar fallback on
 //!   rejection.
@@ -24,9 +24,6 @@ mod unary;
 mod dot;
 
 #[cfg(feature = "simd")]
-mod sum;
-
-#[cfg(feature = "simd")]
 mod driver;
 
 pub(crate) use types::{BinaryOp, UnaryOp};
@@ -42,9 +39,4 @@ pub(crate) use driver::{
     try_dot_i32,
     try_dot_f32,
     try_dot_f64,
-    try_sum_complex_f32,
-    try_sum_complex_f64,
-    try_sum_i32,
-    try_sum_f32,
-    try_sum_f64,
 };

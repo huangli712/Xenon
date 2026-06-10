@@ -10,7 +10,7 @@ use std::slice;
 use std::any::TypeId;
 use std::sync::OnceLock;
 
-use super::{binary, dot, sum, unary};
+use super::{binary, dot, unary};
 use crate::complex::Complex;
 use crate::element::SimdElement;
 use crate::simd::{BinaryOp, UnaryOp};
@@ -222,42 +222,6 @@ where
 }
 
 // ----------------------------------------------------------------------------
-// Facade entry points — sum (reduction)
-// ----------------------------------------------------------------------------
-
-/// Stub: i32 sum has no SIMD path (i32 widening unavailable).
-/// Always returns `None` so callers fall back to scalar.
-#[allow(dead_code, reason = "i32 sum stub — no SIMD widening available")]
-pub(crate) fn try_sum_i32(data: &[i32]) -> Option<i32> {
-    let _ = data;
-    None
-}
-
-/// Dispatches to SIMD f32 sum; returns `None` if below threshold.
-pub(crate) fn try_sum_f32(data: &[f32]) -> Option<f32> {
-    sum::try_sum_f32_impl(data)
-}
-
-/// Dispatches to SIMD f64 sum; returns `None` if below threshold.
-pub(crate) fn try_sum_f64(data: &[f64]) -> Option<f64> {
-    sum::try_sum_f64_impl(data)
-}
-
-/// Dispatches to SIMD `Complex<f32>` sum; returns `None` if below threshold.
-pub(crate) fn try_sum_complex_f32(
-    data: &[Complex<f32>]
-) -> Option<Complex<f32>> {
-    sum::try_sum_complex_f32_impl(data)
-}
-
-/// Dispatches to SIMD `Complex<f64>` sum; returns `None` if below threshold.
-pub(crate) fn try_sum_complex_f64(
-    data: &[Complex<f64>]
-) -> Option<Complex<f64>> {
-    sum::try_sum_complex_f64_impl(data)
-}
-
-// ----------------------------------------------------------------------------
 // Facade entry points — dot (inner product)
 // ----------------------------------------------------------------------------
 
@@ -373,7 +337,6 @@ mod tests {
             &mut dst
         ));
         assert!(!dispatch_vector_unary_op(UnaryOp::Neg, &lhs, &mut dst));
-        assert_eq!(try_sum_f32(&lhs), None);
         assert_eq!(try_dot_f32(&lhs, &rhs), None);
     }
 
