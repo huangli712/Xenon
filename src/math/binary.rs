@@ -900,7 +900,10 @@ mod tests {
         ).expect("valid tensor shape");
         let r = a.add(&b).expect("broadcast succeeds in test");
         for i in 0..64 {
-            assert_eq!(*r.get(&[i]).expect("valid index"), i as i32 + i as i32 * 3);
+            assert_eq!(
+                *r.get(&[i]).expect("valid index"),
+                i as i32 + i as i32 * 3
+            );
         }
     }
 
@@ -981,8 +984,6 @@ mod tests {
         assert_eq!(*c.get(&[1]).expect("valid index"), 2);
         assert_eq!(*c.get(&[2]).expect("valid index"), -4);
     }
-
-    // ── Scalar variants ──
 
     /// `add_scalar` adds the scalar to every element.
     #[test]
