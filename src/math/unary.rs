@@ -796,6 +796,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::f64::consts::FRAC_PI_2;
     use std::panic::catch_unwind;
     use crate::dimension::Ix1;
     use crate::tensor::Tensor;
@@ -854,7 +855,7 @@ mod tests {
     /// `sin` on `[0.0, π/2]` returns `[0.0, 1.0]` within a 1e-10 tolerance.
     #[test]
     fn test_sin() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.0, std::f64::consts::FRAC_PI_2])
+        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.0, FRAC_PI_2])
             .expect("valid tensor shape");
         let r = t.sin();
         assert!((*r.get(&[0]).expect("valid index") - 0.0).abs() < 1e-10);
@@ -864,8 +865,8 @@ mod tests {
     /// `sqrt` returns 2.0 for `4.0` and NaN for `-1.0` per IEEE 754.
     #[test]
     fn test_sqrt() {
-        let t =
-            Tensor::<f64, Ix1>::from_shape_vec([2], vec![4.0, -1.0]).expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![4.0, -1.0])
+            .expect("valid tensor shape");
         let r = t.sqrt();
         assert!((*r.get(&[0]).expect("valid index") - 2.0).abs() < 1e-10);
         assert!(r.get(&[1]).expect("valid index").is_nan());
@@ -875,7 +876,8 @@ mod tests {
     /// within a 1e-10 tolerance.
     #[test]
     fn test_exp_ln_roundtrip() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([1], vec![2.0]).expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec([1], vec![2.0])
+            .expect("valid tensor shape");
         let r = t.ln().exp();
         assert!((*r.get(&[0]).expect("valid index") - 2.0).abs() < 1e-10);
     }
