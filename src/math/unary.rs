@@ -492,36 +492,36 @@ where
 {
     /// Element-wise sine. IEEE 754 NaN propagates: `sin(NaN) = NaN`.
     ///
-    /// Routes through `apply_unary_with_real_dispatch` so that large tensors
+    /// Routes through `apply_unary_without_simd` so that large tensors
     /// can benefit from parallel acceleration. No SIMD kernel for `sin` is
     /// available yet, so the SIMD path falls back to scalar.
     pub fn sin(&self) -> Tensor<A, D> {
-        apply_unary_with_real_dispatch(self, |x| x.sin())
+        apply_unary_without_simd(self, |x| x.sin())
     }
 
     /// Element-wise square root. `sqrt(-1.0) = NaN` per IEEE 754.
     pub fn sqrt(&self) -> Tensor<A, D> {
-        apply_unary_with_real_dispatch(self, |x| x.sqrt())
+        apply_unary_without_simd(self, |x| x.sqrt())
     }
 
     /// Element-wise exponential. `exp(Inf) = Inf`, `exp(-Inf) = 0.0`.
     pub fn exp(&self) -> Tensor<A, D> {
-        apply_unary_with_real_dispatch(self, |x| x.exp())
+        apply_unary_without_simd(self, |x| x.exp())
     }
 
     /// Element-wise natural logarithm. `ln(0.0) = -Inf`, `ln(-1.0) = NaN`.
     pub fn ln(&self) -> Tensor<A, D> {
-        apply_unary_with_real_dispatch(self, |x| x.ln())
+        apply_unary_without_simd(self, |x| x.ln())
     }
 
     /// Element-wise floor. Exact (no tolerance).
     pub fn floor(&self) -> Tensor<A, D> {
-        apply_unary_with_real_dispatch(self, |x| x.floor())
+        apply_unary_without_simd(self, |x| x.floor())
     }
 
     /// Element-wise ceil. Exact (no tolerance).
     pub fn ceil(&self) -> Tensor<A, D> {
-        apply_unary_with_real_dispatch(self, |x| x.ceil())
+        apply_unary_without_simd(self, |x| x.ceil())
     }
 }
 
@@ -552,12 +552,12 @@ where
     /// Element-wise complex conjugate: `(a + bi) → (a - bi)`. Delegates to
     /// `Numeric::conjugate`.
     ///
-    /// Routes through `apply_unary_with_real_dispatch` so that large tensors
+    /// Routes through `apply_unary_without_simd` so that large tensors
     /// can benefit from parallel acceleration. No SIMD kernel for `conjugate`
     /// is available yet (it would require cross-lane operations), so the
     /// SIMD path falls back to scalar.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D> {
-        apply_unary_with_real_dispatch(self, <Complex<T> as Numeric>::conjugate)
+        apply_unary_without_simd(self, <Complex<T> as Numeric>::conjugate)
     }
 }
 
@@ -570,10 +570,10 @@ where
 {
     /// Element-wise logical NOT. Returns a bool tensor of the same shape.
     ///
-    /// `select_exec_path` routes between Serial and SIMD (both fall back to
-    /// the scalar baseline because no bool SIMD kernel exists), and selects
-    /// the Parallel path via `par_map` when the `parallel` feature is
-    /// enabled and the executor chooses it.
+    /// Routes through `apply_unary_without_simd`: no bool SIMD kernel exists,
+    /// so the Serial and SIMD paths both use the scalar baseline, while the
+    /// Parallel path engages via `par_map` when the `parallel` feature is
+    /// enabled and the executor selects it.
     ///
     /// # Panics
     ///
@@ -581,32 +581,7 @@ where
     /// because `self.raw_dim()` originates from a valid `TensorBase` whose
     /// shape was already validated at construction.
     pub fn not(&self) -> Tensor<bool, D> {
-        let len = self.len();
-        let is_contiguous = self.is_f_contiguous();
-        let alignment_ok = self.is_aligned();
-        let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-        match path {
-            // No bool SIMD kernel exists; Serial and Simd both fall through
-            // to the scalar `apply_unary_serial` baseline. Parallel routes
-            // through `par_map`.
-            ExecPath::Serial | ExecPath::Simd => {
-                let _ = guard;
-                apply_unary_serial(self, |x| !x)
-            },
-            ExecPath::Parallel => {
-                #[cfg(feature = "parallel")]
-                {
-                    let strat = ParallelExecStrategy::auto();
-                    let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                    par_map(self, &strat, g, |x| !*x)
-                }
-                #[cfg(not(feature = "parallel"))]
-                {
-                    let _ = guard;
-                    apply_unary_serial(self, |x| !x)
-                }
-            },
-        }
+        apply_unary_without_simd(self, |x| !x)
     }
 }
 
@@ -643,7 +618,10 @@ where
 /// monomorphizations have no panic path; the `idx` / `shape` parameters
 /// are zero-cost dropped after inlining.
 #[inline]
-fn apply_unary_checked<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
+fn apply_unary_checked<A, S, D, F>(
+    input: &TensorBase<S, D>,
+    mut f: F
+) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
@@ -664,24 +642,25 @@ where
 // Dispatch-aware unary helpers (serial/SIMD/parallel routing)
 // ----------------------------------------------------------------------------
 
-/// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
-/// `A: ComplexFloat`-derived element traits that do NOT include
-/// `SimdElement` in their supertrait set.
+/// Dispatch-aware unary helper for ops that have **no SIMD kernel** and so
+/// route only between the Serial baseline and the Parallel path.
 ///
-/// **Why this exists**: The user-facing math API (`sin`, `sqrt`, `exp`,
-/// `ln`, `floor`, `ceil`, `conjugate`) is bounded by the public
-/// `RealScalar` and `ComplexFloat` traits. These traits intentionally do
-/// NOT include the `pub(crate) SimdElement` trait as a supertrait, because
-/// SIMD types must not appear in the public API surface (`pub(crate)`
-/// only). Therefore the SIMD kernel attempt (which requires
-/// `A: SimdElement`) cannot be called from these methods, so there is no
-/// SIMD path here: the SIMD execution path collapses to the scalar
-/// baseline (`apply_unary_serial`).
+/// Used by:
+/// - the real-valued math API (`sin`, `sqrt`, `exp`, `ln`, `floor`, `ceil`)
+///   and `conjugate`, bounded by the public `RealScalar` / `ComplexFloat`
+///   traits. Those traits intentionally do NOT include the `pub(crate)`
+///   `SimdElement` supertrait (SIMD types must not leak into the public API
+///   surface), so the SIMD kernel attempt — which requires `A: SimdElement`
+///   — is not callable here.
+/// - logical `not` on `bool`, for which no SIMD kernel exists.
 ///
-/// **Real acceleration today**: the Parallel path via `par_map` when the
+/// In every case the SIMD execution path collapses to the scalar baseline
+/// (`apply_unary_serial`).
+///
+/// **Acceleration today**: the Parallel path via `par_map` when the
 /// `parallel` feature is enabled and `select_exec_path` returns
 /// `ExecPath::Parallel` — reachable independent of the `simd` feature.
-fn apply_unary_with_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
+fn apply_unary_without_simd<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
@@ -1028,7 +1007,7 @@ mod tests {
     /// Parallel path (forced via a threshold of 1) as on the Serial path
     /// (parallel disabled via the 0 sentinel). Guards the inlined
     /// `ExecPath::Parallel` arm of both `apply_unary_with_dispatch`
-    /// (abs/neg/square) and `apply_unary_with_real_dispatch` (sin).
+    /// (abs/neg/square) and `apply_unary_without_simd` (sin).
     #[cfg(feature = "parallel")]
     #[test]
     fn test_unary_parallel_matches_serial_f64() {
