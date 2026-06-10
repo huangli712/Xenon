@@ -993,15 +993,15 @@ mod tests {
     /// `square` on `Complex<f64>`: `(1+2i)^2 = -3+4i`.
     #[test]
     fn test_square_complex() {
-        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
-            .expect("valid tensor shape");
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec(
+            [1],
+            vec![Complex::new(1.0, 2.0)]
+        ).expect("valid tensor shape");
         let r = t.square();
         let v = r.get(&[0]).expect("valid index");
         assert!((v.re() + 3.0).abs() < 1e-10);
         assert!((v.im() - 4.0).abs() < 1e-10);
     }
-
-    // ── Parallel-path cross-consistency (parallel feature only) ──
 
     /// Float `abs`/`neg`/`square`/`sin` produce identical results on the
     /// Parallel path (forced via a threshold of 1) as on the Serial path
@@ -1014,8 +1014,10 @@ mod tests {
         use crate::dispatch::ThresholdTestGuard;
         use crate::dispatch::set_parallel_threshold;
 
-        let t = Tensor::<f64, Ix1>::from_shape_vec([128], (0..128).map(|x| x as f64 - 64.0).collect())
-            .expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec(
+            [128],
+            (0..128).map(|x| x as f64 - 64.0).collect()
+        ).expect("valid tensor shape");
 
         let _guard = ThresholdTestGuard::new();
         set_parallel_threshold(0);
