@@ -355,10 +355,12 @@ impl OrderedUnaryArith for i64 {
             })
         }
     }
+    
     #[inline]
     fn signum_step(x: Self) -> Self {
         x.signum()
     }
+    
     #[inline]
     fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
         if x >= 0 {
@@ -382,6 +384,7 @@ impl OrderedUnaryArith for f32 {
     fn abs_step(x: Self) -> Self {
         <Self as RealScalar>::abs(x)
     }
+    
     #[inline]
     fn signum_step(x: Self) -> Self {
         <Self as RealScalar>::signum(x)
@@ -395,6 +398,7 @@ impl OrderedUnaryArith for f64 {
     fn abs_step(x: Self) -> Self {
         <Self as RealScalar>::abs(x)
     }
+    
     #[inline]
     fn signum_step(x: Self) -> Self {
         <Self as RealScalar>::signum(x)
