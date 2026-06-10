@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.38] — 2026-06-10
+
+### Added
+
+- Tests for `broadcast_with` (mutual, same-shape, error propagation).
+- Tests for broadcast shape/strides (commutativity, empty-axis edge cases).
+
+### Removed
+
+- Empty compile test from `broadcast/mod.rs`.
+- Compile-fail doctest from broadcast_to docs.
+- Design-doc cross-references from broadcast module.
+
+### Changed
+
+- Extracted `broadcast_to` as `pub(crate)` free function.
+- Moved `broadcast_pair` from math to broadcast/view.rs as `broadcast_with`.
+- Moved `broadcast_error` before callers (top-down order).
+- Reordered broadcast_with/broadcast_to and tests in top-down order.
+- Replaced `crate::broadcast::shape::` with `super::shape::` in `view.rs`.
+- Normalized `NumPy` to `numpy` in docs/comments.
+- Style: wrapped long lines, reordered imports, standardized section headers.
 
 ## [v0.0.37] — 2026-06-10
 
@@ -14,7 +36,7 @@ All notable changes to this project are documented in this file.
 
 - Expanded `math` module macros (`impl_binary_*`, `impl_unary_*`) to explicit impls.
 - Expanded `overload` module macros to explicit impls.
-- `helpers.rs` from `math` module (inlined into unary.rs).
+- `helpers.rs` from `math` module (inlined into `unary.rs`).
 - Empty test skeleton from `math/mod.rs`.
 
 ### Changed
@@ -29,6 +51,7 @@ All notable changes to this project are documented in this file.
 - Consolidated comparison impl blocks and design-doc references.
 - Reorganized tests, renamed functions, standardized rulers in `overload` module.
 - Wrapped long doc comments and test lines across operator and `math` modules.
+
 ## [v0.0.36] — 2026-06-09
 
 ### Changed
