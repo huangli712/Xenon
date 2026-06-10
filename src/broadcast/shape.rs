@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::dimension::IxDyn;
 
-/// numpy-style broadcast compatibility check. Equivalent to
+/// Numpy-style broadcast compatibility check. Equivalent to
 /// `broadcast_shape(a, b).is_ok()`.
 pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool {
     broadcast_shape(shape_a, shape_b).is_ok()
@@ -23,10 +23,14 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool {
 ///
 /// # Errors
 ///
-/// Returns `XenonError::BroadcastError` when two right-aligned axes differ and
-/// neither equals 1. `attempted_target_shape` is `None` because `broadcast_shape`
-/// compares two inputs bidirectionally — there is no single target shape.
-pub fn broadcast_shape(shape_a: &[usize], shape_b: &[usize]) -> Result<IxDyn, XenonError> {
+/// Returns `XenonError::BroadcastError` when two right-aligned axes differ
+/// and neither equals 1. `attempted_target_shape` is `None` because
+/// `broadcast_shape` compares two inputs bidirectionally — there is no single
+/// target shape.
+pub fn broadcast_shape(
+    shape_a: &[usize],
+    shape_b: &[usize]
+) -> Result<IxDyn, XenonError> {
     let ndim = shape_a.len().max(shape_b.len());
     let mut out = vec![1usize; ndim];
 
