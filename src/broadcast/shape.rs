@@ -486,7 +486,13 @@ mod tests {
     /// fields populated correctly.
     #[test]
     fn test_broadcast_error_has_complete_structured_fields() {
-        let err = broadcast_error("broadcast_shape", &[2, 3], &[4, 3], None, 0);
+        let err = broadcast_error(
+            "broadcast_shape",
+            &[2, 3],
+            &[4, 3],
+            None,
+            0
+        );
         match err {
             XenonError::BroadcastError {
                 operation,
