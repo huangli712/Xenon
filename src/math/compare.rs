@@ -219,9 +219,11 @@ where
     /// guarantees scalar broadcast always succeeds. The `expect` messages
     /// document the invariant for future refactors.
     pub fn less_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.less(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 
     /// Element-wise less-or-equal comparison with a scalar right-hand side.
@@ -233,9 +235,11 @@ where
     /// guarantees scalar broadcast always succeeds. The `expect` messages
     /// document the invariant for future refactors.
     pub fn less_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.less_equal(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 
     /// Element-wise greater-than comparison with a scalar right-hand side.
@@ -247,9 +251,11 @@ where
     /// guarantees scalar broadcast always succeeds. The `expect` messages
     /// document the invariant for future refactors.
     pub fn greater_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.greater(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 
     /// Element-wise greater-or-equal comparison with a scalar right-hand side.
@@ -261,9 +267,11 @@ where
     /// guarantees scalar broadcast always succeeds. The `expect` messages
     /// document the invariant for future refactors.
     pub fn greater_equal_scalar(&self, scalar: A) -> Tensor<bool, D> {
-        let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
+        let other = Tensor::<A, Ix0>::from_scalar(scalar)
+            .expect("from_scalar never fails");
         self.greater_equal(&other)
-            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
+            .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> \
+                     guarantees compatibility")
     }
 }
 
