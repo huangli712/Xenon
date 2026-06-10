@@ -4,5 +4,5 @@
 mod shape;
 mod view;
 
-pub use shape::{broadcast_shape, broadcast_strides, can_broadcast};
+pub use shape::{can_broadcast, broadcast_shape, broadcast_strides};
 pub(crate) use view::broadcast_with;
