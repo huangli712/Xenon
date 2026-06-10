@@ -33,7 +33,7 @@ use crate::simd::{BinaryOp, dispatch_vector_binary_op};
 /// without depending on the `simd` feature. When `simd` is enabled it is
 /// mapped to the SIMD-internal `BinaryOp` to drive vector kernels.
 #[derive(Copy, Clone)]
-enum ArithOp {
+pub(crate) enum ArithOp {
     Add,
     Sub,
     Mul,
@@ -44,7 +44,7 @@ enum ArithOp {
 /// [`BinaryOp`] tag. Only compiled when `simd` is enabled.
 #[cfg(feature = "simd")]
 #[inline]
-fn simd_op_tag(op: ArithOp) -> Option<BinaryOp> {
+pub(crate) fn simd_op_tag(op: ArithOp) -> Option<BinaryOp> {
     Some(match op {
         ArithOp::Add => BinaryOp::Add,
         ArithOp::Sub => BinaryOp::Sub,
