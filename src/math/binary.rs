@@ -16,11 +16,12 @@ use crate::tensor::{Tensor, TensorBase};
 
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
+
 #[cfg(feature = "parallel")]
 use crate::parallel::binary::par_zip_checked;
+
 #[cfg(feature = "simd")]
 use crate::simd::{BinaryOp, dispatch_vector_binary_op};
-
 
 // ----------------------------------------------------------------------------
 // Arithmetic operation selector (feature-independent)
