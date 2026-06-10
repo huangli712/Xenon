@@ -771,7 +771,7 @@ where
     dispatch_unary_elementwise(input, move |x| step(x, 0, &[]), |_input| {
         #[cfg(feature = "simd")]
         {
-            try_simd_unary_via_slice(_input, simd_unary_op_tag(op))
+            try_simd_unary(_input, simd_unary_op_tag(op))
         }
         #[cfg(not(feature = "simd"))]
         {
@@ -785,7 +785,7 @@ where
 /// `None`, the kernel returned false, or the input cannot be viewed as
 /// `&[A]` (non-contiguous — defense-in-depth).
 #[cfg(feature = "simd")]
-fn try_simd_unary_via_slice<A, S, D>(
+fn try_simd_unary<A, S, D>(
     input: &TensorBase<S, D>,
     op_tag: Option<UnaryOp>,
 ) -> Option<Tensor<A, D>>
