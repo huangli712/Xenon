@@ -234,11 +234,16 @@ mod tests {
     /// 3-tuple contract: the returned `out_dim` equals both views' shape.
     #[test]
     fn test_broadcast_with_out_dim_matches_views() {
-        let a: Tensor2<f64> =
-            Tensor2::from_shape_vec([1, 4], vec![1.0, 2.0, 3.0, 4.0]).expect("valid test input");
-        let b: Tensor2<f64> =
-            Tensor2::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0]).expect("valid test input");
-        let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
+        let a: Tensor2<f64> = Tensor2::from_shape_vec(
+            [1, 4],
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::from_shape_vec(
+            [3, 1],
+            vec![1.0, 2.0, 3.0]
+        ).expect("valid test input");
+        let (a_view, b_view, out_dim) = broadcast_with(&a, &b)
+            .expect("compatible shapes");
         assert_eq!(out_dim.slice(), &[3, 4]);
         assert_eq!(out_dim.slice(), a_view.shape());
         assert_eq!(out_dim.slice(), b_view.shape());
