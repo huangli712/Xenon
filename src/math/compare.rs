@@ -436,4 +436,127 @@ mod tests {
         assert!(r.get(&[1]).expect("valid index"));
         assert!(!r.get(&[2]).expect("valid index"));
     }
+
+    // ── Scalar variants ──
+
+    /// `not_equal_scalar` is true for every element NOT equal to the scalar.
+    #[test]
+    fn test_not_equal_scalar() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3]).expect("valid tensor shape");
+        let r = t.not_equal_scalar(2);
+        assert!(*r.get(&[0]).expect("valid index"));
+        assert!(!*r.get(&[1]).expect("valid index"));
+        assert!(*r.get(&[2]).expect("valid index"));
+    }
+
+    /// `less_scalar` is true where the element is strictly less than the scalar.
+    #[test]
+    fn test_less_scalar() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let r = t.less_scalar(5);
+        assert!(*r.get(&[0]).expect("valid index"));
+        assert!(!*r.get(&[1]).expect("valid index"));
+        assert!(!*r.get(&[2]).expect("valid index"));
+    }
+
+    /// `less_equal_scalar` is true where the element is `<=` the scalar.
+    #[test]
+    fn test_less_equal_scalar() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let r = t.less_equal_scalar(5);
+        assert!(*r.get(&[0]).expect("valid index"));
+        assert!(*r.get(&[1]).expect("valid index"));
+        assert!(!*r.get(&[2]).expect("valid index"));
+    }
+
+    /// `greater_scalar` is true where the element is strictly greater than the scalar.
+    #[test]
+    fn test_greater_scalar() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let r = t.greater_scalar(5);
+        assert!(!*r.get(&[0]).expect("valid index"));
+        assert!(!*r.get(&[1]).expect("valid index"));
+        assert!(*r.get(&[2]).expect("valid index"));
+    }
+
+    /// `greater_equal_scalar` is true where the element is `>=` the scalar.
+    #[test]
+    fn test_greater_equal_scalar() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let r = t.greater_equal_scalar(5);
+        assert!(!*r.get(&[0]).expect("valid index"));
+        assert!(*r.get(&[1]).expect("valid index"));
+        assert!(*r.get(&[2]).expect("valid index"));
+    }
+
+    // ── Broadcast ──
+
+    /// Comparison broadcasts rank-2 inputs `[3,1]` vs `[1,4]` to `[3,4]`.
+    #[test]
+    fn test_compare_broadcast() {
+        use crate::dimension::Ix2;
+        let a = Tensor::<i32, Ix2>::from_shape_vec([3, 1], vec![1, 5, 9])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix2>::from_shape_vec([1, 4], vec![2, 5, 8, 10])
+            .expect("valid tensor shape");
+        let r = a.less(&b).expect("broadcast succeeds in test");
+        assert_eq!(r.shape(), &[3, 4]);
+        // row 0 (a=1): 1<2,1<5,1<8,1<10 -> all true
+        assert!(*r.get(&[0, 0]).expect("valid index"));
+        assert!(*r.get(&[0, 3]).expect("valid index"));
+        // row 1 (a=5): 5<2 false, 5<5 false, 5<8 true, 5<10 true
+        assert!(!*r.get(&[1, 0]).expect("valid index"));
+        assert!(!*r.get(&[1, 1]).expect("valid index"));
+        assert!(*r.get(&[1, 2]).expect("valid index"));
+        // row 2 (a=9): 9<2,9<5,9<8 false, 9<10 true
+        assert!(!*r.get(&[2, 2]).expect("valid index"));
+        assert!(*r.get(&[2, 3]).expect("valid index"));
+    }
+
+    // ── Parallel-path cross-consistency (parallel feature only) ──
+
+    /// `equal`/`less`/`greater` produce identical results on the Parallel path
+    /// (forced via a threshold of 1) as on the Serial path (parallel disabled
+    /// via the 0 sentinel). Guards the inlined `ExecPath::Parallel` arm of
+    /// `apply_compare_with_dispatch`.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_compare_parallel_matches_serial() {
+        use crate::dispatch::ThresholdTestGuard;
+        use crate::dispatch::set_parallel_threshold;
+
+        let a = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).collect())
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).map(|x| 64 - x).collect())
+            .expect("valid tensor shape");
+
+        let _guard = ThresholdTestGuard::new();
+        set_parallel_threshold(0);
+        let eq_serial = a.equal(&b).expect("broadcast succeeds in test");
+        let lt_serial = a.less(&b).expect("broadcast succeeds in test");
+        let gt_serial = a.greater(&b).expect("broadcast succeeds in test");
+        set_parallel_threshold(1);
+        let eq_par = a.equal(&b).expect("broadcast succeeds in test");
+        let lt_par = a.less(&b).expect("broadcast succeeds in test");
+        let gt_par = a.greater(&b).expect("broadcast succeeds in test");
+
+        for i in 0..128 {
+            let ix = [i];
+            assert_eq!(
+                eq_par.get(&ix).expect("valid index"),
+                eq_serial.get(&ix).expect("valid index"),
+                "equal parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                lt_par.get(&ix).expect("valid index"),
+                lt_serial.get(&ix).expect("valid index"),
+                "less parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                gt_par.get(&ix).expect("valid index"),
+                gt_serial.get(&ix).expect("valid index"),
+                "greater parallel/serial mismatch at {i}"
+            );
+        }
+    }
 }

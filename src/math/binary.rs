@@ -1,21 +1,26 @@
 //! Binary element-wise operations: arithmetic (add/sub/mul/div) and
 //! the shared broadcast-aware traversal skeleton.
 
+use core::any::TypeId;
+
+use crate::error::XenonError;
 use crate::broadcast::broadcast_with;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::dispatch::{ExecPath, select_exec_path};
+
+use crate::complex::Complex;
+use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
+use crate::element::{Element, Numeric, SimdElement};
+use crate::storage::Storage;
+use crate::tensor::{Tensor, TensorBase};
+
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "parallel")]
 use crate::parallel::binary::par_zip_checked;
 #[cfg(feature = "simd")]
 use crate::simd::{BinaryOp, dispatch_vector_binary_op};
-use core::any::TypeId;
-use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
-use crate::error::XenonError;
-use crate::storage::Storage;
-use crate::complex::Complex;
-use crate::tensor::{Tensor, TensorBase};
+
 
 // ----------------------------------------------------------------------------
 // Arithmetic operation selector (feature-independent)
@@ -834,6 +839,339 @@ mod tests {
         let r = a.add(&b).expect("broadcast succeeds in test");
         for i in 0..64 {
             assert_eq!(*r.get(&[i]).expect("valid index"), i as i32 + i as i32 * 3);
+        }
+    }
+
+    // ── Subtraction / multiplication / division value tests ──
+
+    /// Element-wise `f64` subtraction yields the pairwise differences.
+    #[test]
+    fn test_sub_f64() {
+        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![5.0, 2.0, -1.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 4.0, -3.0])
+            .expect("valid tensor shape");
+        let c = a.sub(&b).expect("broadcast succeeds in test");
+        assert!((*c.get(&[0]).expect("valid index") - 4.0).abs() < 1e-10);
+        assert!((*c.get(&[1]).expect("valid index") + 2.0).abs() < 1e-10);
+        assert!((*c.get(&[2]).expect("valid index") - 2.0).abs() < 1e-10);
+    }
+
+    /// Element-wise `f64` multiplication yields the pairwise products.
+    #[test]
+    fn test_mul_f64() {
+        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![2.0, 3.0, -4.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![5.0, -2.0, 0.5])
+            .expect("valid tensor shape");
+        let c = a.mul(&b).expect("broadcast succeeds in test");
+        assert!((*c.get(&[0]).expect("valid index") - 10.0).abs() < 1e-10);
+        assert!((*c.get(&[1]).expect("valid index") + 6.0).abs() < 1e-10);
+        assert!((*c.get(&[2]).expect("valid index") + 2.0).abs() < 1e-10);
+    }
+
+    /// Element-wise `f64` division yields the pairwise quotients.
+    #[test]
+    fn test_div_f64() {
+        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![10.0, 9.0, -8.0])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![2.0, 3.0, -4.0])
+            .expect("valid tensor shape");
+        let c = a.div(&b).expect("broadcast succeeds in test");
+        assert!((*c.get(&[0]).expect("valid index") - 5.0).abs() < 1e-10);
+        assert!((*c.get(&[1]).expect("valid index") - 3.0).abs() < 1e-10);
+        assert!((*c.get(&[2]).expect("valid index") - 2.0).abs() < 1e-10);
+    }
+
+    /// Element-wise `i32` subtraction (checked path) yields exact differences.
+    #[test]
+    fn test_sub_i32() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![5, 2, -1])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 4, -3])
+            .expect("valid tensor shape");
+        let c = a.sub(&b).expect("broadcast succeeds in test");
+        assert_eq!(*c.get(&[0]).expect("valid index"), 4);
+        assert_eq!(*c.get(&[1]).expect("valid index"), -2);
+        assert_eq!(*c.get(&[2]).expect("valid index"), 2);
+    }
+
+    /// Element-wise `i32` multiplication (checked path) yields exact products.
+    #[test]
+    fn test_mul_i32() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 3, -4])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![5, -2, 6])
+            .expect("valid tensor shape");
+        let c = a.mul(&b).expect("broadcast succeeds in test");
+        assert_eq!(*c.get(&[0]).expect("valid index"), 10);
+        assert_eq!(*c.get(&[1]).expect("valid index"), -6);
+        assert_eq!(*c.get(&[2]).expect("valid index"), -24);
+    }
+
+    /// Element-wise `i32` division (checked path) truncates toward zero.
+    #[test]
+    fn test_div_i32() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![10, 7, -9])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 3, 2])
+            .expect("valid tensor shape");
+        let c = a.div(&b).expect("broadcast succeeds in test");
+        assert_eq!(*c.get(&[0]).expect("valid index"), 5);
+        assert_eq!(*c.get(&[1]).expect("valid index"), 2);
+        assert_eq!(*c.get(&[2]).expect("valid index"), -4);
+    }
+
+    // ── Scalar variants ──
+
+    /// `add_scalar` adds the scalar to every element.
+    #[test]
+    fn test_add_scalar() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0])
+            .expect("valid tensor shape");
+        let r = t.add_scalar(10.0);
+        assert!((*r.get(&[0]).expect("valid index") - 11.0).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 12.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") - 13.0).abs() < 1e-10);
+    }
+
+    /// `sub_scalar` subtracts the scalar from every element (`tensor - scalar`).
+    #[test]
+    fn test_sub_scalar() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![10.0, 20.0, 30.0])
+            .expect("valid tensor shape");
+        let r = t.sub_scalar(5.0);
+        assert!((*r.get(&[0]).expect("valid index") - 5.0).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 15.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") - 25.0).abs() < 1e-10);
+    }
+
+    /// `div_scalar` divides every element by the scalar (`tensor / scalar`).
+    #[test]
+    fn test_div_scalar() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![10.0, 20.0, 30.0])
+            .expect("valid tensor shape");
+        let r = t.div_scalar(2.0);
+        assert!((*r.get(&[0]).expect("valid index") - 5.0).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 10.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") - 15.0).abs() < 1e-10);
+    }
+
+    /// `sub_from_scalar` computes `scalar - element` (non-commutative left
+    /// scalar). Verifies the operand order is NOT the same as `sub_scalar`.
+    #[test]
+    fn test_sub_from_scalar() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 4.0, 10.0])
+            .expect("valid tensor shape");
+        // 5 - [1, 4, 10] = [4, 1, -5]
+        let r = t.sub_from_scalar(5.0);
+        assert!((*r.get(&[0]).expect("valid index") - 4.0).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") + 5.0).abs() < 1e-10);
+    }
+
+    /// `div_from_scalar` computes `scalar / element` (non-commutative left
+    /// scalar). Verifies the operand order is NOT the same as `div_scalar`.
+    #[test]
+    fn test_div_from_scalar() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![2.0, 4.0, 10.0])
+            .expect("valid tensor shape");
+        // 20 / [2, 4, 10] = [10, 5, 2]
+        let r = t.div_from_scalar(20.0);
+        assert!((*r.get(&[0]).expect("valid index") - 10.0).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 5.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") - 2.0).abs() < 1e-10);
+    }
+
+    /// `sub_from_scalar` on `i32` keeps checked-arithmetic semantics and the
+    /// swapped operand order.
+    #[test]
+    fn test_sub_from_scalar_i32() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 4, 10])
+            .expect("valid tensor shape");
+        let r = t.sub_from_scalar(5);
+        assert_eq!(*r.get(&[0]).expect("valid index"), 4);
+        assert_eq!(*r.get(&[1]).expect("valid index"), 1);
+        assert_eq!(*r.get(&[2]).expect("valid index"), -5);
+    }
+
+    // ── Integer panic diagnostics ──
+
+    /// `i32::MIN - 1` triggers an integer-overflow panic during element-wise
+    /// subtraction.
+    #[test]
+    fn test_sub_i32_overflow_panic() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MIN])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![1]).expect("valid tensor shape");
+        let result = catch_unwind(|| a.sub(&b));
+        assert!(result.is_err(), "i32::MIN - 1 must panic");
+    }
+
+    /// `i32::MAX * 2` triggers an integer-overflow panic during element-wise
+    /// multiplication.
+    #[test]
+    fn test_mul_i32_overflow_panic() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![2]).expect("valid tensor shape");
+        let result = catch_unwind(|| a.mul(&b));
+        assert!(result.is_err(), "i32::MAX * 2 must panic");
+    }
+
+    /// Integer division by zero triggers a `div_by_zero` panic.
+    #[test]
+    fn test_div_i32_by_zero_panic() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![5]).expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![0]).expect("valid tensor shape");
+        let result = catch_unwind(|| a.div(&b));
+        assert!(result.is_err(), "i32 / 0 must panic");
+    }
+
+    /// `i32::MIN / -1` overflows the checked division and panics.
+    #[test]
+    fn test_div_i32_min_overflow_panic() {
+        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MIN])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![-1]).expect("valid tensor shape");
+        let result = catch_unwind(|| a.div(&b));
+        assert!(result.is_err(), "i32::MIN / -1 must panic");
+    }
+
+    // ── Complex arithmetic (independent dispatch branch) ──
+
+    /// `Complex<f64>` add: `(1+2i) + (3+4i) = 4+6i`.
+    #[test]
+    fn test_complex_add() {
+        let a = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
+            .expect("valid tensor shape");
+        let b = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(3.0, 4.0)])
+            .expect("valid tensor shape");
+        let c = a.add(&b).expect("broadcast succeeds in test");
+        let v = c.get(&[0]).expect("valid index");
+        assert!((v.re() - 4.0).abs() < 1e-10);
+        assert!((v.im() - 6.0).abs() < 1e-10);
+    }
+
+    /// `Complex<f64>` sub: `(5+6i) - (1+2i) = 4+4i`.
+    #[test]
+    fn test_complex_sub() {
+        let a = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(5.0, 6.0)])
+            .expect("valid tensor shape");
+        let b = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
+            .expect("valid tensor shape");
+        let c = a.sub(&b).expect("broadcast succeeds in test");
+        let v = c.get(&[0]).expect("valid index");
+        assert!((v.re() - 4.0).abs() < 1e-10);
+        assert!((v.im() - 4.0).abs() < 1e-10);
+    }
+
+    /// `Complex<f64>` mul: `(1+2i) * (3+4i) = -5+10i`.
+    #[test]
+    fn test_complex_mul() {
+        let a = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
+            .expect("valid tensor shape");
+        let b = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(3.0, 4.0)])
+            .expect("valid tensor shape");
+        let c = a.mul(&b).expect("broadcast succeeds in test");
+        let v = c.get(&[0]).expect("valid index");
+        assert!((v.re() + 5.0).abs() < 1e-10);
+        assert!((v.im() - 10.0).abs() < 1e-10);
+    }
+
+    /// `Complex<f64>` div by a real value: `(4+6i) / (2+0i) = 2+3i`.
+    #[test]
+    fn test_complex_div() {
+        let a = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(4.0, 6.0)])
+            .expect("valid tensor shape");
+        let b = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(2.0, 0.0)])
+            .expect("valid tensor shape");
+        let c = a.div(&b).expect("broadcast succeeds in test");
+        let v = c.get(&[0]).expect("valid index");
+        assert!((v.re() - 2.0).abs() < 1e-10);
+        assert!((v.im() - 3.0).abs() < 1e-10);
+    }
+
+    // ── Parallel-path cross-consistency (parallel feature only) ──
+
+    /// Float `add`/`sub`/`mul`/`div` produce identical results on the Parallel
+    /// path (forced via a threshold of 1) as on the Serial path (parallel
+    /// disabled via the 0 sentinel). Guards the inlined `ExecPath::Parallel`
+    /// arm of `apply_binary_with_dispatch`.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_arith_parallel_matches_serial_f64() {
+        use crate::dispatch::ThresholdTestGuard;
+        use crate::dispatch::set_parallel_threshold;
+
+        let a = Tensor::<f64, Ix1>::from_shape_vec([128], (0..128).map(|x| x as f64 + 1.0).collect())
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([128], (0..128).map(|x| (x as f64) * 0.5 + 1.0).collect())
+            .expect("valid tensor shape");
+
+        let _guard = ThresholdTestGuard::new();
+        // Serial reference (parallel disabled by the 0 sentinel).
+        set_parallel_threshold(0);
+        let add_serial = a.add(&b).expect("broadcast succeeds in test");
+        let sub_serial = a.sub(&b).expect("broadcast succeeds in test");
+        let mul_serial = a.mul(&b).expect("broadcast succeeds in test");
+        let div_serial = a.div(&b).expect("broadcast succeeds in test");
+        // Force the parallel path (any len >= 1 routes to Parallel).
+        set_parallel_threshold(1);
+        let add_par = a.add(&b).expect("broadcast succeeds in test");
+        let sub_par = a.sub(&b).expect("broadcast succeeds in test");
+        let mul_par = a.mul(&b).expect("broadcast succeeds in test");
+        let div_par = a.div(&b).expect("broadcast succeeds in test");
+
+        for i in 0..128 {
+            let ix = [i];
+            assert_eq!(
+                add_par.get(&ix).expect("valid index"),
+                add_serial.get(&ix).expect("valid index"),
+                "add parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                sub_par.get(&ix).expect("valid index"),
+                sub_serial.get(&ix).expect("valid index"),
+                "sub parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                mul_par.get(&ix).expect("valid index"),
+                mul_serial.get(&ix).expect("valid index"),
+                "mul parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                div_par.get(&ix).expect("valid index"),
+                div_serial.get(&ix).expect("valid index"),
+                "div parallel/serial mismatch at {i}"
+            );
+        }
+    }
+
+    /// Integer `add` keeps exact byte-level equality between the Parallel path
+    /// (forced) and the Serial checked path.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_add_parallel_matches_serial_i32() {
+        use crate::dispatch::ThresholdTestGuard;
+        use crate::dispatch::set_parallel_threshold;
+
+        let a = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).collect())
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).map(|x| x * 2).collect())
+            .expect("valid tensor shape");
+
+        let _guard = ThresholdTestGuard::new();
+        set_parallel_threshold(0);
+        let serial = a.add(&b).expect("broadcast succeeds in test");
+        set_parallel_threshold(1);
+        let parallel = a.add(&b).expect("broadcast succeeds in test");
+        for i in 0..128 {
+            assert_eq!(
+                parallel.get(&[i]).expect("valid index"),
+                serial.get(&[i]).expect("valid index"),
+                "i32 add parallel/serial mismatch at {i}"
+            );
         }
     }
 }

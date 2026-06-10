@@ -955,4 +955,151 @@ mod tests {
         assert!(*result.get(&[1]).expect("valid index"));
         assert!(!(*result.get(&[2]).expect("valid index")));
     }
+
+    // ── Integer overflow panic diagnostics ──
+
+    /// `neg(i32::MIN)` overflows the checked negation and panics.
+    #[test]
+    fn test_neg_i32_min_overflow_panic() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MIN])
+            .expect("valid tensor shape");
+        let result = catch_unwind(|| t.neg());
+        assert!(result.is_err(), "neg(i32::MIN) must panic on overflow");
+    }
+
+    /// `abs(i32::MIN)` overflows the checked negation and panics.
+    #[test]
+    fn test_abs_i32_min_overflow_panic() {
+        let t = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MIN])
+            .expect("valid tensor shape");
+        let result = catch_unwind(|| t.abs());
+        assert!(result.is_err(), "abs(i32::MIN) must panic on overflow");
+    }
+
+    // ── Float abs / signum ──
+
+    /// `abs` on an `f64` tensor returns the IEEE 754 magnitude.
+    #[test]
+    fn test_abs_f64() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![-3.5, 0.0, 2.5])
+            .expect("valid tensor shape");
+        let r = t.abs();
+        assert!((*r.get(&[0]).expect("valid index") - 3.5).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 0.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") - 2.5).abs() < 1e-10);
+    }
+
+    /// `signum` on an `f64` tensor returns `-1.0` / `1.0` per IEEE 754
+    /// (signed-zero / NaN handling delegated to `RealScalar::signum`).
+    #[test]
+    fn test_signum_f64() {
+        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![-7.0, 4.0, -0.5])
+            .expect("valid tensor shape");
+        let r = t.signum();
+        assert!((*r.get(&[0]).expect("valid index") + 1.0).abs() < 1e-10);
+        assert!((*r.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
+        assert!((*r.get(&[2]).expect("valid index") + 1.0).abs() < 1e-10);
+    }
+
+    // ── Complex neg / square (independent dispatch branch) ──
+
+    /// `neg` on `Complex<f64>` negates both components: `-(1+2i) = -1-2i`.
+    #[test]
+    fn test_neg_complex() {
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
+            .expect("valid tensor shape");
+        let r = t.neg();
+        let v = r.get(&[0]).expect("valid index");
+        assert!((v.re() + 1.0).abs() < 1e-10);
+        assert!((v.im() + 2.0).abs() < 1e-10);
+    }
+
+    /// `square` on `Complex<f64>`: `(1+2i)^2 = -3+4i`.
+    #[test]
+    fn test_square_complex() {
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
+            .expect("valid tensor shape");
+        let r = t.square();
+        let v = r.get(&[0]).expect("valid index");
+        assert!((v.re() + 3.0).abs() < 1e-10);
+        assert!((v.im() - 4.0).abs() < 1e-10);
+    }
+
+    // ── Parallel-path cross-consistency (parallel feature only) ──
+
+    /// Float `abs`/`neg`/`square`/`sin` produce identical results on the
+    /// Parallel path (forced via a threshold of 1) as on the Serial path
+    /// (parallel disabled via the 0 sentinel). Guards the inlined
+    /// `ExecPath::Parallel` arm of both `apply_unary_with_dispatch`
+    /// (abs/neg/square) and `apply_unary_with_real_dispatch` (sin).
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_unary_parallel_matches_serial_f64() {
+        use crate::dispatch::ThresholdTestGuard;
+        use crate::dispatch::set_parallel_threshold;
+
+        let t = Tensor::<f64, Ix1>::from_shape_vec([128], (0..128).map(|x| x as f64 - 64.0).collect())
+            .expect("valid tensor shape");
+
+        let _guard = ThresholdTestGuard::new();
+        set_parallel_threshold(0);
+        let abs_serial = t.abs();
+        let neg_serial = t.neg();
+        let square_serial = t.square();
+        let sin_serial = t.sin();
+        set_parallel_threshold(1);
+        let abs_par = t.abs();
+        let neg_par = t.neg();
+        let square_par = t.square();
+        let sin_par = t.sin();
+
+        for i in 0..128 {
+            let ix = [i];
+            assert_eq!(
+                abs_par.get(&ix).expect("valid index"),
+                abs_serial.get(&ix).expect("valid index"),
+                "abs parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                neg_par.get(&ix).expect("valid index"),
+                neg_serial.get(&ix).expect("valid index"),
+                "neg parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                square_par.get(&ix).expect("valid index"),
+                square_serial.get(&ix).expect("valid index"),
+                "square parallel/serial mismatch at {i}"
+            );
+            assert_eq!(
+                sin_par.get(&ix).expect("valid index"),
+                sin_serial.get(&ix).expect("valid index"),
+                "sin parallel/serial mismatch at {i}"
+            );
+        }
+    }
+
+    /// Integer `neg` keeps exact byte-level equality between the Parallel path
+    /// (forced) and the Serial checked path.
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_neg_parallel_matches_serial_i32() {
+        use crate::dispatch::ThresholdTestGuard;
+        use crate::dispatch::set_parallel_threshold;
+
+        let t = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).map(|x| x - 64).collect())
+            .expect("valid tensor shape");
+
+        let _guard = ThresholdTestGuard::new();
+        set_parallel_threshold(0);
+        let serial = t.neg();
+        set_parallel_threshold(1);
+        let parallel = t.neg();
+        for i in 0..128 {
+            assert_eq!(
+                parallel.get(&[i]).expect("valid index"),
+                serial.get(&[i]).expect("valid index"),
+                "i32 neg parallel/serial mismatch at {i}"
+            );
+        }
+    }
 }

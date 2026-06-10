@@ -352,6 +352,8 @@ mod tests {
     use crate::dimension::{Ix1, Ix2};
     use crate::tensor::{Tensor, Tensor1};
 
+    use crate::dispatch::{set_parallel_threshold, ThresholdTestGuard};
+
     #[cfg(feature = "parallel")]
     use crate::dispatch::with_parallel_worker_context;
 
@@ -570,6 +572,13 @@ mod tests {
                     element 0 of shape [1] (type i32)"
     )]
     fn test_dot_int_overflow_mul() {
+        // Pin the serial path: the custom overflow diagnostic is produced
+        // only by `try_dot_serial`. The guard serializes against concurrent
+        // threshold-mutating tests so this small tensor is never routed to
+        // the parallel `par_dot` path (which panics with the default
+        // "attempt to multiply with overflow" message instead).
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(0);
         let a = Tensor1::from_shape_vec(Ix1(1), vec![i32::MAX])
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(1), vec![2_i32])
@@ -583,6 +592,10 @@ mod tests {
         expected = "dot: integer overflow during accumulation at element"
     )]
     fn test_dot_int_overflow_add() {
+        // Pin the serial path (see test_dot_int_overflow_mul): the custom
+        // accumulation-overflow diagnostic comes only from `try_dot_serial`.
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(0);
         let a = Tensor1::from_shape_vec(Ix1(3), vec![i32::MAX, 1, 1])
             .expect("valid construction");
         let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, i32::MAX, 1])
