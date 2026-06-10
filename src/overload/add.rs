@@ -6,10 +6,10 @@
 
 use core::ops::Add;
 
-use crate::complex::Complex;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::error::Result;
 use crate::math::BinaryArith;
+use crate::complex::Complex;
+use crate::dimension::{BroadcastDim, Dimension, Ix0};
 use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
