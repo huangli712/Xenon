@@ -314,8 +314,14 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+                let g = guard
+                    .expect("ExecPath::Parallel must carry a ParallelGuard");
+                par_zip_checked(
+                    a,
+                    b,
+                    &out_dim,
+                    &strat, g, |a, b| Ok(op(*a, *b))
+                )?
             }
             #[cfg(not(feature = "parallel"))]
             {
