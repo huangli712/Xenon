@@ -755,7 +755,8 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                let g = guard
+                    .expect("ExecPath::Parallel must carry a ParallelGuard");
                 par_map(input, &strat, g, |x| scalar_op(*x))
             }
             #[cfg(not(feature = "parallel"))]
@@ -782,7 +783,8 @@ where
 {
     let tag = op_tag?;
     let src: &[A] = input.as_slice()?;
-    let mut result = Tensor::<A, D>::zeros(input.raw_dim()).expect("input dimension must be valid");
+    let mut result = Tensor::<A, D>::zeros(input.raw_dim())
+        .expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
     if dispatch_vector_unary_op(tag, src, dst) {
         Some(result)
@@ -791,16 +793,12 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::catch_unwind;
     use crate::dimension::Ix1;
     use crate::tensor::Tensor;
-    use std::panic::catch_unwind;
 
     /// `abs` on an `i32` tensor returns the non-negative magnitude of each
     /// element (`abs(-3) == 3`, `abs(0) == 0`, `abs(5) == 5`).
