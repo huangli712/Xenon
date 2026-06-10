@@ -474,8 +474,11 @@ mod tests {
     #[test]
     fn test_broadcast_strides_broadcast_error_on_rank_excess() {
         // orig rank 3 > target rank 2 → BroadcastError (right-align impossible).
-        let err =
-            broadcast_strides(&[2, 3, 4], &[12, 4, 1], &[3, 4]).expect_err("incompatible strides");
+        let err = broadcast_strides(
+            &[2, 3, 4],
+            &[12, 4, 1],
+            &[3, 4]
+        ).expect_err("incompatible strides");
         assert!(matches!(err, XenonError::BroadcastError { .. }));
     }
 
