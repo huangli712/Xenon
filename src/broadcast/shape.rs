@@ -393,21 +393,30 @@ mod tests {
                         argument,
                         constraint,
                     } => {
-                        assert_eq!(argument.as_ref(), "orig_shape/orig_strides");
-                        assert!(constraint.as_ref().contains("must equal"));
+                        assert_eq!(
+                            argument.as_ref(),
+                            "orig_shape/orig_strides"
+                        );
+                        assert!(
+                            constraint.as_ref().contains("must equal")
+                        );
                     },
-                    other => panic!("expected OperationSpecific, got {:?}", other),
+                    other => panic!(
+                        "expected OperationSpecific, got {:?}",
+                        other
+                    ),
                 }
             },
             other => panic!("expected InvalidArgument, got {:?}", other),
         }
     }
 
-    /// Tests that `broadcast_strides` returns a `BroadcastError` with the correct
-    /// fields when an axis conflict occurs at the leading axis.
+    /// Tests that `broadcast_strides` returns a `BroadcastError` with the
+    /// correct fields when an axis conflict occurs at the leading axis.
     #[test]
     fn test_broadcast_strides_broadcast_error_on_axis_conflict() {
-        let err = broadcast_strides(&[2, 3], &[3, 1], &[4, 3]).expect_err("incompatible strides");
+        let err = broadcast_strides(&[2, 3], &[3, 1], &[4, 3])
+            .expect_err("incompatible strides");
         match err {
             XenonError::BroadcastError {
                 operation,
@@ -430,7 +439,8 @@ mod tests {
     /// axis index.
     #[test]
     fn test_broadcast_strides_broadcast_error_non_leading_axis() {
-        let err = broadcast_strides(&[2, 3], &[3, 1], &[2, 5]).expect_err("axis-1 conflict");
+        let err = broadcast_strides(&[2, 3], &[3, 1], &[2, 5])
+            .expect_err("axis-1 conflict");
         match err {
             XenonError::BroadcastError {
                 operation,
@@ -454,7 +464,8 @@ mod tests {
     /// (empty), the original stride is preserved rather than being forced to 0.
     #[test]
     fn test_broadcast_strides_equal_empty_axis_keeps_stride() {
-        let s = broadcast_strides(&[0, 3], &[3, 1], &[0, 3]).expect("equal empty axis");
+        let s = broadcast_strides(&[0, 3], &[3, 1], &[0, 3])
+            .expect("equal empty axis");
         assert_eq!(s, vec![3, 1]);
     }
 
