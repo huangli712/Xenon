@@ -655,7 +655,10 @@ mod tests {
         ).expect("valid test input");
         let result = (left - right).expect("broadcast succeeds");
         assert_eq!(result.shape(), &[2, 3]);
-        assert_eq!(result.as_slice().expect("contiguous"), &[4, 5, 5, 6, 6, 7]);
+        assert_eq!(
+            result.as_slice().expect("contiguous"),
+            &[4, 5, 5, 6, 6, 7]
+        );
     }
 
     /// Verifies `subtraction` between two borrowed tensors.
@@ -693,10 +696,14 @@ mod tests {
     /// Verifies `subtraction` borrowing the left operand and consuming the right.
     #[test]
     fn test_sub_ref_owned() {
-        let left = Tensor::from_shape_vec([2], vec![5, 7])
-            .expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![3, 4])
-            .expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2],
+            vec![5, 7]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2],
+            vec![3, 4]
+        ).expect("valid test input");
         let result = (&left - right).expect("broadcast succeeds");
         assert_eq!(left.as_slice().expect("c"), &[5, 7]);
         assert_eq!(result.as_slice().expect("c"), &[2, 3]);
