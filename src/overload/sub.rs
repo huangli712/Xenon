@@ -645,8 +645,14 @@ mod tests {
     /// Verifies element-wise `subtraction` with broadcasting support.
     #[test]
     fn test_sub_broadcast() {
-        let left = Tensor::from_shape_vec([2, 3], vec![5, 6, 7, 8, 9, 10]).expect("valid test input");
-        let right = Tensor::from_shape_vec([3], vec![1, 2, 3]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 3],
+            vec![5, 6, 7, 8, 9, 10]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [3],
+            vec![1, 2, 3]
+        ).expect("valid test input");
         let result = (left - right).expect("broadcast succeeds");
         assert_eq!(result.shape(), &[2, 3]);
         assert_eq!(result.as_slice().expect("contiguous"), &[4, 5, 5, 6, 6, 7]);
@@ -655,8 +661,14 @@ mod tests {
     /// Verifies `subtraction` between two borrowed tensors.
     #[test]
     fn test_sub_ref_ref() {
-        let left = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2],
+            vec![5, 7]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2],
+            vec![3, 4]
+        ).expect("valid test input");
         let result = (&left - &right).expect("broadcast succeeds");
         assert_eq!(left.as_slice().expect("c"), &[5, 7]);
         assert_eq!(result.as_slice().expect("c"), &[2, 3]);
@@ -665,8 +677,14 @@ mod tests {
     /// Verifies `subtraction` consuming the left operand and borrowing the right.
     #[test]
     fn test_sub_owned_ref() {
-        let left = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2],
+            vec![5, 7]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2],
+            vec![3, 4]
+        ).expect("valid test input");
         let result = (left - &right).expect("broadcast succeeds");
         assert_eq!(right.as_slice().expect("c"), &[3, 4]);
         assert_eq!(result.as_slice().expect("c"), &[2, 3]);
@@ -675,8 +693,10 @@ mod tests {
     /// Verifies `subtraction` borrowing the left operand and consuming the right.
     #[test]
     fn test_sub_ref_owned() {
-        let left = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+        let left = Tensor::from_shape_vec([2], vec![5, 7])
+            .expect("valid test input");
+        let right = Tensor::from_shape_vec([2], vec![3, 4])
+            .expect("valid test input");
         let result = (&left - right).expect("broadcast succeeds");
         assert_eq!(left.as_slice().expect("c"), &[5, 7]);
         assert_eq!(result.as_slice().expect("c"), &[2, 3]);
@@ -687,14 +707,20 @@ mod tests {
     /// Verifies `subtraction` of a scalar to each element of an owned tensor.
     #[test]
     fn test_sub_right_scalar() {
-        let tensor = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5, 7]
+        ).expect("valid test input");
         assert_eq!((tensor - 2).as_slice().expect("c"), &[3, 5]);
     }
 
     /// Verifies `subtraction` of a scalar to each element of a borrowed tensor.
     #[test]
     fn test_sub_right_scalar_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5, 7]
+        ).expect("valid test input");
         assert_eq!((&tensor - 2).as_slice().expect("c"), &[3, 5]);
     }
 
@@ -703,14 +729,20 @@ mod tests {
     /// Verifies `subtraction` with `Scalar` as the left operand and an owned tensor.
     #[test]
     fn test_sub_scalar_wrapper_left() {
-        let tensor = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5, 7]
+        ).expect("valid test input");
         assert_eq!((Scalar(10) - tensor).as_slice().expect("c"), &[5, 3]);
     }
 
     /// Verifies `subtraction` with `Scalar` as the left operand and a borrowed tensor.
     #[test]
     fn test_sub_scalar_wrapper_left_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![5.0f64, 7.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2], 
+            vec![5.0f64, 7.0]
+        ).expect("valid test input");
         assert_eq!((Scalar(10.0) - &tensor).as_slice().expect("c"), &[5.0, 3.0]);
         assert_eq!(tensor.as_slice().expect("c"), &[5.0f64, 7.0]);
     }
@@ -720,14 +752,20 @@ mod tests {
     /// Verifies native `f64` left-scalar `subtraction` with an owned tensor.
     #[test]
     fn test_sub_native_left_scalar_f64() {
-        let tensor = Tensor::from_shape_vec([2], vec![5.0f64, 7.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5.0f64, 7.0]
+        ).expect("valid test input");
         assert_eq!((10.0f64 - tensor).as_slice().expect("c"), &[5.0, 3.0]);
     }
 
     /// Verifies native `f64` left-scalar `subtraction` with a borrowed tensor.
     #[test]
     fn test_sub_native_left_scalar_f64_ref() {
-        let tensor = Tensor::from_shape_vec([2], vec![5.0f64, 7.0]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5.0f64, 7.0]
+        ).expect("valid test input");
         assert_eq!((10.0f64 - &tensor).as_slice().expect("c"), &[5.0, 3.0]);
         assert_eq!(tensor.as_slice().expect("c"), &[5.0f64, 7.0]);
     }
@@ -735,21 +773,30 @@ mod tests {
     /// Verifies native `i32` left-scalar `subtraction`.
     #[test]
     fn test_sub_native_left_scalar_i32() {
-        let tensor = Tensor::from_shape_vec([2], vec![5i32, 7]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5i32, 7]
+        ).expect("valid test input");
         assert_eq!((10i32 - tensor).as_slice().expect("c"), &[5i32, 3i32]);
     }
 
     /// Verifies native `i64` left-scalar `subtraction`.
     #[test]
     fn test_sub_native_left_scalar_i64() {
-        let tensor = Tensor::from_shape_vec([2], vec![5i64, 7]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5i64, 7]
+        ).expect("valid test input");
         assert_eq!((10i64 - tensor).as_slice().expect("c"), &[5i64, 3i64]);
     }
 
     /// Verifies native `f32` left-scalar `subtraction`.
     #[test]
     fn test_sub_native_left_scalar_f32() {
-        let tensor = Tensor::from_shape_vec([2], vec![5.0, 7.0f32]).expect("valid test input");
+        let tensor = Tensor::from_shape_vec(
+            [2],
+            vec![5.0, 7.0f32]
+        ).expect("valid test input");
         assert_eq!((10.0f32 - tensor).as_slice().expect("c"), &[5.0f32, 3.0f32]);
     }
 
@@ -758,8 +805,14 @@ mod tests {
     /// Verifies `subtraction` between two tensor views.
     #[test]
     fn test_view_sub_view() {
-        let left = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 2],
+            vec![5, 6, 7, 8]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2, 2],
+            vec![1, 2, 3, 4]
+        ).expect("valid test input");
         let lv = left.view();
         let rv = right.view();
         let result = (&lv - &rv).expect("broadcast succeeds");
@@ -770,8 +823,14 @@ mod tests {
     /// Verifies `subtraction` between a tensor view and an owned tensor.
     #[test]
     fn test_view_sub_owned() {
-        let left = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 2],
+            vec![5, 6, 7, 8]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2, 2],
+            vec![1, 2, 3, 4]
+        ).expect("valid test input");
         let lv = left.view();
         let result = (&lv - &right).expect("broadcast succeeds");
         assert_eq!(result.as_slice().expect("c"), &[4, 4, 4, 4]);
@@ -780,8 +839,14 @@ mod tests {
     /// Verifies `subtraction` between an owned tensor and a tensor view.
     #[test]
     fn test_view_owned_sub_view() {
-        let left = Tensor::from_shape_vec([2, 2], vec![5, 6, 7, 8]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
+        let left = Tensor::from_shape_vec(
+            [2, 2],
+            vec![5, 6, 7, 8]
+        ).expect("valid test input");
+        let right = Tensor::from_shape_vec(
+            [2, 2],
+            vec![1, 2, 3, 4]
+        ).expect("valid test input");
         let rv = right.view();
         let result = (&left - &rv).expect("broadcast succeeds");
         assert_eq!(result.as_slice().expect("c"), &[4, 4, 4, 4]);
@@ -792,7 +857,10 @@ mod tests {
     /// Verifies `subtraction` of a scalar to each element of a tensor view.
     #[test]
     fn test_view_sub_right_scalar() {
-        let t = Tensor::from_shape_vec([2], vec![5.0f64, 7.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![5.0f64, 7.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((&v - 2.0).as_slice().expect("c"), &[3.0, 5.0]);
     }
@@ -802,7 +870,10 @@ mod tests {
     /// Verifies `subtraction` with `Scalar` as the left operand and a tensor view.
     #[test]
     fn test_view_sub_scalar_wrapper_left() {
-        let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![3.0f64, 7.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((Scalar(10.0) - &v).as_slice().expect("c"), &[7.0, 3.0]);
     }
@@ -812,7 +883,10 @@ mod tests {
     /// Verifies native `f64` left-scalar `subtraction` with a tensor view.
     #[test]
     fn test_view_sub_native_left_scalar_f64() {
-        let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![3.0f64, 7.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((10.0 - &v).as_slice().expect("c"), &[7.0, 3.0]);
     }
@@ -820,7 +894,10 @@ mod tests {
     /// Verifies combined scalar `subtraction` paths on a tensor view.
     #[test]
     fn test_view_sub_combined() {
-        let t = Tensor::from_shape_vec([2], vec![3.0f64, 7.0]).expect("valid test input");
+        let t = Tensor::from_shape_vec(
+            [2],
+            vec![3.0f64, 7.0]
+        ).expect("valid test input");
         let v = t.view();
         assert_eq!((Scalar(10.0) - &v).as_slice().expect("c"), &[7.0, 3.0]);
         assert_eq!((10.0 - &v).as_slice().expect("c"), &[7.0, 3.0]);
