@@ -41,7 +41,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `addition` between two tensors with broadcasting. Both operands are borrowed.
+    /// Performs element-wise `addition` between two tensors with
+    /// broadcasting. Both operands are borrowed.
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(self, rhs)
     }
@@ -55,7 +56,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `addition` with broadcasting. Borrows the right operand, consumes the left.
+    /// Performs element-wise `addition` with broadcasting. Borrows the
+    /// right operand, consumes the left.
     fn add(self, rhs: &'a TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(&self, rhs)
     }
@@ -69,7 +71,8 @@ where
 {
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
 
-    /// Performs element-wise `addition` with broadcasting. Borrows the left operand, consumes the right.
+    /// Performs element-wise `addition` with broadcasting. Borrows the
+    /// left operand, consumes the right.
     fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         TensorBase::add(self, &rhs)
     }
