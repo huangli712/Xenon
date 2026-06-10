@@ -339,7 +339,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::dimension::Ix1;
+    use crate::dimension::{Ix1, Ix2};
     use crate::tensor::Tensor;
 
     /// `equal` returns true for matching f64 elements and false for
@@ -529,26 +529,26 @@ mod tests {
     /// Comparison broadcasts rank-2 inputs `[3,1]` vs `[1,4]` to `[3,4]`.
     #[test]
     fn test_compare_broadcast() {
-        use crate::dimension::Ix2;
         let a = Tensor::<i32, Ix2>::from_shape_vec([3, 1], vec![1, 5, 9])
             .expect("valid tensor shape");
         let b = Tensor::<i32, Ix2>::from_shape_vec([1, 4], vec![2, 5, 8, 10])
             .expect("valid tensor shape");
         let r = a.less(&b).expect("broadcast succeeds in test");
         assert_eq!(r.shape(), &[3, 4]);
+        
         // row 0 (a=1): 1<2,1<5,1<8,1<10 -> all true
         assert!(*r.get(&[0, 0]).expect("valid index"));
         assert!(*r.get(&[0, 3]).expect("valid index"));
+        
         // row 1 (a=5): 5<2 false, 5<5 false, 5<8 true, 5<10 true
         assert!(!*r.get(&[1, 0]).expect("valid index"));
         assert!(!*r.get(&[1, 1]).expect("valid index"));
         assert!(*r.get(&[1, 2]).expect("valid index"));
+        
         // row 2 (a=9): 9<2,9<5,9<8 false, 9<10 true
         assert!(!*r.get(&[2, 2]).expect("valid index"));
         assert!(*r.get(&[2, 3]).expect("valid index"));
     }
-
-    // ── Parallel-path cross-consistency (parallel feature only) ──
 
     /// `equal`/`less`/`greater` produce identical results on the Parallel path
     /// (forced via a threshold of 1) as on the Serial path (parallel disabled
