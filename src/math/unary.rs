@@ -684,7 +684,8 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                let g = guard
+                    .expect("ExecPath::Parallel must carry a ParallelGuard");
                 par_map(input, &strat, g, |x| op(*x))
             }
             #[cfg(not(feature = "parallel"))]
@@ -725,7 +726,8 @@ where
 {
     // Integer carve-out: i32 / i64 keep the per-element panic diagnostic
     // context, so they take the serial checked path.
-    if TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>() {
+    if TypeId::of::<A>() == TypeId::of::<i32>() 
+        || TypeId::of::<A>() == TypeId::of::<i64>() {
         return apply_unary_checked(input, step);
     }
     // Float / complex: drop the index/shape context and route through the
