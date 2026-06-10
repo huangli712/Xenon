@@ -275,17 +275,17 @@ where
 
 // --- Per-type accumulation --------------------------------------------------
 
-/// Per‑step dot‑product accumulation with type‑aware arithmetic.
+/// Conjugate-linear multiplication step `conj(x) * y` for the dot product.
 ///
-/// - `i32`, `i64`: checked multiply then checked add; integer overflow is
-///   unrecoverable and panics with element context (index, shape, type).
-/// - `f32`, `f64`, `Complex<f32>`, `Complex<f64>`: conjugate‑linear
-///   `acc + x.conjugate() * y` via `Numeric`, preserving IEEE 754 NaN / Inf
-///   propagation. `conjugate()` is the identity for real types and the true
-///   conjugate for complex types.
+/// - `i32`, `i64`: checked multiply; integer overflow is unrecoverable and
+///   panics with element context (index, shape length, type). `conjugate()`
+///   is the identity for integers, so this computes `x * y`.
+/// - `f32`, `f64`, `Complex<f32>`, `Complex<f64>`: `x.conjugate() * y` via
+///   `Numeric`, preserving IEEE 754 NaN / Inf propagation.
 ///
-/// Uses `TypeId` dispatch so the per‑type arithmetic logic stays off the
-/// generic bounds of the public `dot` entry point.
+/// Shared by the serial baseline ([`dot_step`]) and the parallel kernel
+/// ([`crate::parallel::dot::par_dot`]) so both paths emit identical
+/// multiplication-overflow diagnostics.
 ///
 /// # Safety
 ///
@@ -293,23 +293,63 @@ where
 /// `TypeId::of::<A>() == TypeId::of::<I>()`, which proves layout identity
 /// between `A` and the integer type `I`.
 #[inline]
-fn dot_step<A>(acc: A, x: A, y: A, index: usize, len: usize) -> A
+pub(crate) fn dot_mul_step<A>(x: A, y: A, index: usize, len: usize) -> A
 where
     A: Numeric + Copy + 'static,
 {
     if TypeId::of::<A>() == TypeId::of::<i32>() {
-        // SAFETY: TypeId equality proves `A == i32`, so reading `&A` through
-        // a `*const i32` is sound.
+        // SAFETY: TypeId equality proves `A == i32`.
         let xi: i32 = unsafe { *(&x as *const A as *const i32) };
         let yi: i32 = unsafe { *(&y as *const A as *const i32) };
-        let acci: i32 = unsafe { *(&acc as *const A as *const i32) };
         let product = xi.checked_mul(yi).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during multiplication at \
                  element {index} of shape [{len}] (type i32)"
             )
         });
-        let sum = acci.checked_add(product).unwrap_or_else(|| {
+        // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
+        return unsafe { transmute_copy::<i32, A>(&product) };
+    }
+    if TypeId::of::<A>() == TypeId::of::<i64>() {
+        // SAFETY: TypeId equality proves `A == i64`.
+        let xi: i64 = unsafe { *(&x as *const A as *const i64) };
+        let yi: i64 = unsafe { *(&y as *const A as *const i64) };
+        let product = xi.checked_mul(yi).unwrap_or_else(|| {
+            panic!(
+                "dot: integer overflow during multiplication at \
+                 element {index} of shape [{len}] (type i64)"
+            )
+        });
+        // SAFETY: `A == i64`; reinterpreting `i64` as `A` is identity.
+        return unsafe { transmute_copy::<i64, A>(&product) };
+    }
+    // Float / complex: conjugate-linear product. `conjugate()` is the
+    // identity for f32 / f64 and the true conjugate for `Complex`, preserving
+    // IEEE 754 NaN / Inf semantics.
+    x.conjugate() * y
+}
+
+/// Running accumulation step `acc + product` for the serial dot product.
+///
+/// - `i32`, `i64`: checked add; integer overflow panics with element context
+///   (index, shape length, type).
+/// - `f32`, `f64`, `Complex<f32>`, `Complex<f64>`: `acc + product` via
+///   `Numeric`, preserving IEEE 754 NaN / Inf propagation.
+///
+/// # Safety
+///
+/// The `unsafe` reads are sound because each is gated by a `TypeId` equality
+/// proving layout identity between `A` and the integer type.
+#[inline]
+fn dot_add_step<A>(acc: A, product: A, index: usize, len: usize) -> A
+where
+    A: Numeric + Copy + 'static,
+{
+    if TypeId::of::<A>() == TypeId::of::<i32>() {
+        // SAFETY: TypeId equality proves `A == i32`.
+        let acci: i32 = unsafe { *(&acc as *const A as *const i32) };
+        let prod: i32 = unsafe { *(&product as *const A as *const i32) };
+        let sum = acci.checked_add(prod).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during accumulation at \
                  element {index} of shape [{len}] (type i32)"
@@ -320,16 +360,9 @@ where
     }
     if TypeId::of::<A>() == TypeId::of::<i64>() {
         // SAFETY: TypeId equality proves `A == i64`.
-        let xi: i64 = unsafe { *(&x as *const A as *const i64) };
-        let yi: i64 = unsafe { *(&y as *const A as *const i64) };
         let acci: i64 = unsafe { *(&acc as *const A as *const i64) };
-        let product = xi.checked_mul(yi).unwrap_or_else(|| {
-            panic!(
-                "dot: integer overflow during multiplication at \
-                 element {index} of shape [{len}] (type i64)"
-            )
-        });
-        let sum = acci.checked_add(product).unwrap_or_else(|| {
+        let prod: i64 = unsafe { *(&product as *const A as *const i64) };
+        let sum = acci.checked_add(prod).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during accumulation at \
                  element {index} of shape [{len}] (type i64)"
@@ -338,11 +371,63 @@ where
         // SAFETY: `A == i64`; reinterpreting `i64` as `A` is identity.
         return unsafe { transmute_copy::<i64, A>(&sum) };
     }
-    // Float / complex path: conjugate-linear `acc + x.conjugate() * y` via
-    // `Numeric: Add + Mul`. `conjugate()` is the identity for f32 / f64 and
-    // the true conjugate for `Complex`, so this single expression covers all
-    // non-integer supported types and preserves IEEE 754 NaN / Inf semantics.
-    acc + x.conjugate() * y
+    acc + product
+}
+
+/// Cross-worker reduction step `x + y` for the parallel dot product.
+///
+/// Combines partial sums produced by independent workers, so no single
+/// element index is meaningful — integer overflow panics with a type-only
+/// diagnostic. `i32` / `i64` use checked add; float / complex use `+`.
+///
+/// # Safety
+///
+/// The `unsafe` reads are sound because each is gated by a `TypeId` equality
+/// proving layout identity between `A` and the integer type.
+#[cfg(feature = "parallel")]
+#[inline]
+pub(crate) fn dot_reduce_step<A>(x: A, y: A) -> A
+where
+    A: Numeric + Copy + 'static,
+{
+    if TypeId::of::<A>() == TypeId::of::<i32>() {
+        // SAFETY: TypeId equality proves `A == i32`.
+        let xi: i32 = unsafe { *(&x as *const A as *const i32) };
+        let yi: i32 = unsafe { *(&y as *const A as *const i32) };
+        let sum = xi.checked_add(yi).unwrap_or_else(|| {
+            panic!("dot: integer overflow during parallel reduction (type i32)")
+        });
+        // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
+        return unsafe { transmute_copy::<i32, A>(&sum) };
+    }
+    if TypeId::of::<A>() == TypeId::of::<i64>() {
+        // SAFETY: TypeId equality proves `A == i64`.
+        let xi: i64 = unsafe { *(&x as *const A as *const i64) };
+        let yi: i64 = unsafe { *(&y as *const A as *const i64) };
+        let sum = xi.checked_add(yi).unwrap_or_else(|| {
+            panic!("dot: integer overflow during parallel reduction (type i64)")
+        });
+        // SAFETY: `A == i64`; reinterpreting `i64` as `A` is identity.
+        return unsafe { transmute_copy::<i64, A>(&sum) };
+    }
+    x + y
+}
+
+/// Per‑step dot‑product accumulation with type‑aware arithmetic.
+///
+/// Composes [`dot_mul_step`] (conjugate-linear product) with [`dot_add_step`]
+/// (running accumulation). Integer overflow in either sub-step panics with
+/// element context (index, shape length, type); float / complex preserve
+/// IEEE 754 NaN / Inf propagation.
+///
+/// Uses `TypeId` dispatch so the per‑type arithmetic logic stays off the
+/// generic bounds of the public `dot` entry point.
+#[inline]
+fn dot_step<A>(acc: A, x: A, y: A, index: usize, len: usize) -> A
+where
+    A: Numeric + Copy + 'static,
+{
+    dot_add_step(acc, dot_mul_step(x, y, index, len), index, len)
 }
 
 #[cfg(test)]

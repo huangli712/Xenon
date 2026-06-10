@@ -654,7 +654,9 @@ where
 {
     // Integer carve-out: i32 / i64 must keep the per-element panic
     // diagnostic context, so they take the serial checked path.
-    if TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>() {
+    if TypeId::of::<A>() == TypeId::of::<i32>()
+        || TypeId::of::<A>() == TypeId::of::<i64>()
+    {
         return apply_binary_checked(a, b, step);
     }
     // Float / complex: drop the index/shape context and route through the
@@ -672,7 +674,9 @@ where
             #[cfg(feature = "simd")]
             {
                 try_simd_binary(&a_view, &b_view, simd_op_tag(op))
-                    .unwrap_or_else(|| apply_binary_serial(&a_view, &b_view, scalar_op))
+                    .unwrap_or_else(
+                        || apply_binary_serial(&a_view, &b_view, scalar_op)
+                    )
             }
             #[cfg(not(feature = "simd"))]
             {
@@ -684,8 +688,14 @@ where
             #[cfg(feature = "parallel")]
             {
                 let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(scalar_op(*a, *b)))?
+                let g = guard
+                    .expect("ExecPath::Parallel must carry a ParallelGuard");
+                par_zip_checked(
+                    a,
+                    b,
+                    &out_dim,
+                    &strat, g, |a, b| Ok(scalar_op(*a, *b))
+                )?
             }
             #[cfg(not(feature = "parallel"))]
             {
@@ -715,7 +725,8 @@ where
     let tag = op_tag?;
     let lhs_slice: &[A] = a.as_slice()?;
     let rhs_slice: &[A] = b.as_slice()?;
-    let mut result = Tensor::<A, _>::zeros(a.raw_dim()).expect("input dimension must be valid");
+    let mut result = Tensor::<A, _>::zeros(a.raw_dim())
+        .expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
     if dispatch_vector_binary_op(tag, lhs_slice, rhs_slice, dst) {
         Some(result)
@@ -731,17 +742,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::catch_unwind;
     use crate::dimension::{Ix1, Ix2};
     use crate::tensor::Tensor;
-    use std::panic::catch_unwind;
 
     /// Element-wise `i32` addition over rank-1 tensors produces the
     /// pairwise sums.
     #[test]
     fn test_add_i32() {
-        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3]).expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![4, 5, 6]).expect("valid tensor shape");
-        let c = a.add(&b).expect("broadcast succeeds in test");
+        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![4, 5, 6])
+            .expect("valid tensor shape");
+        let c = a.add(&b)
+            .expect("broadcast succeeds in test");
         assert_eq!(*c.get(&[0]).expect("valid index"), 5);
         assert_eq!(*c.get(&[1]).expect("valid index"), 7);
         assert_eq!(*c.get(&[2]).expect("valid index"), 9);
@@ -751,11 +765,12 @@ mod tests {
     /// pairwise sums.
     #[test]
     fn test_add_f64() {
-        let a =
-            Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.5, -1.5]).expect("valid tensor shape");
-        let b =
-            Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.5, 2.5]).expect("valid tensor shape");
-        let c = a.add(&b).expect("broadcast succeeds in test");
+        let a = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.5, -1.5])
+            .expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec([2], vec![0.5, 2.5])
+            .expect("valid tensor shape");
+        let c = a.add(&b)
+            .expect("broadcast succeeds in test");
         assert!((*c.get(&[0]).expect("valid index") - 2.0).abs() < 1e-10);
         assert!((*c.get(&[1]).expect("valid index") - 1.0).abs() < 1e-10);
     }
@@ -764,11 +779,16 @@ mod tests {
     /// an output of shape `[3, 4]` with element-wise sums.
     #[test]
     fn test_add_broadcast() {
-        let a = Tensor::<f64, Ix2>::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0])
-            .expect("valid tensor shape");
-        let b = Tensor::<f64, Ix2>::from_shape_vec([1, 4], vec![10.0, 20.0, 30.0, 40.0])
-            .expect("valid tensor shape");
-        let c = a.add(&b).expect("broadcast succeeds in test");
+        let a = Tensor::<f64, Ix2>::from_shape_vec(
+            [3, 1],
+            vec![1.0, 2.0, 3.0]
+        ).expect("valid tensor shape");
+        let b = Tensor::<f64, Ix2>::from_shape_vec(
+            [1, 4],
+            vec![10.0, 20.0, 30.0, 40.0]
+        ).expect("valid tensor shape");
+        let c = a.add(&b)
+            .expect("broadcast succeeds in test");
         assert_eq!(c.shape(), &[3, 4]);
         let val = c.get(&[0, 0]).expect("valid index");
         assert!((*val - 11.0).abs() < 1e-10);
@@ -778,8 +798,10 @@ mod tests {
     /// scalar.
     #[test]
     fn test_mul_scalar() {
-        let t = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, 3.0])
-            .expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec(
+            [3],
+            vec![1.0, 2.0, 3.0]
+        ).expect("valid tensor shape");
         let r = t.mul_scalar(2.5);
         assert!((*r.get(&[0]).expect("valid index") - 2.5).abs() < 1e-10);
         assert!((*r.get(&[1]).expect("valid index") - 5.0).abs() < 1e-10);
@@ -790,8 +812,7 @@ mod tests {
     /// element-wise add.
     #[test]
     fn test_add_i32_overflow_panic() {
-        let a =
-            Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec([1], vec![i32::MAX]).expect("valid tensor shape");
         let b = Tensor::<i32, Ix1>::from_shape_vec([1], vec![1]).expect("valid tensor shape");
         let result = catch_unwind(|| a.add(&b));
         assert!(result.is_err(), "i32::MAX + 1 must panic");

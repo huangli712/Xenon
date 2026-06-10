@@ -13,6 +13,7 @@ use crate::tensor::TensorBase;
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
 use crate::dispatch::{with_parallel_worker_context};
 use super::chunks::compute_safe_chunks;
+use crate::matrix::{dot_mul_step, dot_reduce_step};
 
 /// Parallel dot product of two 1-D tensors.
 ///
@@ -30,10 +31,11 @@ use super::chunks::compute_safe_chunks;
 ///
 /// # Panics
 ///
-/// Does not panic in practice: the `as_slice().expect(...)` calls are
-/// guarded by the F-contiguous + non-broadcast checks above, which return
-/// `Err(InvalidArgument)` instead. The `expect` messages document the
-/// invariant for future refactors.
+/// Integer (`i32` / `i64`) inputs panic on overflow during the per-element
+/// multiplication or the cross-worker reduction, matching the serial path's
+/// diagnostics. The `as_slice().expect(...)` calls do not panic in practice:
+/// they are guarded by the F-contiguous + non-broadcast checks above, which
+/// return `Err(InvalidArgument)` instead.
 #[cfg(feature = "parallel")]
 pub fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,
@@ -46,7 +48,7 @@ where
     SR: Storage<Elem = A>,
     DL: Dimension,
     DR: Dimension,
-    A: Numeric + Send + Sync,
+    A: Numeric + Send + Sync + 'static,
 {
     use rayon::iter::{
         IndexedParallelIterator,
@@ -125,18 +127,19 @@ where
         .chunk_size()
         .unwrap_or_else(|| compute_safe_chunks(total, num_threads));
 
-    // Parallel conjugate inner product: sum of conj(lhs_i) * rhs_i, reduced
-    // across workers (addition is associative, so merge order is irrelevant).
+    // Parallel conjugate inner product: sum of conj(lhs_i) * rhs_i. Both the
+    // per-element product and the cross-worker reduction use checked integer
+    // arithmetic so overflow panics carry the same diagnostics as the serial
+    // path (addition is associative, so worker merge order is irrelevant).
     let result = (0..total)
         .into_par_iter()
         .with_min_len(chunk_size)
         .map(|i| {
             with_parallel_worker_context(|| {
-                let a = lhs_slice[i];
-                let b = rhs_slice[i];
-                a.conjugate() * b
+                dot_mul_step(lhs_slice[i], rhs_slice[i], i, total)
             })
-        }).reduce(|| A::zero(), |x, y| x + y);
+        })
+        .reduce(|| A::zero(), |x, y| dot_reduce_step(x, y));
 
     Ok(result)
 }

@@ -7,3 +7,6 @@ mod dot;
 mod impls;
 
 pub(crate) use dot::dot_impl;
+
+#[cfg(feature = "parallel")]
+pub(crate) use dot::{dot_mul_step, dot_reduce_step};
