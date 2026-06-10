@@ -10,13 +10,29 @@ use crate::dispatch::ParallelExecStrategy;
 use crate::parallel::binary::par_zip_checked;
 #[cfg(feature = "simd")]
 use crate::simd::{BinaryOp, dispatch_vector_binary_op};
-#[cfg(feature = "simd")]
 use core::any::TypeId;
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Numeric, SimdElement};
 use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::complex::Complex;
 use crate::tensor::{Tensor, TensorBase, TensorView};
+
+// ----------------------------------------------------------------------------
+// Arithmetic operation selector (feature-independent)
+// ----------------------------------------------------------------------------
+
+/// Selector for the four element-wise arithmetic operations.
+///
+/// Defined unconditionally so the dispatch layer can name an operation
+/// without depending on the `simd` feature. When `simd` is enabled it is
+/// mapped to the SIMD-internal `BinaryOp` to drive vector kernels.
+#[derive(Copy, Clone)]
+enum ArithOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
 
 // ----------------------------------------------------------------------------
 // Private per-type dispatch trait for binary arithmetic
@@ -291,10 +307,10 @@ where
 {
     /// Element-wise addition with broadcast.
     ///
-    /// Integer types (i32/i64) use `apply_binary_indexed` so overflow
-    /// panics can report the offending element index and broadcast
-    /// shape. Float/complex types route through
-    /// `apply_arith_with_dispatch` to access SIMD and parallel paths.
+    /// Integer types (i32/i64) keep the serial checked path so overflow
+    /// panics can report the offending element index and broadcast shape.
+    /// Float/complex types route through `dispatch_arith` to access the
+    /// SIMD and parallel paths.
     ///
     /// # Errors
     ///
@@ -309,21 +325,12 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_arith_with_dispatch(
-                    self,
-                    other,
-                    |x, y| <A as BinaryArith>::add_step(x, y, 0, &[]),
-                    Some(BinaryOp::Add),
-                );
-            }
-        }
-        apply_binary_indexed(self, other, |x, y, idx, shape| {
-            <A as BinaryArith>::add_step(x, y, idx, shape)
-        })
+        dispatch_arith(
+            self,
+            other,
+            |x, y, idx, shape| <A as BinaryArith>::add_step(x, y, idx, shape),
+            ArithOp::Add,
+        )
     }
 
     /// Element-wise subtraction with broadcast.
@@ -341,21 +348,12 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_arith_with_dispatch(
-                    self,
-                    other,
-                    |x, y| <A as BinaryArith>::sub_step(x, y, 0, &[]),
-                    Some(BinaryOp::Sub),
-                );
-            }
-        }
-        apply_binary_indexed(self, other, |x, y, idx, shape| {
-            <A as BinaryArith>::sub_step(x, y, idx, shape)
-        })
+        dispatch_arith(
+            self,
+            other,
+            |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
+            ArithOp::Sub,
+        )
     }
 
     /// Element-wise multiplication with broadcast.
@@ -373,21 +371,12 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_arith_with_dispatch(
-                    self,
-                    other,
-                    |x, y| <A as BinaryArith>::mul_step(x, y, 0, &[]),
-                    Some(BinaryOp::Mul),
-                );
-            }
-        }
-        apply_binary_indexed(self, other, |x, y, idx, shape| {
-            <A as BinaryArith>::mul_step(x, y, idx, shape)
-        })
+        dispatch_arith(
+            self,
+            other,
+            |x, y, idx, shape| <A as BinaryArith>::mul_step(x, y, idx, shape),
+            ArithOp::Mul,
+        )
     }
 
     /// Element-wise division with broadcast.
@@ -405,21 +394,12 @@ where
         D: BroadcastDim<E>,
         E: Dimension,
     {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_arith_with_dispatch(
-                    self,
-                    other,
-                    |x, y| <A as BinaryArith>::div_step(x, y, 0, &[]),
-                    Some(BinaryOp::Div),
-                );
-            }
-        }
-        apply_binary_indexed(self, other, |x, y, idx, shape| {
-            <A as BinaryArith>::div_step(x, y, idx, shape)
-        })
+        dispatch_arith(
+            self,
+            other,
+            |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
+            ArithOp::Div,
+        )
     }
 }
 
@@ -501,31 +481,18 @@ where
     /// Element-wise `scalar - element` (left-scalar subtraction).
     ///
     /// Internal helper for non-commutative left-scalar operator dispatch.
-    /// NOT part of the public API surface. Float/complex types route
-    /// through `apply_arith_with_dispatch` for SIMD; integers retain
-    /// `apply_binary_indexed` so overflow panics keep their per-element
-    /// diagnostic context.
+    /// NOT part of the public API surface. Routes through `dispatch_arith`
+    /// with swapped operands; float/complex types reach the SIMD and
+    /// parallel paths, integers keep their per-element panic diagnostics.
     pub(crate) fn sub_from_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_arith_with_dispatch(
-                    &other,
-                    self,
-                    |x, y| <A as BinaryArith>::sub_step(x, y, 0, &[]),
-                    Some(BinaryOp::Sub),
-                )
-                .expect(
-                    "scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility",
-                );
-            }
-        }
         // Swap operand order: compute `scalar - self` element-wise.
-        apply_binary_indexed(&other, self, |x, y, idx, shape| {
-            <A as BinaryArith>::sub_step(x, y, idx, shape)
-        })
+        dispatch_arith(
+            &other,
+            self,
+            |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
+            ArithOp::Sub,
+        )
         .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 
@@ -535,24 +502,13 @@ where
     /// NOT part of the public API surface.
     pub(crate) fn div_from_scalar(&self, scalar: A) -> Tensor<A, D> {
         let other = Tensor::<A, Ix0>::from_scalar(scalar).expect("from_scalar never fails");
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_arith_with_dispatch(
-                    &other,
-                    self,
-                    |x, y| <A as BinaryArith>::div_step(x, y, 0, &[]),
-                    Some(BinaryOp::Div),
-                )
-                .expect(
-                    "scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility",
-                );
-            }
-        }
-        apply_binary_indexed(&other, self, |x, y, idx, shape| {
-            <A as BinaryArith>::div_step(x, y, idx, shape)
-        })
+        // Swap operand order: compute `scalar / self` element-wise.
+        dispatch_arith(
+            &other,
+            self,
+            |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
+            ArithOp::Div,
+        )
         .expect("scalar broadcast cannot fail: BroadcastDim<Ix0> guarantees compatibility")
     }
 }
@@ -565,7 +521,7 @@ where
 /// propagated into the kernel closure — needed so integer overflow /
 /// div-by-zero panics can report the offending element index and the
 /// broadcast output shape. Homogeneous `A -> A` (integer arithmetic).
-fn apply_binary_indexed<A, S1, S2, D1, D2, F>(
+fn apply_binary_checked<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     mut f: F,
@@ -598,7 +554,7 @@ where
 /// Non-broadcasting binary traversal helper. Assumes `a` and `b` have
 /// identical shapes (caller is responsible for `broadcast_to` upstream).
 /// Used by dispatch helpers in their Serial and SIMD-fallback paths.
-pub(in crate::math) fn apply_binary_scalar<A, O, S1, S2, D, F>(
+pub(in crate::math) fn apply_binary_serial<A, O, S1, S2, D, F>(
     a: &TensorBase<S1, D>,
     b: &TensorBase<S2, D>,
     mut op: F,
@@ -651,9 +607,9 @@ where
     let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
 
     let result = match path {
-        ExecPath::Serial => apply_binary_scalar(&a_view, &b_view, scalar_op),
+        ExecPath::Serial => apply_binary_serial(&a_view, &b_view, scalar_op),
         ExecPath::Simd => simd_try(&a_view, &b_view)
-            .unwrap_or_else(|| apply_binary_scalar(&a_view, &b_view, scalar_op)),
+            .unwrap_or_else(|| apply_binary_serial(&a_view, &b_view, scalar_op)),
         ExecPath::Parallel => {
             #[cfg(feature = "parallel")]
             {
@@ -664,25 +620,47 @@ where
             #[cfg(not(feature = "parallel"))]
             {
                 let _ = guard;
-                apply_binary_scalar(&a_view, &b_view, scalar_op)
+                apply_binary_serial(&a_view, &b_view, scalar_op)
             }
         },
     };
     Ok(result)
 }
 
-/// Dispatch-aware broadcast arithmetic helper for float/complex types
-/// (`add`/`sub`/`mul`/`div`). Homogeneous `A -> A`. Delegates to
-/// `dispatch_binary`, supplying the SIMD kernel attempt. Integer types must
-/// NOT use this helper — they retain `apply_binary_indexed` to preserve the
-/// per-element panic diagnostic context (`element_index`, broadcast `shape`)
-/// on overflow and div-by-zero.
+/// Maps the feature-independent [`ArithOp`] selector to the SIMD-internal
+/// [`BinaryOp`] tag. Only compiled when `simd` is enabled.
 #[cfg(feature = "simd")]
-fn apply_arith_with_dispatch<A, S1, S2, D1, D2, F>(
+#[inline]
+fn simd_op_tag(op: ArithOp) -> Option<BinaryOp> {
+    Some(match op {
+        ArithOp::Add => BinaryOp::Add,
+        ArithOp::Sub => BinaryOp::Sub,
+        ArithOp::Mul => BinaryOp::Mul,
+        ArithOp::Div => BinaryOp::Div,
+    })
+}
+
+/// Unified broadcast arithmetic dispatch for `add` / `sub` / `mul` / `div`.
+///
+/// - Integer types (`i32`, `i64`): serial checked traversal via
+///   `apply_binary_checked`, carrying the per-element index and broadcast
+///   shape so overflow / div-by-zero panics keep their diagnostic context.
+/// - Float / complex types: routed through `dispatch_binary` to the
+///   Serial / SIMD / Parallel execution path chosen by `select_exec_path`.
+///
+/// This helper is NOT gated on the `simd` feature — only the inner SIMD
+/// kernel attempt is conditional. That keeps the Parallel path reachable
+/// whenever `parallel` is enabled, independent of `simd`.
+///
+/// The `step` closure carries `(idx, &shape)` for the integer path; the
+/// float path adapts it to a context-free kernel via `|x, y| step(x, y, 0,
+/// &[])`, which is zero-cost since float / complex impls ignore those
+/// parameters.
+fn dispatch_arith<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
-    op: F,
-    op_tag: Option<BinaryOp>,
+    step: F,
+    op: ArithOp,
 ) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
 where
     A: Element + SimdElement + 'static,
@@ -690,20 +668,25 @@ where
     S2: Storage<Elem = A>,
     D1: Dimension + BroadcastDim<D2>,
     D2: Dimension,
-    F: Fn(A, A) -> A + Copy + Send + Sync,
+    F: Fn(A, A, usize, &[usize]) -> A + Copy + Send + Sync,
 {
-    // Integer carve-out: integer types must NOT enter this helper — they
-    // would lose the per-element panic diagnostic context required for
-    // overflow / div-by-zero messages. Callers gate on TypeId before
-    // invoking this helper; this assertion catches accidental misuse.
-    debug_assert!(
-        TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>(),
-        "apply_arith_with_dispatch must not be called with integer types; \
-         use apply_binary_indexed instead to preserve per-element \
-         diagnostic context"
-    );
-    dispatch_binary(a, b, op, |a_view, b_view| {
-        try_simd_arith(a_view, b_view, op_tag)
+    // Integer carve-out: i32 / i64 must keep the per-element panic
+    // diagnostic context, so they take the serial checked path.
+    if TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>() {
+        return apply_binary_checked(a, b, step);
+    }
+    // Float / complex: drop the index/shape context and route through the
+    // full Serial / SIMD / Parallel dispatch skeleton.
+    dispatch_binary(a, b, move |x, y| step(x, y, 0, &[]), |_a_view, _b_view| {
+        #[cfg(feature = "simd")]
+        {
+            try_simd_arith(_a_view, _b_view, simd_op_tag(op))
+        }
+        #[cfg(not(feature = "simd"))]
+        {
+            let _ = op;
+            None
+        }
     })
 }
 
@@ -825,15 +808,15 @@ mod tests {
         assert!(!*result.get(&[2]).expect("valid index"));
     }
 
-    /// `apply_binary_scalar` is the scalar fallback used inside dispatch
+    /// `apply_binary_serial` is the scalar fallback used inside dispatch
     /// helpers; validate it independently produces element-wise sums.
     #[test]
-    fn test_apply_binary_scalar() {
+    fn test_apply_binary_serial() {
         let a =
             Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.0, 2.0]).expect("valid tensor shape");
         let b =
             Tensor::<f64, Ix1>::from_shape_vec([2], vec![3.0, 4.0]).expect("valid tensor shape");
-        let r = apply_binary_scalar(&a, &b, |x, y| x + y);
+        let r = apply_binary_serial(&a, &b, |x, y| x + y);
         assert!((*r.get(&[0]).expect("valid index") - 4.0).abs() < 1e-10);
         assert!((*r.get(&[1]).expect("valid index") - 6.0).abs() < 1e-10);
     }
@@ -868,7 +851,7 @@ mod tests {
     /// Cross-path consistency for integer add. `i32` add is exact (no
     /// float tolerance), so byte-level equality is required across the
     /// Serial / SIMD / Parallel paths. Integer types always retain
-    /// `apply_binary_indexed` so `element_index` panic diagnostics are
+    /// `apply_binary_checked` so `element_index` panic diagnostics are
     /// preserved.
     #[test]
     fn test_add_path_consistency_i32() {

@@ -17,7 +17,6 @@ use crate::tensor::{Tensor, TensorBase};
 use crate::simd::{UnaryOp, dispatch_vector_unary_op};
 #[cfg(feature = "parallel")]
 use crate::parallel::unary::par_map;
-#[cfg(feature = "simd")]
 use core::any::TypeId;
 
 // ----------------------------------------------------------------------------
@@ -384,40 +383,22 @@ where
     /// the SIMD path falls back to scalar; parallel acceleration kicks in
     /// when the executor selects it).
     pub fn abs(&self) -> Tensor<A, D> {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_unary_with_dispatch(
-                    self,
-                    |x| <A as OrderedUnaryArith>::abs_step(x),
-                    None,
-                );
-            }
-        }
-        apply_unary_indexed(self, |x, idx, shape| {
-            <A as OrderedUnaryArith>::abs_step_with_ctx(x, idx, shape)
-        })
+        dispatch_unary_arith(
+            self,
+            |x, idx, shape| <A as OrderedUnaryArith>::abs_step_with_ctx(x, idx, shape),
+            UnaryArithOp::Abs,
+        )
     }
 
     /// Element-wise signum. Integers return sign-based `-1` / `0` / `1`.
     /// Floats follow IEEE 754 semantics via `RealScalar::signum` (handles
     /// signed zeros and NaN).
     pub fn signum(&self) -> Tensor<A, D> {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_unary_with_dispatch(
-                    self,
-                    |x| <A as OrderedUnaryArith>::signum_step(x),
-                    None,
-                );
-            }
-        }
-        apply_unary_indexed(self, |x, idx, shape| {
-            <A as OrderedUnaryArith>::signum_step_with_ctx(x, idx, shape)
-        })
+        dispatch_unary_arith(
+            self,
+            |x, idx, shape| <A as OrderedUnaryArith>::signum_step_with_ctx(x, idx, shape),
+            UnaryArithOp::Signum,
+        )
     }
 }
 
@@ -442,39 +423,21 @@ where
     /// Float types route through the dispatch-aware helper with a SIMD
     /// `Neg` op tag, so the SIMD path can accelerate when available.
     pub fn neg(&self) -> Tensor<A, D> {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_unary_with_dispatch(
-                    self,
-                    |x| <A as UnaryArith>::neg_step(x),
-                    Some(UnaryOp::Neg),
-                );
-            }
-        }
-        apply_unary_indexed(self, |x, idx, shape| {
-            <A as UnaryArith>::neg_step_with_ctx(x, idx, shape)
-        })
+        dispatch_unary_arith(
+            self,
+            |x, idx, shape| <A as UnaryArith>::neg_step_with_ctx(x, idx, shape),
+            UnaryArithOp::Neg,
+        )
     }
 
     /// Element-wise square (`x * x`). The integer path panics on overflow;
     /// the float and complex paths use `*` with IEEE 754 propagation.
     pub fn square(&self) -> Tensor<A, D> {
-        #[cfg(feature = "simd")]
-        {
-            if TypeId::of::<A>() != TypeId::of::<i32>() && TypeId::of::<A>() != TypeId::of::<i64>()
-            {
-                return apply_unary_with_dispatch(
-                    self,
-                    |x| <A as UnaryArith>::square_step(x),
-                    None,
-                );
-            }
-        }
-        apply_unary_indexed(self, |x, idx, shape| {
-            <A as UnaryArith>::square_step_with_ctx(x, idx, shape)
-        })
+        dispatch_unary_arith(
+            self,
+            |x, idx, shape| <A as UnaryArith>::square_step_with_ctx(x, idx, shape),
+            UnaryArithOp::Square,
+        )
     }
 }
 
@@ -492,36 +455,36 @@ where
 {
     /// Element-wise sine. IEEE 754 NaN propagates: `sin(NaN) = NaN`.
     ///
-    /// Routes through `apply_unary_real_dispatch` so that large tensors can
+    /// Routes through `dispatch_unary_real` so that large tensors can
     /// benefit from parallel acceleration. No SIMD kernel for `sin` is
     /// available yet, so the SIMD path falls back to scalar.
     pub fn sin(&self) -> Tensor<A, D> {
-        apply_unary_real_dispatch(self, |x| x.sin())
+        dispatch_unary_real(self, |x| x.sin())
     }
 
     /// Element-wise square root. `sqrt(-1.0) = NaN` per IEEE 754.
     pub fn sqrt(&self) -> Tensor<A, D> {
-        apply_unary_real_dispatch(self, |x| x.sqrt())
+        dispatch_unary_real(self, |x| x.sqrt())
     }
 
     /// Element-wise exponential. `exp(Inf) = Inf`, `exp(-Inf) = 0.0`.
     pub fn exp(&self) -> Tensor<A, D> {
-        apply_unary_real_dispatch(self, |x| x.exp())
+        dispatch_unary_real(self, |x| x.exp())
     }
 
     /// Element-wise natural logarithm. `ln(0.0) = -Inf`, `ln(-1.0) = NaN`.
     pub fn ln(&self) -> Tensor<A, D> {
-        apply_unary_real_dispatch(self, |x| x.ln())
+        dispatch_unary_real(self, |x| x.ln())
     }
 
     /// Element-wise floor. Exact (no tolerance).
     pub fn floor(&self) -> Tensor<A, D> {
-        apply_unary_real_dispatch(self, |x| x.floor())
+        dispatch_unary_real(self, |x| x.floor())
     }
 
     /// Element-wise ceil. Exact (no tolerance).
     pub fn ceil(&self) -> Tensor<A, D> {
-        apply_unary_real_dispatch(self, |x| x.ceil())
+        dispatch_unary_real(self, |x| x.ceil())
     }
 }
 
@@ -541,7 +504,7 @@ where
     /// Element-wise modulus: `|a + bi| = sqrt(a*a + b*b)`.
     /// Returns a real tensor of the same dimension.
     pub fn modulus(&self) -> Tensor<T, D> {
-        apply_unary_map(self, |c| c.norm())
+        apply_unary_serial(self, |c| c.norm())
     }
 }
 
@@ -560,12 +523,12 @@ where
     /// Element-wise complex conjugate: `(a + bi) → (a - bi)`. Delegates to
     /// `Numeric::conjugate`.
     ///
-    /// Routes through `apply_unary_real_dispatch` so that large tensors can
+    /// Routes through `dispatch_unary_real` so that large tensors can
     /// benefit from parallel acceleration. No SIMD kernel for `conjugate`
     /// is available yet (it would require cross-lane operations), so the
     /// SIMD path falls back to scalar.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D> {
-        apply_unary_real_dispatch(self, <Complex<T> as Numeric>::conjugate)
+        dispatch_unary_real(self, <Complex<T> as Numeric>::conjugate)
     }
 }
 
@@ -599,11 +562,11 @@ where
         let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
         match path {
             // No bool SIMD kernel exists; Serial and Simd both fall through
-            // to the scalar `apply_unary_map` baseline. Parallel routes
+            // to the scalar `apply_unary_serial` baseline. Parallel routes
             // through `par_map`.
             ExecPath::Serial | ExecPath::Simd => {
                 let _ = guard;
-                apply_unary_map(self, |x| !x)
+                apply_unary_serial(self, |x| !x)
             },
             ExecPath::Parallel => {
                 #[cfg(feature = "parallel")]
@@ -615,7 +578,7 @@ where
                 #[cfg(not(feature = "parallel"))]
                 {
                     let _ = guard;
-                    apply_unary_map(self, |x| !x)
+                    apply_unary_serial(self, |x| !x)
                 }
             },
         }
@@ -633,7 +596,7 @@ where
 /// `A`, covering both same-type ops (`A → A`, e.g. `neg` / `square`) and
 /// type-changing ops (`Complex<T> → T`, e.g. `modulus`).
 #[inline]
-fn apply_unary_map<A, O, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<O, D>
+fn apply_unary_serial<A, O, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<O, D>
 where
     A: Element,
     O: Element,
@@ -650,7 +613,7 @@ where
 }
 
 /// Same-type unary traversal with element-index and shape context — variant
-/// of `apply_unary_map` that propagates `(idx, &shape)` into the kernel
+/// of `apply_unary_serial` that propagates `(idx, &shape)` into the kernel
 /// closure.
 ///
 /// Required by the integer monomorphizations of `abs` / `neg` / `square`
@@ -659,7 +622,7 @@ where
 /// monomorphizations have no panic path; the `idx` / `shape` parameters
 /// are zero-cost dropped after inlining.
 #[inline]
-fn apply_unary_indexed<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
+fn apply_unary_checked<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
@@ -680,6 +643,50 @@ where
 // Dispatch-aware unary helper (serial/SIMD/parallel routing)
 // ----------------------------------------------------------------------------
 
+/// Generic execution-path routing for unary element-wise ops (Serial /
+/// SIMD / Parallel). Does NOT perform any integer check — the caller
+/// decides. Not gated on `simd`: only the `simd_try` closure passed in is.
+///
+/// `simd_try` attempts a vectorised kernel on the input, returning `None`
+/// to fall back to the scalar baseline (`apply_unary_serial`). Ops without a
+/// SIMD kernel pass a closure that always returns `None`.
+fn dispatch_unary_elementwise<A, S, D, F, FSimd>(
+    input: &TensorBase<S, D>,
+    op: F,
+    simd_try: FSimd,
+) -> Tensor<A, D>
+where
+    A: Element,
+    S: Storage<Elem = A>,
+    D: Dimension,
+    F: Fn(A) -> A + Copy + Send + Sync,
+    FSimd: FnOnce(&TensorBase<S, D>) -> Option<Tensor<A, D>>,
+{
+    let len = input.len();
+    let is_contiguous = input.is_f_contiguous();
+    let alignment_ok = input.is_aligned();
+    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
+    match path {
+        ExecPath::Serial => apply_unary_serial(input, op),
+        ExecPath::Simd => {
+            simd_try(input).unwrap_or_else(|| apply_unary_serial(input, op))
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                par_map(input, &strat, g, |x| op(*x))
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_unary_serial(input, op)
+            }
+        },
+    }
+}
+
 /// Dispatch-aware unary helper for methods bounded by `A: RealScalar` or
 /// `A: ComplexFloat`-derived element traits that do NOT include
 /// `SimdElement` in their supertrait set.
@@ -689,98 +696,89 @@ where
 /// `RealScalar` and `ComplexFloat` traits. These traits intentionally do
 /// NOT include the `pub(crate) SimdElement` trait as a supertrait, because
 /// SIMD types must not appear in the public API surface (`pub(crate)`
-/// only). Therefore `apply_unary_with_dispatch` (which requires
-/// `A: SimdElement`) cannot be called from these methods.
+/// only). Therefore the SIMD kernel attempt (which requires
+/// `A: SimdElement`) cannot be called from these methods, so the SIMD path
+/// always falls back to scalar here (`|_| None`).
 ///
-/// **Coverage today**: `Sin` / `Sqrt` / `Exp` / `Ln` / `Floor` / `Ceil` /
-/// `Conjugate` are reserved for future SIMD coverage, so the SIMD branch
-/// of this helper always falls through to scalar.
-///
-/// **Real acceleration today**: Parallel path via
-/// `par_map` when the `parallel` feature is
-/// enabled and `select_exec_path` returns `ExecPath::Parallel`.
-///
-/// **Future-proof**: When SIMD coverage is extended (e.g. a new
-/// `UnaryOp::Sin`), this helper can be upgraded internally to invoke
-/// `dispatch_vector_unary_op` for the supported types without changing
-/// any method body (since the public bound `A: RealScalar` remains).
-fn apply_unary_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
+/// **Real acceleration today**: the Parallel path via `par_map` when the
+/// `parallel` feature is enabled and `select_exec_path` returns
+/// `ExecPath::Parallel` — reachable independent of the `simd` feature.
+fn dispatch_unary_real<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
     D: Dimension,
     F: Fn(A) -> A + Copy + Send + Sync,
 {
-    let len = input.len();
-    let is_contiguous = input.is_f_contiguous();
-    let alignment_ok = input.is_aligned();
-    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-    match path {
-        // No SIMD kernel for these ops yet; Serial and Simd both route to
-        // the scalar baseline.
-        ExecPath::Serial | ExecPath::Simd => {
-            let _ = guard;
-            apply_unary_map(input, op)
-        },
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                par_map(input, &strat, g, |x| op(*x))
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_unary_map(input, op)
-            }
-        },
+    dispatch_unary_elementwise(input, op, |_input| None)
+}
+
+/// Selector for the dispatch-routed unary arithmetic ops
+/// (`abs` / `neg` / `square` / `signum`). Defined unconditionally so the
+/// dispatch layer can name an operation without depending on the `simd`
+/// feature.
+#[derive(Copy, Clone)]
+enum UnaryArithOp {
+    Abs,
+    Neg,
+    Square,
+    Signum,
+}
+
+/// Maps the feature-independent [`UnaryArithOp`] selector to the
+/// SIMD-internal [`UnaryOp`] tag. Only `Neg` has a SIMD kernel today; the
+/// rest fall through to scalar. Only compiled when `simd` is enabled.
+#[cfg(feature = "simd")]
+#[inline]
+fn simd_unary_op_tag(op: UnaryArithOp) -> Option<UnaryOp> {
+    match op {
+        UnaryArithOp::Neg => Some(UnaryOp::Neg),
+        UnaryArithOp::Abs | UnaryArithOp::Square | UnaryArithOp::Signum => None,
     }
 }
 
-/// Dispatch-aware variant of `apply_unary_map` — routes between Serial,
-/// SIMD, and Parallel paths. The scalar baseline `apply_unary_map` is the
-/// SIMD-fallback target.
+/// Unified unary arithmetic dispatch for `abs` / `neg` / `square` /
+/// `signum`.
 ///
-/// `op_tag: Option<simd::UnaryOp>` encodes which SIMD kernel to attempt.
-/// `None` causes the SIMD path to be skipped, falling back to Serial /
-/// Parallel.
-#[cfg(feature = "simd")]
-fn apply_unary_with_dispatch<A, S, D, F>(
+/// - Integer types (`i32`, `i64`): serial checked traversal via
+///   `apply_unary_checked`, carrying the per-element index and shape so
+///   overflow panics keep their diagnostic context.
+/// - Float / complex types: routed through `dispatch_unary_elementwise` to
+///   the Serial / SIMD / Parallel execution path chosen by
+///   `select_exec_path`.
+///
+/// NOT gated on the `simd` feature — only the inner SIMD kernel attempt is
+/// conditional — so the Parallel path stays reachable whenever `parallel`
+/// is enabled, independent of `simd`.
+///
+/// The `step` closure carries `(idx, &shape)` for the integer path; the
+/// float path adapts it to a context-free kernel via `|x| step(x, 0, &[])`,
+/// which is zero-cost since float / complex impls ignore those parameters.
+fn dispatch_unary_arith<A, S, D, F>(
     input: &TensorBase<S, D>,
-    op: F,
-    op_tag: Option<UnaryOp>,
+    step: F,
+    op: UnaryArithOp,
 ) -> Tensor<A, D>
 where
-    A: Element + SimdElement,
+    A: Element + SimdElement + 'static,
     S: Storage<Elem = A>,
     D: Dimension,
-    F: Fn(A) -> A + Copy + Send + Sync,
+    F: Fn(A, usize, &[usize]) -> A + Copy + Send + Sync,
 {
-    let len = input.len();
-    let is_contiguous = input.is_f_contiguous();
-    let alignment_ok = input.is_aligned();
-
-    let (path, guard) = select_exec_path(len, is_contiguous, alignment_ok);
-    match path {
-        ExecPath::Serial => apply_unary_map(input, op),
-        ExecPath::Simd => {
-            try_simd_unary_via_slice(input, op_tag).unwrap_or_else(|| apply_unary_map(input, op))
-        },
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                par_map(input, &strat, g, |x| op(*x))
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_unary_map(input, op)
-            }
-        },
+    if TypeId::of::<A>() == TypeId::of::<i32>() || TypeId::of::<A>() == TypeId::of::<i64>() {
+        return apply_unary_checked(input, step);
     }
+    dispatch_unary_elementwise(input, move |x| step(x, 0, &[]), |_input| {
+        #[cfg(feature = "simd")]
+        {
+            try_simd_unary_via_slice(_input, simd_unary_op_tag(op))
+        }
+        #[cfg(not(feature = "simd"))]
+        {
+            let _ = op;
+            None
+        }
+    })
 }
 
 /// Attempt a slice-based SIMD unary kernel. Returns `None` if `op_tag` is
