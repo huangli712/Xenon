@@ -4,26 +4,25 @@
 //! - math functions sin/sqrt/exp/ln/floor/ceil,
 //! - complex conjugate/modulus, logical not.
 
+use core::any::TypeId;
 
 use crate::dispatch::{ExecPath, select_exec_path};
 
 use crate::complex::{Complex, ComplexFloat};
 use crate::dimension::Dimension;
+use crate::element::{Element, Numeric, RealScalar, ComplexScalar};
+use crate::element::{CheckedNeg, OrderedCompareElement, SimdElement};
+use crate::storage::Storage;
+use crate::tensor::{Tensor, TensorBase};
 
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 
-use crate::element::{
-    CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar, SimdElement,
-};
-
-use crate::storage::Storage;
-use crate::tensor::{Tensor, TensorBase};
-#[cfg(feature = "simd")]
-use crate::simd::{UnaryOp, dispatch_vector_unary_op};
 #[cfg(feature = "parallel")]
 use crate::parallel::unary::par_map;
-use core::any::TypeId;
+
+#[cfg(feature = "simd")]
+use crate::simd::{UnaryOp, dispatch_vector_unary_op};
 
 /// Selector for the dispatch-routed unary arithmetic ops
 /// (`abs` / `neg` / `square` / `signum`). Defined unconditionally so the
