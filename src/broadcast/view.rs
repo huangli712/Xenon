@@ -250,16 +250,21 @@ mod tests {
         assert_eq!(a_view.shape(), b_view.shape());
     }
 
-    /// Same-shape shortcut: identical input shapes broadcast to the same shape
-    /// with original strides preserved (no zero strides introduced) and no
-    /// `BroadcastView` classification.
+    /// Same-shape shortcut: identical input shapes broadcast to the same
+    /// shape with original strides preserved (no zero strides introduced)
+    /// and no `BroadcastView` classification.
     #[test]
     fn test_broadcast_with_same_shape_preserves_layout() {
-        let a: Tensor2<f64> = Tensor2::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-            .expect("valid test input");
-        let b: Tensor2<f64> = Tensor2::from_shape_vec([2, 3], vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0])
-            .expect("valid test input");
-        let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
+        let a: Tensor2<f64> = Tensor2::from_shape_vec(
+            [2, 3],
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::from_shape_vec(
+            [2, 3],
+            vec![6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+        ).expect("valid test input");
+        let (a_view, b_view, out_dim) = broadcast_with(&a, &b)
+            .expect("compatible shapes");
         assert_eq!(out_dim.slice(), &[2, 3]);
         // No axis is broadcast: original strides survive, no zero strides.
         assert_eq!(a_view.strides(), a.strides());
