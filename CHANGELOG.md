@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.39] — 2026-06-10
+
+### Changed
+
+- Renamed `apply_unary_with_real_dispatch` to `apply_unary_without_simd`.
+- Simplified `not()` to use `apply_unary_without_simd`.
+- Style: wrapped long calls, removed separators, reorganized imports across `src/math/`.
+
 ## [v0.0.38] — 2026-06-10
 
 ### Added
