@@ -7,6 +7,41 @@ use crate::tensor::{TensorBase, TensorView};
 
 use crate::broadcast::shape::{broadcast_shape, broadcast_strides};
 
+// ----------------------------------------------------------------------------
+// Two-input broadcast prologue (shared by math binary ops)
+// ----------------------------------------------------------------------------
+
+/// The two broadcast views plus the common output dimension produced by
+/// [`broadcast_with`].
+pub(crate) type BroadcastViews<'a, 'b, A, D1, D2> = (
+    TensorView<'a, A, <D1 as BroadcastDim<D2>>::Output>,
+    TensorView<'b, A, <D1 as BroadcastDim<D2>>::Output>,
+    <D1 as BroadcastDim<D2>>::Output,
+);
+
+/// Broadcast both operands to their common shape, returning the two
+/// broadcast views together with the output dimension. Shared `pub(crate)`
+/// entry point for two-input broadcast; consumers (e.g. `math`) must route
+/// double-input broadcast through here rather than redefining the rule.
+pub(crate) fn broadcast_with<'a, 'b, A, S1, S2, D1, D2>(
+    a: &'a TensorBase<S1, D1>,
+    b: &'b TensorBase<S2, D2>,
+) -> Result<BroadcastViews<'a, 'b, A, D1, D2>, XenonError>
+where
+    A: Element,
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
+    D1: Dimension + BroadcastDim<D2>,
+    D2: Dimension,
+{
+    let out_shape = broadcast_shape(a.shape(), b.shape())?;
+    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+        .expect("broadcast_shape validated the output shape");
+    let a_view = broadcast_to(a, out_dim.clone())?;
+    let b_view = broadcast_to(b, out_dim.clone())?;
+    Ok((a_view, b_view, out_dim))
+}
+
 impl<S, A, D> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -166,40 +201,6 @@ where
     Ok(view)
 }
 
-// ----------------------------------------------------------------------------
-// Two-input broadcast prologue (shared by math binary ops)
-// ----------------------------------------------------------------------------
-
-/// The two broadcast views plus the common output dimension produced by
-/// [`broadcast_with`].
-pub(crate) type BroadcastViews<'a, 'b, A, D1, D2> = (
-    TensorView<'a, A, <D1 as BroadcastDim<D2>>::Output>,
-    TensorView<'b, A, <D1 as BroadcastDim<D2>>::Output>,
-    <D1 as BroadcastDim<D2>>::Output,
-);
-
-/// Broadcast both operands to their common shape, returning the two
-/// broadcast views together with the output dimension. Shared `pub(crate)`
-/// entry point for two-input broadcast; consumers (e.g. `math`) must route
-/// double-input broadcast through here rather than redefining the rule.
-pub(crate) fn broadcast_with<'a, 'b, A, S1, S2, D1, D2>(
-    a: &'a TensorBase<S1, D1>,
-    b: &'b TensorBase<S2, D2>,
-) -> Result<BroadcastViews<'a, 'b, A, D1, D2>, XenonError>
-where
-    A: Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-{
-    let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
-        .expect("broadcast_shape validated the output shape");
-    let a_view = broadcast_to(a, out_dim.clone())?;
-    let b_view = broadcast_to(b, out_dim.clone())?;
-    Ok((a_view, b_view, out_dim))
-}
 
 #[cfg(test)]
 mod tests {
