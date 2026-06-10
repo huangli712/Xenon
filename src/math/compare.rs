@@ -342,16 +342,20 @@ mod tests {
     use crate::dimension::Ix1;
     use crate::tensor::Tensor;
 
-    // equal / not_equal tests
-
-    /// `equal` returns true for matching f64 elements and false for NaN == NaN per IEEE 754.
+    /// `equal` returns true for matching f64 elements and false for
+    /// NaN == NaN per IEEE 754.
     #[test]
     fn test_equal_f64() {
-        let a = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN])
-            .expect("valid tensor shape");
-        let b = Tensor::<f64, Ix1>::from_shape_vec([3], vec![1.0, 2.0, f64::NAN])
-            .expect("valid tensor shape");
-        let result = a.equal(&b).expect("broadcast succeeds in test");
+        let a = Tensor::<f64, Ix1>::from_shape_vec(
+            [3],
+            vec![1.0, 2.0, f64::NAN]
+        ).expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec(
+            [3],
+            vec![1.0, 2.0, f64::NAN]
+        ).expect("valid tensor shape");
+        let result = a.equal(&b)
+            .expect("broadcast succeeds in test");
         assert!(
             *result.get(&[0]).expect("valid index"),
             "1.0 == 1.0 should be true"
@@ -369,11 +373,16 @@ mod tests {
     /// `not_equal(NaN, NaN)` returns true per IEEE 754.
     #[test]
     fn test_not_equal_nan() {
-        let a =
-            Tensor::<f64, Ix1>::from_shape_vec([1], vec![f64::NAN]).expect("valid tensor shape");
-        let b =
-            Tensor::<f64, Ix1>::from_shape_vec([1], vec![f64::NAN]).expect("valid tensor shape");
-        let result = a.not_equal(&b).expect("broadcast succeeds in test");
+        let a = Tensor::<f64, Ix1>::from_shape_vec(
+            [1],
+            vec![f64::NAN]
+        ).expect("valid tensor shape");
+        let b = Tensor::<f64, Ix1>::from_shape_vec(
+            [1],
+            vec![f64::NAN]
+        ).expect("valid tensor shape");
+        let result = a.not_equal(&b)
+            .expect("broadcast succeeds in test");
         assert!(
             *result.get(&[0]).expect("valid index"),
             "NaN != NaN should be true per IEEE 754"
@@ -383,21 +392,24 @@ mod tests {
     /// `equal_scalar` matches only the element equal to the scalar.
     #[test]
     fn test_equal_scalar() {
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec(
+            [3],
+            vec![1, 2, 3]
+        ).expect("valid tensor shape");
         let r = t.equal_scalar(2);
         assert!(!*r.get(&[0]).expect("valid index"));
         assert!(*r.get(&[1]).expect("valid index"));
         assert!(!*r.get(&[2]).expect("valid index"));
     }
 
-    // less / less_equal tests
-
-    /// `less` returns true only where the left lane is strictly less than the right lane.
+    /// `less` returns true only where the left lane is strictly less than
+    /// the right lane.
     #[test]
     fn test_less_i32() {
-        let a =
-            Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 5, 8]).expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 5, 8])
+            .expect("valid tensor shape");
         let result = a.less(&b).expect("broadcast succeeds in test");
         assert!(
             *result.get(&[0]).expect("valid index"),
@@ -416,16 +428,15 @@ mod tests {
     /// `less_equal` returns true for both strictly-less and equal lanes.
     #[test]
     fn test_less_equal_i32() {
-        let a =
-            Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 5, 8]).expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10])
+            .expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec([3], vec![2, 5, 8])
+            .expect("valid tensor shape");
         let r = a.less_equal(&b).expect("broadcast succeeds in test");
         assert!(r.get(&[0]).expect("valid index"));
         assert!(r.get(&[1]).expect("valid index"));
         assert!(!r.get(&[2]).expect("valid index"));
     }
-
-    // greater / greater_equal tests
 
     /// `greater` returns false for any comparison involving NaN per IEEE 754.
     #[test]
@@ -458,22 +469,23 @@ mod tests {
         assert!(!r.get(&[2]).expect("valid index"));
     }
 
-    // ── Scalar variants ──
-
     /// `not_equal_scalar` is true for every element NOT equal to the scalar.
     #[test]
     fn test_not_equal_scalar() {
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 2, 3])
+            .expect("valid tensor shape");
         let r = t.not_equal_scalar(2);
         assert!(*r.get(&[0]).expect("valid index"));
         assert!(!*r.get(&[1]).expect("valid index"));
         assert!(*r.get(&[2]).expect("valid index"));
     }
 
-    /// `less_scalar` is true where the element is strictly less than the scalar.
+    /// `less_scalar` is true where the element is strictly less than
+    /// the scalar.
     #[test]
     fn test_less_scalar() {
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10])
+            .expect("valid tensor shape");
         let r = t.less_scalar(5);
         assert!(*r.get(&[0]).expect("valid index"));
         assert!(!*r.get(&[1]).expect("valid index"));
@@ -483,17 +495,20 @@ mod tests {
     /// `less_equal_scalar` is true where the element is `<=` the scalar.
     #[test]
     fn test_less_equal_scalar() {
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10])
+            .expect("valid tensor shape");
         let r = t.less_equal_scalar(5);
         assert!(*r.get(&[0]).expect("valid index"));
         assert!(*r.get(&[1]).expect("valid index"));
         assert!(!*r.get(&[2]).expect("valid index"));
     }
 
-    /// `greater_scalar` is true where the element is strictly greater than the scalar.
+    /// `greater_scalar` is true where the element is strictly greater
+    /// than the scalar.
     #[test]
     fn test_greater_scalar() {
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10])
+            .expect("valid tensor shape");
         let r = t.greater_scalar(5);
         assert!(!*r.get(&[0]).expect("valid index"));
         assert!(!*r.get(&[1]).expect("valid index"));
@@ -503,14 +518,13 @@ mod tests {
     /// `greater_equal_scalar` is true where the element is `>=` the scalar.
     #[test]
     fn test_greater_equal_scalar() {
-        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10]).expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec([3], vec![1, 5, 10])
+            .expect("valid tensor shape");
         let r = t.greater_equal_scalar(5);
         assert!(!*r.get(&[0]).expect("valid index"));
         assert!(*r.get(&[1]).expect("valid index"));
         assert!(*r.get(&[2]).expect("valid index"));
     }
-
-    // ── Broadcast ──
 
     /// Comparison broadcasts rank-2 inputs `[3,1]` vs `[1,4]` to `[3,4]`.
     #[test]
