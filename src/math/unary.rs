@@ -162,6 +162,7 @@ impl UnaryArith for i64 {
             )
         })
     }
+    
     #[inline]
     fn square_step(x: Self) -> Self {
         x.checked_mul(x).unwrap_or_else(|| {
@@ -171,6 +172,7 @@ impl UnaryArith for i64 {
             )
         })
     }
+    
     #[inline]
     fn neg_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
         <Self as CheckedNeg>::checked_neg(x).unwrap_or_else(|| {
@@ -181,6 +183,7 @@ impl UnaryArith for i64 {
             )
         })
     }
+    
     #[inline]
     fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
         x.checked_mul(x).unwrap_or_else(|| {
@@ -204,6 +207,7 @@ impl UnaryArith for f32 {
     fn neg_step(x: Self) -> Self {
         -x
     }
+
     #[inline]
     fn square_step(x: Self) -> Self {
         x * x
@@ -235,6 +239,7 @@ impl UnaryArith for Complex<f32> {
     fn neg_step(x: Self) -> Self {
         -x
     }
+    
     #[inline]
     fn square_step(x: Self) -> Self {
         x * x
@@ -248,6 +253,7 @@ impl UnaryArith for Complex<f64> {
     fn neg_step(x: Self) -> Self {
         -x
     }
+    
     #[inline]
     fn square_step(x: Self) -> Self {
         x * x
@@ -272,6 +278,7 @@ trait OrderedUnaryArith:
 {
     /// Element-wise absolute value; integer path panics on `MIN`.
     fn abs_step(x: Self) -> Self;
+    
     /// Element-wise signum. Integers: `-1` / `0` / `1`.
     /// Floats: delegates to `RealScalar::signum` (IEEE 754).
     fn signum_step(x: Self) -> Self;
@@ -282,6 +289,7 @@ trait OrderedUnaryArith:
     fn abs_step_with_ctx(x: Self, _idx: usize, _shape: &[usize]) -> Self {
         Self::abs_step(x)
     }
+    
     /// Context-aware variant of `signum_step`; default impl forwards to the
     /// context-free `signum_step` since neither integers nor floats have a
     /// panic path.
@@ -308,10 +316,12 @@ impl OrderedUnaryArith for i32 {
             })
         }
     }
+    
     #[inline]
     fn signum_step(x: Self) -> Self {
         x.signum()
     }
+    
     #[inline]
     fn abs_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
         if x >= 0 {
