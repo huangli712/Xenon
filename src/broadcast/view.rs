@@ -61,9 +61,14 @@ where
     // shape-level failure. No additional `broadcast_shape` pre-check is performed —
     // it would be redundant and semantically wrong (`broadcast_shape` is
     // bidirectional; `broadcast_to` is single-direction).
-    let strides_vec: Vec<usize> =
-        broadcast_strides(tensor.shape(), tensor.strides(), target_shape)?;
-    let strides: Strides<E::Dim> = Strides::<E::Dim>::from_slice(&strides_vec)?;
+    let strides_vec: Vec<usize> = broadcast_strides(
+        tensor.shape(),
+        tensor.strides(),
+        target_shape
+    )?;
+    let strides: Strides<E::Dim> = Strides::<E::Dim>::from_slice(
+        &strides_vec
+    )?;
 
     // Layout flags are computed by `compute_layout_flags` — the single source of
     // truth. We do NOT construct layout flags by hand or branch on zero strides
@@ -74,7 +79,11 @@ where
     // preserves `offset`, so the result's logical-first pointer equals the source's
     // logical-first pointer = `tensor.as_ptr()` (which returns the logical-first
     // pointer, NOT the storage base).
-    let flags = compute_layout_flags::<A, E::Dim>(&target_dim, &strides, tensor.as_ptr());
+    let flags = compute_layout_flags::<A, E::Dim>(
+        &target_dim,
+        &strides,
+        tensor.as_ptr()
+    );
 
     // (1) Build the `ViewRepr<'_, A>` that borrows the source storage.
     //     ViewRepr holds `(storage_base_ptr, storage_len)` — NOT the
