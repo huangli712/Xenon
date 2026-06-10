@@ -206,16 +206,26 @@ mod tests {
     /// `[2,3]`. Verifies the prologue broadcasts each side independently.
     #[test]
     fn test_broadcast_with_mutual() {
-        let a: Tensor2<f64> = Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
-        let b: Tensor2<f64> = Tensor2::from_shape_vec([2, 1], vec![10.0, 20.0]).expect("valid test input");
-        let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
+        let a: Tensor2<f64> = Tensor2::from_shape_vec(
+            [1, 3],
+            vec![1.0, 2.0, 3.0]
+        ).expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::from_shape_vec(
+            [2, 1],
+            vec![10.0, 20.0]
+        ).expect("valid test input");
+        let (a_view, b_view, out_dim) = broadcast_with(&a, &b)
+            .expect("compatible shapes");
         assert_eq!(out_dim.slice(), &[2, 3]);
+        
         // a expands axis 0 (stride 0) and keeps axis 1.
         assert_eq!(a_view.shape(), &[2, 3]);
         assert_eq!(a_view.strides(), &[0, 1]);
+        
         // b expands axis 1 (stride 0) and keeps axis 0.
         assert_eq!(b_view.shape(), &[2, 3]);
         assert_eq!(b_view.strides(), &[1, 0]);
+        
         // Zero-copy: each view points at its own source.
         assert_eq!(a_view.as_ptr(), a.as_ptr());
         assert_eq!(b_view.as_ptr(), b.as_ptr());
