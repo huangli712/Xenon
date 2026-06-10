@@ -479,36 +479,36 @@ where
 {
     /// Element-wise sine. IEEE 754 NaN propagates: `sin(NaN) = NaN`.
     ///
-    /// Routes through `dispatch_unary_real` so that large tensors can
+    /// Routes through `apply_unary_with_real_dispatch` so that large tensors can
     /// benefit from parallel acceleration. No SIMD kernel for `sin` is
     /// available yet, so the SIMD path falls back to scalar.
     pub fn sin(&self) -> Tensor<A, D> {
-        dispatch_unary_real(self, |x| x.sin())
+        apply_unary_with_real_dispatch(self, |x| x.sin())
     }
 
     /// Element-wise square root. `sqrt(-1.0) = NaN` per IEEE 754.
     pub fn sqrt(&self) -> Tensor<A, D> {
-        dispatch_unary_real(self, |x| x.sqrt())
+        apply_unary_with_real_dispatch(self, |x| x.sqrt())
     }
 
     /// Element-wise exponential. `exp(Inf) = Inf`, `exp(-Inf) = 0.0`.
     pub fn exp(&self) -> Tensor<A, D> {
-        dispatch_unary_real(self, |x| x.exp())
+        apply_unary_with_real_dispatch(self, |x| x.exp())
     }
 
     /// Element-wise natural logarithm. `ln(0.0) = -Inf`, `ln(-1.0) = NaN`.
     pub fn ln(&self) -> Tensor<A, D> {
-        dispatch_unary_real(self, |x| x.ln())
+        apply_unary_with_real_dispatch(self, |x| x.ln())
     }
 
     /// Element-wise floor. Exact (no tolerance).
     pub fn floor(&self) -> Tensor<A, D> {
-        dispatch_unary_real(self, |x| x.floor())
+        apply_unary_with_real_dispatch(self, |x| x.floor())
     }
 
     /// Element-wise ceil. Exact (no tolerance).
     pub fn ceil(&self) -> Tensor<A, D> {
-        dispatch_unary_real(self, |x| x.ceil())
+        apply_unary_with_real_dispatch(self, |x| x.ceil())
     }
 }
 
@@ -547,12 +547,12 @@ where
     /// Element-wise complex conjugate: `(a + bi) → (a - bi)`. Delegates to
     /// `Numeric::conjugate`.
     ///
-    /// Routes through `dispatch_unary_real` so that large tensors can
+    /// Routes through `apply_unary_with_real_dispatch` so that large tensors can
     /// benefit from parallel acceleration. No SIMD kernel for `conjugate`
     /// is available yet (it would require cross-lane operations), so the
     /// SIMD path falls back to scalar.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D> {
-        dispatch_unary_real(self, <Complex<T> as Numeric>::conjugate)
+        apply_unary_with_real_dispatch(self, <Complex<T> as Numeric>::conjugate)
     }
 }
 
@@ -684,7 +684,7 @@ where
 /// **Real acceleration today**: the Parallel path via `par_map` when the
 /// `parallel` feature is enabled and `select_exec_path` returns
 /// `ExecPath::Parallel` — reachable independent of the `simd` feature.
-fn dispatch_unary_real<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
+fn apply_unary_with_real_dispatch<A, S, D, F>(input: &TensorBase<S, D>, op: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
