@@ -561,8 +561,8 @@ where
     }
 }
 
-/// Tensor method that computes the element-wise logical NOT of a bool
-/// tensor, with execution-path dispatch.
+/// Tensor method that computes the element-wise logical NOT of a bool tensor,
+/// with execution-path dispatch.
 impl<S, D> TensorBase<S, D>
 where
     S: Storage<Elem = bool>,
