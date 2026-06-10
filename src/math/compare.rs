@@ -1,13 +1,19 @@
 //! Element-wise comparison operations producing boolean tensors:
 //! equal, not_equal, less, less_equal, greater, greater_equal.
 
+use crate::broadcast::broadcast_with;
 use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::dispatch::{ExecPath, select_exec_path};
+#[cfg(feature = "parallel")]
+use crate::dispatch::ParallelExecStrategy;
 use crate::element::{Element, OrderedCompareElement};
 use crate::error::XenonError;
+#[cfg(feature = "parallel")]
+use crate::parallel::binary::par_zip_checked;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
-use super::binary::dispatch_binary;
+use super::binary::apply_binary_serial;
 
 // ----------------------------------------------------------------------------
 // equal / not_equal for Element + PartialEq types
@@ -260,9 +266,9 @@ where
 
 /// Dispatch-aware broadcast comparison helper used by all comparison
 /// operators. Output is always `bool`. Comparison exposes no SIMD kernel,
-/// so the SIMD path falls through to the scalar loop (the `simd_try`
-/// closure always returns `None`); the Serial and Parallel paths come from
-/// the shared `dispatch_binary` skeleton.
+/// so the SIMD execution path collapses to the scalar baseline
+/// (`apply_binary_serial`); only the Serial and Parallel paths chosen by
+/// `select_exec_path` are distinct.
 pub(in crate::math) fn apply_compare_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
@@ -276,7 +282,34 @@ where
     D2: Dimension,
     F: Fn(A, A) -> bool + Copy + Send + Sync,
 {
-    dispatch_binary(a, b, op, |_a, _b| None)
+    let (a_view, b_view, out_dim) = broadcast_with(a, b)?;
+    let len = out_dim.checked_size().expect("broadcast_shape validated");
+    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
+    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
+    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
+
+    let result = match path {
+        // No SIMD kernel for comparisons; Serial and Simd both use the
+        // scalar baseline.
+        ExecPath::Serial | ExecPath::Simd => {
+            let _ = guard;
+            apply_binary_serial(&a_view, &b_view, op)
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(op(*a, *b)))?
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_binary_serial(&a_view, &b_view, op)
+            }
+        },
+    };
+    Ok(result)
 }
 
 // ----------------------------------------------------------------------------

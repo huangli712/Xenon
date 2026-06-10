@@ -15,7 +15,7 @@ use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Element, Nu
 use crate::error::XenonError;
 use crate::storage::Storage;
 use crate::complex::Complex;
-use crate::tensor::{Tensor, TensorBase, TensorView};
+use crate::tensor::{Tensor, TensorBase};
 
 // ----------------------------------------------------------------------------
 // Arithmetic operation selector (feature-independent)
@@ -32,6 +32,19 @@ enum ArithOp {
     Sub,
     Mul,
     Div,
+}
+
+/// Maps the feature-independent [`ArithOp`] selector to the SIMD-internal
+/// [`BinaryOp`] tag. Only compiled when `simd` is enabled.
+#[cfg(feature = "simd")]
+#[inline]
+fn simd_op_tag(op: ArithOp) -> Option<BinaryOp> {
+    Some(match op {
+        ArithOp::Add => BinaryOp::Add,
+        ArithOp::Sub => BinaryOp::Sub,
+        ArithOp::Mul => BinaryOp::Mul,
+        ArithOp::Div => BinaryOp::Div,
+    })
 }
 
 // ----------------------------------------------------------------------------
@@ -574,79 +587,13 @@ where
     result
 }
 
-/// Shared dispatch skeleton for broadcast binary ops. Routes between the
-/// Serial, SIMD, and Parallel execution paths chosen by `select_exec_path`.
-///
-/// `scalar_op` is the per-element kernel used by the Serial path and as the
-/// SIMD / Parallel fallback. `simd_try` attempts a vectorised kernel on the
-/// broadcast views, returning `None` to fall back to scalar; comparison ops
-/// (which have no SIMD kernel) pass a closure that always returns `None`.
-pub(in crate::math) fn dispatch_binary<A, O, S1, S2, D1, D2, FScalar, FSimd>(
-    a: &TensorBase<S1, D1>,
-    b: &TensorBase<S2, D2>,
-    scalar_op: FScalar,
-    simd_try: FSimd,
-) -> Result<Tensor<O, <D1 as BroadcastDim<D2>>::Output>, XenonError>
-where
-    A: Element,
-    O: Element,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
-    D2: Dimension,
-    FScalar: Fn(A, A) -> O + Copy + Send + Sync,
-    FSimd: FnOnce(
-        &TensorView<'_, A, <D1 as BroadcastDim<D2>>::Output>,
-        &TensorView<'_, A, <D1 as BroadcastDim<D2>>::Output>,
-    ) -> Option<Tensor<O, <D1 as BroadcastDim<D2>>::Output>>,
-{
-    let (a_view, b_view, out_dim) = broadcast_with(a, b)?;
-    let len = out_dim.checked_size().expect("broadcast_shape validated");
-    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
-    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
-    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
-
-    let result = match path {
-        ExecPath::Serial => apply_binary_serial(&a_view, &b_view, scalar_op),
-        ExecPath::Simd => simd_try(&a_view, &b_view)
-            .unwrap_or_else(|| apply_binary_serial(&a_view, &b_view, scalar_op)),
-        ExecPath::Parallel => {
-            #[cfg(feature = "parallel")]
-            {
-                let strat = ParallelExecStrategy::auto();
-                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
-                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(scalar_op(*a, *b)))?
-            }
-            #[cfg(not(feature = "parallel"))]
-            {
-                let _ = guard;
-                apply_binary_serial(&a_view, &b_view, scalar_op)
-            }
-        },
-    };
-    Ok(result)
-}
-
-/// Maps the feature-independent [`ArithOp`] selector to the SIMD-internal
-/// [`BinaryOp`] tag. Only compiled when `simd` is enabled.
-#[cfg(feature = "simd")]
-#[inline]
-fn simd_op_tag(op: ArithOp) -> Option<BinaryOp> {
-    Some(match op {
-        ArithOp::Add => BinaryOp::Add,
-        ArithOp::Sub => BinaryOp::Sub,
-        ArithOp::Mul => BinaryOp::Mul,
-        ArithOp::Div => BinaryOp::Div,
-    })
-}
-
 /// Unified broadcast arithmetic dispatch for `add` / `sub` / `mul` / `div`.
 ///
 /// - Integer types (`i32`, `i64`): serial checked traversal via
 ///   `apply_binary_checked`, carrying the per-element index and broadcast
 ///   shape so overflow / div-by-zero panics keep their diagnostic context.
-/// - Float / complex types: routed through `dispatch_binary` to the
-///   Serial / SIMD / Parallel execution path chosen by `select_exec_path`.
+/// - Float / complex types: routed through the Serial / SIMD / Parallel
+///   execution path chosen by `select_exec_path`.
 ///
 /// This helper is NOT gated on the `simd` feature — only the inner SIMD
 /// kernel attempt is conditional. That keeps the Parallel path reachable
@@ -676,18 +623,43 @@ where
         return apply_binary_checked(a, b, step);
     }
     // Float / complex: drop the index/shape context and route through the
-    // full Serial / SIMD / Parallel dispatch skeleton.
-    dispatch_binary(a, b, move |x, y| step(x, y, 0, &[]), |_a_view, _b_view| {
-        #[cfg(feature = "simd")]
-        {
-            try_simd_arith(_a_view, _b_view, simd_op_tag(op))
-        }
-        #[cfg(not(feature = "simd"))]
-        {
-            let _ = op;
-            None
-        }
-    })
+    // Serial / SIMD / Parallel execution path chosen by `select_exec_path`.
+    let scalar_op = move |x, y| step(x, y, 0, &[]);
+    let (a_view, b_view, out_dim) = broadcast_with(a, b)?;
+    let len = out_dim.checked_size().expect("broadcast_shape validated");
+    let both_contiguous = a_view.is_f_contiguous() && b_view.is_f_contiguous();
+    let both_aligned = a_view.is_aligned() && b_view.is_aligned();
+    let (path, guard) = select_exec_path(len, both_contiguous, both_aligned);
+
+    let result = match path {
+        ExecPath::Serial => apply_binary_serial(&a_view, &b_view, scalar_op),
+        ExecPath::Simd => {
+            #[cfg(feature = "simd")]
+            {
+                try_simd_arith(&a_view, &b_view, simd_op_tag(op))
+                    .unwrap_or_else(|| apply_binary_serial(&a_view, &b_view, scalar_op))
+            }
+            #[cfg(not(feature = "simd"))]
+            {
+                let _ = op;
+                apply_binary_serial(&a_view, &b_view, scalar_op)
+            }
+        },
+        ExecPath::Parallel => {
+            #[cfg(feature = "parallel")]
+            {
+                let strat = ParallelExecStrategy::auto();
+                let g = guard.expect("ExecPath::Parallel must carry a ParallelGuard");
+                par_zip_checked(a, b, &out_dim, &strat, g, |a, b| Ok(scalar_op(*a, *b)))?
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = guard;
+                apply_binary_serial(&a_view, &b_view, scalar_op)
+            }
+        },
+    };
+    Ok(result)
 }
 
 /// Homogeneous arithmetic SIMD helper. Returns `None` if `op_tag` is
