@@ -48,10 +48,6 @@ fn simd_unary_op_tag(op: UnaryArithOp) -> Option<UnaryOp> {
     }
 }
 
-// ----------------------------------------------------------------------------
-// Private per-type dispatch traits
-// ----------------------------------------------------------------------------
-
 /// Per-type unary step for `neg` and `square`.
 ///
 /// - Integer types (`i32`, `i64`): use checked arithmetic; overflow cases such
@@ -97,10 +93,6 @@ trait UnaryArith: Numeric + SimdElement + 'static {
         Self::square_step(x)
     }
 }
-
-// ----------------------------------------------------------------------------
-// Integer impls (checked arithmetic)
-// ----------------------------------------------------------------------------
 
 /// Checked-arithmetic unary step for `i32`: `neg` and `square` panic with a
 /// diagnostic message on overflow (`i32::MIN` for `neg`, large magnitudes
@@ -196,10 +188,6 @@ impl UnaryArith for i64 {
     }
 }
 
-// ----------------------------------------------------------------------------
-// Float impls (IEEE 754)
-// ----------------------------------------------------------------------------
-
 /// IEEE 754 unary step for `f32`: native `-x` and `x * x`, NaN / Inf
 /// propagate.
 impl UnaryArith for f32 {
@@ -226,11 +214,6 @@ impl UnaryArith for f64 {
         x * x
     }
 }
-
-// ----------------------------------------------------------------------------
-// Complex impls (only neg / square; abs / signum excluded at compile time
-// via `OrderedCompareElement` — Complex does NOT implement it).
-// ----------------------------------------------------------------------------
 
 /// Unary step for `Complex<f32>`: standard `Neg` and `Mul` operators; NaN /
 /// Inf propagate per IEEE 754 on the real and imaginary components.
@@ -412,10 +395,7 @@ impl OrderedUnaryArith for f64 {
 /// Tensor methods for `abs` and `signum`, available on ordered element types
 /// (`i32` / `i64` / `f32` / `f64`).
 // abs / signum: ordered types (i32/i64/f32/f64).
-#[expect(
-    private_bounds,
-    reason = "OrderedUnaryArith is a private sealed trait; public API bound is equivalent to Numeric + OrderedCompareElement"
-)]
+#[expect(private_bounds)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
