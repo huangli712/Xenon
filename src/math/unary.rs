@@ -1056,16 +1056,18 @@ mod tests {
         }
     }
 
-    /// Integer `neg` keeps exact byte-level equality between the Parallel path
-    /// (forced) and the Serial checked path.
+    /// Integer `neg` keeps exact byte-level equality between the Parallel
+    /// path (forced) and the Serial checked path.
     #[cfg(feature = "parallel")]
     #[test]
     fn test_neg_parallel_matches_serial_i32() {
         use crate::dispatch::ThresholdTestGuard;
         use crate::dispatch::set_parallel_threshold;
 
-        let t = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).map(|x| x - 64).collect())
-            .expect("valid tensor shape");
+        let t = Tensor::<i32, Ix1>::from_shape_vec(
+            [128],
+            (0..128).map(|x| x - 64).collect()
+        ).expect("valid tensor shape");
 
         let _guard = ThresholdTestGuard::new();
         set_parallel_threshold(0);
