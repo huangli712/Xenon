@@ -273,13 +273,17 @@ mod tests {
         assert_ne!(a_view.layout_state(), LayoutState::BroadcastView);
     }
 
-    /// Error propagation: incompatible shapes surface `BroadcastError` straight out
-    /// of `broadcast_with` (raised by the internal `broadcast_shape` call).
+    /// Error propagation: incompatible shapes surface `BroadcastError`
+    /// straight out of `broadcast_with` (raised by the internal
+    /// `broadcast_shape` call).
     #[test]
     fn test_broadcast_with_error_propagation() {
-        let a: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
-        let b: Tensor2<f64> = Tensor2::zeros([4, 3]).expect("valid test input");
-        let err = broadcast_with(&a, &b).expect_err("incompatible shapes");
+        let a: Tensor2<f64> = Tensor2::zeros([2, 3])
+            .expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::zeros([4, 3])
+            .expect("valid test input");
+        let err = broadcast_with(&a, &b)
+            .expect_err("incompatible shapes");
         match err {
             XenonError::BroadcastError { operation, .. } => {
                 assert_eq!(operation.as_ref(), "broadcast_shape");
@@ -288,11 +292,11 @@ mod tests {
         }
     }
 
-    // --- broadcast_to basic tests ---
+    // --- broadcast_to basic tests -------------------------------------------
 
-    /// Tests basic broadcast: a `[1,3]` tensor broadcast to `[2,3]` produces a
-    /// view with the target shape, stride 0 on the broadcast axis, and zero-copy
-    /// pointer sharing.
+    /// Tests basic broadcast: a `[1,3]` tensor broadcast to `[2,3]` produces
+    /// a view with the target shape, stride 0 on the broadcast axis, and
+    /// zero-copy pointer sharing.
     #[test]
     fn test_broadcast_to_basic() {
         let tensor: Tensor2<f64> =
