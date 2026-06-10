@@ -1,12 +1,18 @@
-//! Unary element-wise operations: abs, neg, signum, square,
-//! math functions sin/sqrt/exp/ln/floor/ceil,
-//! complex conjugate/modulus, logical not.
+//! Unary element-wise operations:
+//!
+//! - abs, neg, signum, square,
+//! - math functions sin/sqrt/exp/ln/floor/ceil,
+//! - complex conjugate/modulus, logical not.
+
+
+use crate::dispatch::{ExecPath, select_exec_path};
 
 use crate::complex::{Complex, ComplexFloat};
 use crate::dimension::Dimension;
+
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
-use crate::dispatch::{ExecPath, select_exec_path};
+
 use crate::element::{
     CheckedNeg, ComplexScalar, Element, Numeric, OrderedCompareElement, RealScalar, SimdElement,
 };
