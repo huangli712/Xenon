@@ -42,47 +42,6 @@ where
     Ok((a_view, b_view, out_dim))
 }
 
-impl<S, A, D> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    A: Element,
-    D: Dimension,
-{
-    /// Broadcast `self` to `shape`. Returns a read-only zero-copy view sharing the
-    /// underlying storage. See `15-broadcast.md §5.1` line 124-132 and §6.4.
-    ///
-    /// # Errors
-    ///
-    /// - `XenonError::BroadcastError` — `self.shape()` is not broadcast-compatible
-    ///   with `shape` (rank exceeds target, or a non-singleton source axis differs
-    ///   from the target axis). See `15-broadcast.md §6.3` and `26-error.md §5.1`.
-    /// - `XenonError::InvalidArgument` — defensive: `self.shape().len()` does not
-    ///   match `self.strides().len()` (caller bug; unreachable under correct
-    ///   `TensorBase` invariants).
-    /// - `XenonError::DimensionMismatch` — the broadcast stride vector length does
-    ///   not match the rank of `E::Dim` (caller-provided target rank mismatch for
-    ///   fixed-rank `E`). See `06-layout §5.5`.
-    ///
-    /// # Read-only guarantee (compile-fail demonstration)
-    ///
-    /// The broadcast result is `TensorView<'_, A, E::Dim>` — a read-only view.
-    /// Any attempt to acquire `&mut` access through the broadcast result must fail
-    /// to compile.
-    ///
-    /// ```compile_fail
-    /// use xenon::tensor::Tensor2;
-    /// let tensor: Tensor2<f64> = Tensor2::ones([1, 3]).expect("valid test input");
-    /// let view = tensor.broadcast_to([2, 3]).expect("valid test input");
-    /// let _slice: &mut [f64] = view.as_mut_slice();  // No such method on TensorView.
-    /// ```
-    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'_, A, E::Dim>, XenonError>
-    where
-        E: IntoDimension,
-    {
-        broadcast_to(self, shape)
-    }
-}
-
 // ----------------------------------------------------------------------------
 // broadcast_to free-function implementation
 // ----------------------------------------------------------------------------
@@ -199,6 +158,47 @@ where
     };
 
     Ok(view)
+}
+
+impl<S, A, D> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    A: Element,
+    D: Dimension,
+{
+    /// Broadcast `self` to `shape`. Returns a read-only zero-copy view sharing the
+    /// underlying storage. See `15-broadcast.md §5.1` line 124-132 and §6.4.
+    ///
+    /// # Errors
+    ///
+    /// - `XenonError::BroadcastError` — `self.shape()` is not broadcast-compatible
+    ///   with `shape` (rank exceeds target, or a non-singleton source axis differs
+    ///   from the target axis). See `15-broadcast.md §6.3` and `26-error.md §5.1`.
+    /// - `XenonError::InvalidArgument` — defensive: `self.shape().len()` does not
+    ///   match `self.strides().len()` (caller bug; unreachable under correct
+    ///   `TensorBase` invariants).
+    /// - `XenonError::DimensionMismatch` — the broadcast stride vector length does
+    ///   not match the rank of `E::Dim` (caller-provided target rank mismatch for
+    ///   fixed-rank `E`). See `06-layout §5.5`.
+    ///
+    /// # Read-only guarantee (compile-fail demonstration)
+    ///
+    /// The broadcast result is `TensorView<'_, A, E::Dim>` — a read-only view.
+    /// Any attempt to acquire `&mut` access through the broadcast result must fail
+    /// to compile.
+    ///
+    /// ```compile_fail
+    /// use xenon::tensor::Tensor2;
+    /// let tensor: Tensor2<f64> = Tensor2::ones([1, 3]).expect("valid test input");
+    /// let view = tensor.broadcast_to([2, 3]).expect("valid test input");
+    /// let _slice: &mut [f64] = view.as_mut_slice();  // No such method on TensorView.
+    /// ```
+    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'_, A, E::Dim>, XenonError>
+    where
+        E: IntoDimension,
+    {
+        broadcast_to(self, shape)
+    }
 }
 
 
