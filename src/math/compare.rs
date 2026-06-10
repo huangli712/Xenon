@@ -560,10 +560,14 @@ mod tests {
         use crate::dispatch::ThresholdTestGuard;
         use crate::dispatch::set_parallel_threshold;
 
-        let a = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).collect())
-            .expect("valid tensor shape");
-        let b = Tensor::<i32, Ix1>::from_shape_vec([128], (0..128).map(|x| 64 - x).collect())
-            .expect("valid tensor shape");
+        let a = Tensor::<i32, Ix1>::from_shape_vec(
+            [128],
+            (0..128).collect()
+        ).expect("valid tensor shape");
+        let b = Tensor::<i32, Ix1>::from_shape_vec(
+            [128],
+            (0..128).map(|x| 64 - x).collect()
+        ).expect("valid tensor shape");
 
         let _guard = ThresholdTestGuard::new();
         set_parallel_threshold(0);
