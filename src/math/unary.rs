@@ -482,10 +482,6 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// Math functions for RealScalar (f32, f64)
-// ----------------------------------------------------------------------------
-
 /// Tensor methods that compute element-wise real-valued math functions
 /// (`sin`, `sqrt`, `exp`, `ln`, `floor`, `ceil`) on `RealScalar` elements.
 impl<S, D, A> TensorBase<S, D>
@@ -496,8 +492,8 @@ where
 {
     /// Element-wise sine. IEEE 754 NaN propagates: `sin(NaN) = NaN`.
     ///
-    /// Routes through `apply_unary_with_real_dispatch` so that large tensors can
-    /// benefit from parallel acceleration. No SIMD kernel for `sin` is
+    /// Routes through `apply_unary_with_real_dispatch` so that large tensors
+    /// can benefit from parallel acceleration. No SIMD kernel for `sin` is
     /// available yet, so the SIMD path falls back to scalar.
     pub fn sin(&self) -> Tensor<A, D> {
         apply_unary_with_real_dispatch(self, |x| x.sin())
@@ -529,10 +525,6 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// Complex ops — modulus (type-changing Complex<T> → T)
-// ----------------------------------------------------------------------------
-
 /// Tensor method that computes the element-wise modulus of a complex tensor,
 /// returning a real tensor of the same shape.
 impl<S, D, T> TensorBase<S, D>
@@ -549,10 +541,6 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
-// Complex ops — conjugate (single generic impl)
-// ----------------------------------------------------------------------------
-
 /// Tensor method that computes the element-wise complex conjugate.
 impl<S, D, T> TensorBase<S, D>
 where
@@ -564,18 +552,14 @@ where
     /// Element-wise complex conjugate: `(a + bi) → (a - bi)`. Delegates to
     /// `Numeric::conjugate`.
     ///
-    /// Routes through `apply_unary_with_real_dispatch` so that large tensors can
-    /// benefit from parallel acceleration. No SIMD kernel for `conjugate`
+    /// Routes through `apply_unary_with_real_dispatch` so that large tensors
+    /// can benefit from parallel acceleration. No SIMD kernel for `conjugate`
     /// is available yet (it would require cross-lane operations), so the
     /// SIMD path falls back to scalar.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D> {
         apply_unary_with_real_dispatch(self, <Complex<T> as Numeric>::conjugate)
     }
 }
-
-// ----------------------------------------------------------------------------
-// Logical NOT for bool tensors with dispatch wiring
-// ----------------------------------------------------------------------------
 
 /// Tensor method that computes the element-wise logical NOT of a bool
 /// tensor, with execution-path dispatch.
