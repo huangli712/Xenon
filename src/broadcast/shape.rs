@@ -218,7 +218,7 @@ mod tests {
         assert!(can_broadcast(&[0, 3], &[1, 3]));
     }
 
-    /// Verifies the invariant: `can_broadcast(a, b) == broadcast_shape(a, b).is_ok()`.
+    /// Verifies: `can_broadcast(a, b) == broadcast_shape(a, b).is_ok()`.
     #[test]
     fn test_can_broadcast_matches_broadcast_shape() {
         let cases = [
