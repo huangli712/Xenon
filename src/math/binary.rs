@@ -565,7 +565,7 @@ where
 /// propagated into the kernel closure — needed so integer overflow /
 /// div-by-zero panics can report the offending element index and the
 /// broadcast output shape. Homogeneous `A -> A` (integer arithmetic).
-fn apply_binary_checked<A, S1, S2, D1, D2, F>(
+pub(crate) fn apply_binary_checked<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     mut f: F,
@@ -598,7 +598,7 @@ where
 /// Non-broadcasting binary traversal helper. Assumes `a` and `b` have
 /// identical shapes (caller is responsible for `broadcast_to` upstream).
 /// Used by dispatch helpers in their Serial and SIMD-fallback paths.
-pub(in crate::math) fn apply_binary_serial<A, O, S1, S2, D, F>(
+pub(crate) fn apply_binary_serial<A, O, S1, S2, D, F>(
     a: &TensorBase<S1, D>,
     b: &TensorBase<S2, D>,
     mut op: F,
