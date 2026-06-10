@@ -292,7 +292,7 @@ mod tests {
         }
     }
 
-    // --- broadcast_to basic tests -------------------------------------------
+    // --- broadcast_to tests -------------------------------------------------
 
     /// Tests basic broadcast: a `[1,3]` tensor broadcast to `[2,3]` produces
     /// a view with the target shape, stride 0 on the broadcast axis, and
@@ -335,14 +335,15 @@ mod tests {
         assert_eq!(view.strides(), &[0, 0]);
     }
 
-    // --- broadcast_to error and layout tests --------------------------------
-
     /// Tests that broadcasting to an incompatible shape returns a structured
     /// `BroadcastError` with the correct fields.
     #[test]
     fn test_broadcast_to_error() {
-        let tensor: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
-        let err = tensor.broadcast_to([4, 3]).expect_err("expected error");
+        let tensor: Tensor2<f64> = Tensor2::zeros([2, 3])
+            .expect("valid test input");
+        let err = tensor
+            .broadcast_to([4, 3])
+            .expect_err("expected error");
         match err {
             XenonError::BroadcastError {
                 operation,
@@ -365,8 +366,11 @@ mod tests {
     /// classifies as `BroadcastView`.
     #[test]
     fn test_broadcast_to_layout_flags_recomputed() {
-        let tensor: Tensor2<f64> = Tensor2::zeros([1, 3]).expect("valid test input");
-        let view = tensor.broadcast_to([2, 3]).expect("valid test input");
+        let tensor: Tensor2<f64> = Tensor2::zeros([1, 3])
+            .expect("valid test input");
+        let view = tensor
+            .broadcast_to([2, 3])
+            .expect("valid test input");
         assert_eq!(view.layout_state(), LayoutState::BroadcastView);
         assert!(view.flags().has_zero_stride());
     }
@@ -375,7 +379,8 @@ mod tests {
     /// `BroadcastView` classification.
     #[test]
     fn test_broadcast_to_empty_does_not_classify_as_broadcast_view() {
-        let tensor: Tensor2<f64> = Tensor2::zeros([1, 3]).expect("valid test input");
+        let tensor: Tensor2<f64> = Tensor2::zeros([1, 3])
+            .expect("valid test input");
         let view = tensor.broadcast_to([0, 3]).expect("valid test input");
         // `product(shape) == 0` ⇒ HAS_ZERO_STRIDE = false ⇒ not BroadcastView.
         assert_ne!(view.layout_state(), LayoutState::BroadcastView);
