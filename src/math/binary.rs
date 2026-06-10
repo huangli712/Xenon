@@ -235,14 +235,17 @@ impl BinaryArith for f32 {
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a + b
     }
+
     #[inline]
     fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a - b
     }
+    
     #[inline]
     fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a * b
     }
+    
     #[inline]
     fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a / b
@@ -256,14 +259,17 @@ impl BinaryArith for f64 {
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a + b
     }
+    
     #[inline]
     fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a - b
     }
+    
     #[inline]
     fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a * b
     }
+    
     #[inline]
     fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a / b
@@ -280,14 +286,17 @@ impl BinaryArith for Complex<f32> {
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a + b
     }
+    
     #[inline]
     fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a - b
     }
+    
     #[inline]
     fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a * b
     }
+    
     #[inline]
     fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a / b
@@ -302,14 +311,17 @@ impl BinaryArith for Complex<f64> {
     fn add_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a + b
     }
+    
     #[inline]
     fn sub_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a - b
     }
+    
     #[inline]
     fn mul_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a * b
     }
+    
     #[inline]
     fn div_step(a: Self, b: Self, _i: usize, _s: &[usize]) -> Self {
         a / b
@@ -320,10 +332,7 @@ impl BinaryArith for Complex<f64> {
 // Public arithmetic methods: tensor-tensor add/sub/mul/div
 // ----------------------------------------------------------------------------
 
-#[expect(
-    private_bounds,
-    reason = "BinaryArith is pub(crate) but this impl block publishes methods with a pub(crate)-only bound; sealed-trait pattern"
-)]
+#[expect(private_bounds)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -334,8 +343,8 @@ where
     ///
     /// Integer types (i32/i64) keep the serial checked path so overflow
     /// panics can report the offending element index and broadcast shape.
-    /// Float/complex types route through `apply_binary_with_dispatch` to access the
-    /// SIMD and parallel paths.
+    /// Float/complex types route through `apply_binary_with_dispatch` to
+    /// access the SIMD and parallel paths.
     ///
     /// # Errors
     ///
