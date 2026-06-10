@@ -110,6 +110,7 @@ impl BinaryArith for i32 {
             )
         })
     }
+    
     #[inline]
     fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
         <i32 as CheckedSub>::checked_sub(a, b).unwrap_or_else(|| {
@@ -124,6 +125,7 @@ impl BinaryArith for i32 {
             )
         })
     }
+    
     #[inline]
     fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
         <i32 as CheckedMul>::checked_mul(a, b).unwrap_or_else(|| {
@@ -138,6 +140,7 @@ impl BinaryArith for i32 {
             )
         })
     }
+   
     #[inline]
     fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
         <i32 as CheckedDiv>::checked_div(a, b).unwrap_or_else(|| {
@@ -174,6 +177,7 @@ impl BinaryArith for i64 {
             )
         })
     }
+
     #[inline]
     fn sub_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
         <i64 as CheckedSub>::checked_sub(a, b).unwrap_or_else(|| {
@@ -188,6 +192,7 @@ impl BinaryArith for i64 {
             )
         })
     }
+    
     #[inline]
     fn mul_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
         <i64 as CheckedMul>::checked_mul(a, b).unwrap_or_else(|| {
@@ -202,6 +207,7 @@ impl BinaryArith for i64 {
             )
         })
     }
+   
     #[inline]
     fn div_step(a: Self, b: Self, idx: usize, shape: &[usize]) -> Self {
         <i64 as CheckedDiv>::checked_div(a, b).unwrap_or_else(|| {
