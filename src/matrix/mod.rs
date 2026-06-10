@@ -6,6 +6,12 @@
 mod dot;
 mod impls;
 
+#[cfg(feature = "simd")]
+mod dot_simd;
+
+#[cfg(feature = "simd")]
+mod driver;
+
 pub(crate) use dot::dot_impl;
 
 #[cfg(feature = "parallel")]

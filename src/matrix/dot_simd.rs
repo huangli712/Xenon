@@ -313,9 +313,9 @@ pub(crate) fn try_dot_complex_f64_impl(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::try_dot_i32;
-    use crate::simd::{try_dot_f32, try_dot_f64};
-    use crate::simd::{try_dot_complex_f32, try_dot_complex_f64};
+    use super::super::driver::try_dot_i32;
+    use super::super::driver::{try_dot_f32, try_dot_f64};
+    use super::super::driver::{try_dot_complex_f32, try_dot_complex_f64};
 
     /// Number of random cases per property test.
     const CASES: usize = 32;

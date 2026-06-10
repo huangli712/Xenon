@@ -5,7 +5,7 @@
 //!
 //! ## Architecture
 //!
-//! - Facade functions (`dispatch_vector_*_op`, `try_dot_*`)
+//! - Facade functions (`dispatch_vector_*_op`)
 //!   admit SIMD execution and return `bool`/`Option<A>` to signal
 //!   acceptance. The caller **must** run its own scalar fallback on
 //!   rejection.
@@ -21,9 +21,6 @@ mod binary;
 mod unary;
 
 #[cfg(feature = "simd")]
-mod dot;
-
-#[cfg(feature = "simd")]
 mod driver;
 
 pub(crate) use types::{BinaryOp, UnaryOp};
@@ -34,9 +31,4 @@ pub(crate) use driver::{
     simd_vector_width,
     dispatch_vector_binary_op,
     dispatch_vector_unary_op,
-    try_dot_complex_f32,
-    try_dot_complex_f64,
-    try_dot_i32,
-    try_dot_f32,
-    try_dot_f64,
 };

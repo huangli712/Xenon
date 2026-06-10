@@ -21,7 +21,7 @@ use crate::dispatch::ParallelExecStrategy;
 use crate::parallel::dot::par_dot;
 
 #[cfg(feature = "simd")]
-use crate::simd::{
+use super::driver::{
     try_dot_f32,
     try_dot_f64,
     try_dot_complex_f32,
