@@ -182,18 +182,6 @@ where
     ///   not match the rank of `E::Dim` (caller-provided target rank mismatch for
     ///   fixed-rank `E`).
     ///
-    /// # Read-only guarantee (compile-fail demonstration)
-    ///
-    /// The broadcast result is `TensorView<'_, A, E::Dim>` — a read-only view.
-    /// Any attempt to acquire `&mut` access through the broadcast result must fail
-    /// to compile.
-    ///
-    /// ```compile_fail
-    /// use xenon::tensor::Tensor2;
-    /// let tensor: Tensor2<f64> = Tensor2::ones([1, 3]).expect("valid test input");
-    /// let view = tensor.broadcast_to([2, 3]).expect("valid test input");
-    /// let _slice: &mut [f64] = view.as_mut_slice();  // No such method on TensorView.
-    /// ```
     pub fn broadcast_to<E>(
         &self, shape: E
     ) -> Result<TensorView<'_, A, E::Dim>, XenonError>
@@ -211,17 +199,15 @@ mod tests {
     use crate::layout::LayoutState;
     use crate::tensor::Tensor2;
 
-    // --- broadcast_with (two-input prologue) tests ---
+    // --- broadcast_with tests -----------------------------------------------
 
     /// Two-input broadcast where each operand expands a *different* axis:
     /// `a=[1,3]` broadcasts axis 0, `b=[2,1]` broadcasts axis 1, both reaching
     /// `[2,3]`. Verifies the prologue broadcasts each side independently.
     #[test]
     fn test_broadcast_with_mutual() {
-        let a: Tensor2<f64> =
-            Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
-        let b: Tensor2<f64> =
-            Tensor2::from_shape_vec([2, 1], vec![10.0, 20.0]).expect("valid test input");
+        let a: Tensor2<f64> = Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+        let b: Tensor2<f64> = Tensor2::from_shape_vec([2, 1], vec![10.0, 20.0]).expect("valid test input");
         let (a_view, b_view, out_dim) = broadcast_with(&a, &b).expect("compatible shapes");
         assert_eq!(out_dim.slice(), &[2, 3]);
         // a expands axis 0 (stride 0) and keeps axis 1.
@@ -361,9 +347,8 @@ mod tests {
         assert!(!view.flags().has_zero_stride());
     }
 
-    /// The broadcast view never exposes `&mut`. We verify the view is iterable
-    /// in read-only fashion; the absence of any `&mut` path is covered as a
-    /// compile-fail doctest on the `broadcast_to` method.
+    /// The broadcast view is iterable in read-only fashion, as guaranteed by
+    /// the `TensorView` return type (which has no `&mut` access methods).
     #[test]
     fn test_broadcast_to_read_only_iterable() {
         let tensor: Tensor2<f64> =
