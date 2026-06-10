@@ -636,7 +636,7 @@ where
         ExecPath::Simd => {
             #[cfg(feature = "simd")]
             {
-                try_simd_arith(&a_view, &b_view, simd_op_tag(op))
+                try_simd_binary(&a_view, &b_view, simd_op_tag(op))
                     .unwrap_or_else(|| apply_binary_serial(&a_view, &b_view, scalar_op))
             }
             #[cfg(not(feature = "simd"))]
@@ -666,7 +666,7 @@ where
 /// `None`, the SIMD kernel reports it did not handle the op, or either
 /// view is non-contiguous.
 #[cfg(feature = "simd")]
-fn try_simd_arith<A, S1, S2, D>(
+fn try_simd_binary<A, S1, S2, D>(
     a: &TensorBase<S1, D>,
     b: &TensorBase<S2, D>,
     op_tag: Option<BinaryOp>,
