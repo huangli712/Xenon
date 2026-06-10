@@ -13,8 +13,5 @@
 ///
 /// Exported via `xenon::overload::Scalar` only — intentionally excluded from
 /// the prelude and top-level re-exports.
-#[expect(
-    missing_debug_implementations,
-    reason = "Scalar is a trivial newtype wrapper; Debug is not part of its public contract per 19-overload §5.3"
-)]
+#[derive(Debug)]
 pub struct Scalar<A>(pub A);
