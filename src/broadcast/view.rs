@@ -102,8 +102,12 @@ where
     //   - Empty-storage case: `as_storage_ptr()` returns the dangling sentinel,
     //     `storage_len == 0` makes the range empty, and the sentinel is never
     //     dereferenced.
-    let view_storage: ViewRepr<'_, A> =
-        unsafe { ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len()) };
+    let view_storage: ViewRepr<'_, A> = unsafe {
+        ViewRepr::from_raw_parts(
+            tensor.as_storage_ptr(),
+            tensor.storage_len()
+        )
+    };
 
     // (2) Finalize via `TensorBase::new_unchecked` — the canonical `pub(crate)`
     //     unsafe constructor.
