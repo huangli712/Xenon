@@ -44,105 +44,126 @@ where
     where
         E: IntoDimension,
     {
-        let target_dim: E::Dim = shape.into_dimension();
-        let target_shape: &[usize] = target_dim.slice();
-
-        // Error path: `broadcast_strides` returns BroadcastError or InvalidArgument on
-        // shape-level failure. No additional `broadcast_shape` pre-check is performed —
-        // it would be redundant (W11T6 already iterates per-axis) and semantically wrong
-        // (`broadcast_shape` is bidirectional; `broadcast_to` is single-direction).
-        let strides_vec: Vec<usize> =
-            broadcast_strides(self.shape(), self.strides(), target_shape)?;
-        let strides: Strides<E::Dim> = Strides::<E::Dim>::from_slice(&strides_vec)?;
-
-        // Per 06-layout §5.5 line 233: the SINGLE source of truth for layout flags is
-        // `compute_layout_flags`. We do NOT construct `LayoutFlags::broadcast_view()` by
-        // hand (no such constructor exists in 06-layout.md), and we do NOT branch on
-        // `has_zero_stride` ourselves (§6.1 line 684 already handles
-        // `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0`, including
-        // empty-array degeneracy).
-        //
-        // `ptr` argument: the logical-first pointer of the RESULT view. broadcast_to
-        // preserves `offset`, so the result's logical-first pointer equals the source's
-        // logical-first pointer = `self.as_ptr()` (07-tensor.md line 1198: `as_ptr()`
-        // returns the logical-first pointer, NOT storage base).
-        let flags = compute_layout_flags::<A, E::Dim>(&target_dim, &strides, self.as_ptr());
-
-        // (1) Build the `ViewRepr<'_, A>` that borrows the source storage.
-        //     ViewRepr holds `(storage_base_ptr, storage_len)` — NOT the
-        //     logical-first pointer (05-storage.md §6.4). The base pointer is
-        //     `self.as_storage_ptr()` (07-tensor.md §5 line 465-476: "returns
-        //     `storage.as_ptr()` directly, WITHOUT adding offset"); `storage_len()`
-        //     reports the source storage extent (07-tensor.md §5 line 484).
-        //
-        // SAFETY (ViewRepr::from_raw_parts, W7T14):
-        //   - `self.as_storage_ptr()` is non-null and aligned (carried unchanged
-        //     from the source storage that was already constructed and validated).
-        //   - `[base, base + storage_len)` lies inside a single allocation, all
-        //     `storage_len` elements are initialized values of `A`.
-        //   - The returned `ViewRepr<'_, A>` lifetime is bound to `&self`; no
-        //     mutable alias to the same memory is alive during that borrow.
-        //   - Empty-storage case: `as_storage_ptr()` returns the dangling sentinel,
-        //     `storage_len == 0` makes the range empty, and the sentinel is never
-        //     dereferenced.
-        let view_storage: ViewRepr<'_, A> =
-            unsafe { ViewRepr::from_raw_parts(self.as_storage_ptr(), self.storage_len()) };
-
-        // (2) Finalize via `TensorBase::new_unchecked` — the canonical pub(crate)
-        //     unsafe constructor (07-tensor.md §5.6 line 674-730).
-        //
-        // Why NOT `TensorView::from_raw_parts` (W11T7's original path):
-        //   (a) Its `ptr` argument must be the storage base (07-tensor.md §5.1 line
-        //       202, §5.7 line 752); passing `self.as_ptr()` (logical-first) +
-        //       `self.offset()` would double-apply the offset → UB.
-        //   (b) It always sets `derived_from_view_mut := false` (07-tensor.md §5
-        //       line 183-186), preventing propagation from `ViewMut` sources;
-        //       `new_unchecked` accepts the flag explicitly.
-        //   (c) 07-tensor.md §5.6 line 685-690 explicitly states all internal
-        //       unchecked constructors forward to `new_unchecked` rather than
-        //       defining parallel safety invariants — broadcast is exactly such
-        //       an internal caller.
-        //
-        // `derived_from_view_mut` propagation per 07-tensor.md §5.6 line 707-713:
-        //   - `true` ONLY when source is a `ViewMutRepr` being demoted, or a
-        //     `ViewRepr` already carrying `derived_from_view_mut == true`.
-        //   - `self.derived_from_view_mut` (field access) reports the combined
-        //     classification; forwarding it satisfies the propagation rule for
-        //     every supported source storage type.
-        //   - For `Owned<A>` sources the field is `false`, matching the
-        //     §5.6 line 711-713 requirement that "Owned construction paths MUST
-        //     pass `false`".
-        //
-        // SAFETY (TensorBase::new_unchecked, 07-tensor.md §5.6 line 692-715):
-        //   - `target_dim` + `strides` + `self.offset()`: target shape is rank-checked
-        //     (`Strides::from_slice` succeeded; `IntoDimension` fixed the rank).
-        //     `broadcast_strides` already produced a layout that broadcasts the
-        //     source onto `target_dim`, so the result's logical access range equals
-        //     the source's (each `target_dim` index resolves to a source index via
-        //     zero-stride/repeat axes), which still fits the source `storage_len`
-        //     carried by `view_storage`.
-        //   - `flags` was produced by `compute_layout_flags` (above) on the same
-        //     `(target_dim, strides, self.as_ptr())` triple — `self.as_ptr()` is the
-        //     logical-first pointer the result view will expose via its own
-        //     `as_ptr()` (offset unchanged). This satisfies §5.6 line 693-698 verbatim.
-        //   - `derived_from_view_mut` is forwarded from the source per the
-        //     propagation rule above.
-        //   - The layout family is valid for an immutable view: zero-stride
-        //     broadcast layouts are explicitly accepted on read-only paths
-        //     (07-tensor.md §5.7 line 775-777).
-        let view: TensorView<'_, A, E::Dim> = unsafe {
-            TensorBase::<ViewRepr<'_, A>, E::Dim>::new_unchecked(
-                view_storage,
-                target_dim,
-                strides,
-                self.offset(),
-                flags,
-                self.derived_from_view_mut,
-            )
-        };
-
-        Ok(view)
+        broadcast_to(self, shape)
     }
+}
+
+// ----------------------------------------------------------------------------
+// broadcast_to free-function implementation
+// ----------------------------------------------------------------------------
+
+/// Implementation backing [`TensorBase::broadcast_to`], extracted as a
+/// `pub(crate)` free function so internal call sites can broadcast a single
+/// tensor without method syntax. The public inherent method forwards here; see
+/// it for the public contract, error semantics, and the read-only guarantee.
+pub(crate) fn broadcast_to<S, A, D, E>(
+    tensor: &TensorBase<S, D>,
+    shape: E,
+) -> Result<TensorView<'_, A, E::Dim>, XenonError>
+where
+    S: Storage<Elem = A>,
+    A: Element,
+    D: Dimension,
+    E: IntoDimension,
+{
+    let target_dim: E::Dim = shape.into_dimension();
+    let target_shape: &[usize] = target_dim.slice();
+
+    // Error path: `broadcast_strides` returns BroadcastError or InvalidArgument on
+    // shape-level failure. No additional `broadcast_shape` pre-check is performed —
+    // it would be redundant (W11T6 already iterates per-axis) and semantically wrong
+    // (`broadcast_shape` is bidirectional; `broadcast_to` is single-direction).
+    let strides_vec: Vec<usize> =
+        broadcast_strides(tensor.shape(), tensor.strides(), target_shape)?;
+    let strides: Strides<E::Dim> = Strides::<E::Dim>::from_slice(&strides_vec)?;
+
+    // Per 06-layout §5.5 line 233: the SINGLE source of truth for layout flags is
+    // `compute_layout_flags`. We do NOT construct `LayoutFlags::broadcast_view()` by
+    // hand (no such constructor exists in 06-layout.md), and we do NOT branch on
+    // `has_zero_stride` ourselves (§6.1 line 684 already handles
+    // `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0`, including
+    // empty-array degeneracy).
+    //
+    // `ptr` argument: the logical-first pointer of the RESULT view. broadcast_to
+    // preserves `offset`, so the result's logical-first pointer equals the source's
+    // logical-first pointer = `tensor.as_ptr()` (07-tensor.md line 1198: `as_ptr()`
+    // returns the logical-first pointer, NOT storage base).
+    let flags = compute_layout_flags::<A, E::Dim>(&target_dim, &strides, tensor.as_ptr());
+
+    // (1) Build the `ViewRepr<'_, A>` that borrows the source storage.
+    //     ViewRepr holds `(storage_base_ptr, storage_len)` — NOT the
+    //     logical-first pointer (05-storage.md §6.4). The base pointer is
+    //     `tensor.as_storage_ptr()` (07-tensor.md §5 line 465-476: "returns
+    //     `storage.as_ptr()` directly, WITHOUT adding offset"); `storage_len()`
+    //     reports the source storage extent (07-tensor.md §5 line 484).
+    //
+    // SAFETY (ViewRepr::from_raw_parts, W7T14):
+    //   - `tensor.as_storage_ptr()` is non-null and aligned (carried unchanged
+    //     from the source storage that was already constructed and validated).
+    //   - `[base, base + storage_len)` lies inside a single allocation, all
+    //     `storage_len` elements are initialized values of `A`.
+    //   - The returned `ViewRepr<'_, A>` lifetime is bound to `&tensor`; no
+    //     mutable alias to the same memory is alive during that borrow.
+    //   - Empty-storage case: `as_storage_ptr()` returns the dangling sentinel,
+    //     `storage_len == 0` makes the range empty, and the sentinel is never
+    //     dereferenced.
+    let view_storage: ViewRepr<'_, A> =
+        unsafe { ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len()) };
+
+    // (2) Finalize via `TensorBase::new_unchecked` — the canonical pub(crate)
+    //     unsafe constructor (07-tensor.md §5.6 line 674-730).
+    //
+    // Why NOT `TensorView::from_raw_parts` (W11T7's original path):
+    //   (a) Its `ptr` argument must be the storage base (07-tensor.md §5.1 line
+    //       202, §5.7 line 752); passing `tensor.as_ptr()` (logical-first) +
+    //       `tensor.offset()` would double-apply the offset → UB.
+    //   (b) It always sets `derived_from_view_mut := false` (07-tensor.md §5
+    //       line 183-186), preventing propagation from `ViewMut` sources;
+    //       `new_unchecked` accepts the flag explicitly.
+    //   (c) 07-tensor.md §5.6 line 685-690 explicitly states all internal
+    //       unchecked constructors forward to `new_unchecked` rather than
+    //       defining parallel safety invariants — broadcast is exactly such
+    //       an internal caller.
+    //
+    // `derived_from_view_mut` propagation per 07-tensor.md §5.6 line 707-713:
+    //   - `true` ONLY when source is a `ViewMutRepr` being demoted, or a
+    //     `ViewRepr` already carrying `derived_from_view_mut == true`.
+    //   - `tensor.derived_from_view_mut` (field access) reports the combined
+    //     classification; forwarding it satisfies the propagation rule for
+    //     every supported source storage type.
+    //   - For `Owned<A>` sources the field is `false`, matching the
+    //     §5.6 line 711-713 requirement that "Owned construction paths MUST
+    //     pass `false`".
+    //
+    // SAFETY (TensorBase::new_unchecked, 07-tensor.md §5.6 line 692-715):
+    //   - `target_dim` + `strides` + `tensor.offset()`: target shape is rank-checked
+    //     (`Strides::from_slice` succeeded; `IntoDimension` fixed the rank).
+    //     `broadcast_strides` already produced a layout that broadcasts the
+    //     source onto `target_dim`, so the result's logical access range equals
+    //     the source's (each `target_dim` index resolves to a source index via
+    //     zero-stride/repeat axes), which still fits the source `storage_len`
+    //     carried by `view_storage`.
+    //   - `flags` was produced by `compute_layout_flags` (above) on the same
+    //     `(target_dim, strides, tensor.as_ptr())` triple — `tensor.as_ptr()` is the
+    //     logical-first pointer the result view will expose via its own
+    //     `as_ptr()` (offset unchanged). This satisfies §5.6 line 693-698 verbatim.
+    //   - `derived_from_view_mut` is forwarded from the source per the
+    //     propagation rule above.
+    //   - The layout family is valid for an immutable view: zero-stride
+    //     broadcast layouts are explicitly accepted on read-only paths
+    //     (07-tensor.md §5.7 line 775-777).
+    let view: TensorView<'_, A, E::Dim> = unsafe {
+        TensorBase::<ViewRepr<'_, A>, E::Dim>::new_unchecked(
+            view_storage,
+            target_dim,
+            strides,
+            tensor.offset(),
+            flags,
+            tensor.derived_from_view_mut,
+        )
+    };
+
+    Ok(view)
 }
 
 // ----------------------------------------------------------------------------
