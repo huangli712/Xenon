@@ -244,21 +244,29 @@ mod tests {
     #[test]
     fn test_broadcast_shape_basic() {
         // Right-align with `1` axis expansion.
-        let r = broadcast_shape(&[1, 3], &[2, 3]).expect("compatible shapes");
+        let r = broadcast_shape(&[1, 3], &[2, 3])
+            .expect("compatible shapes");
         assert_eq!(r.slice(), &[2, 3]);
+        
         // Scalar to high-dim: missing leading axes are 1.
-        let r = broadcast_shape(&[], &[2, 3]).expect("scalar to high-dim");
+        let r = broadcast_shape(&[], &[2, 3])
+            .expect("scalar to high-dim");
         assert_eq!(r.slice(), &[2, 3]);
+        
         // Empty-axis broadcast: [0,3] vs [1,3] → [0,3].
-        let r = broadcast_shape(&[0, 3], &[1, 3]).expect("empty-axis broadcast");
+        let r = broadcast_shape(&[0, 3], &[1, 3])
+            .expect("empty-axis broadcast");
         assert_eq!(r.slice(), &[0, 3]);
+        
         // High-rank cross-broadcast: [2,1,4] → [3,2,5,4].
-        let r = broadcast_shape(&[2, 1, 4], &[3, 2, 5, 4]).expect("cross-rank broadcast");
+        let r = broadcast_shape(&[2, 1, 4], &[3, 2, 5, 4])
+            .expect("cross-rank broadcast");
         assert_eq!(r.slice(), &[3, 2, 5, 4]);
     }
 
-    /// Tests that `broadcast_shape` returns a structured `BroadcastError` with
-    /// the correct fields when shapes are incompatible at the leading axis.
+    /// Tests that `broadcast_shape` returns a structured `BroadcastError`
+    /// with the correct fields when shapes are incompatible at the leading
+    /// axis.
     #[test]
     fn test_broadcast_shape_error() {
         let err = broadcast_shape(&[2, 3], &[4, 3]).expect_err("incompatible shapes");
