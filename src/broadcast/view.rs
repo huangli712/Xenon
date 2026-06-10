@@ -205,16 +205,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::Ix2;
     use crate::error::XenonError;
     use crate::layout::LayoutState;
     use crate::tensor::Tensor2;
-
-    /// Compile-time check: `broadcast_to` method exists with the expected signature.
-    #[allow(dead_code)]
-    fn _check_broadcast_to_sig(t: &Tensor2<f64>) -> Result<TensorView<'_, f64, Ix2>, XenonError> {
-        t.broadcast_to([2usize, 3])
-    }
 
     // --- W11T7 tests ---
 
@@ -272,7 +265,7 @@ mod tests {
     /// §8.2 `test_broadcast_layout_flags_recomputed`: non-empty broadcast view
     /// (`product(shape) > 0` and `any(stride == 0)`) classifies as `BroadcastView`.
     #[test]
-    fn test_broadcast_layout_flags_recomputed() {
+    fn test_broadcast_to_layout_flags_recomputed() {
         let tensor: Tensor2<f64> = Tensor2::zeros([1, 3]).expect("valid test input");
         let view = tensor.broadcast_to([2, 3]).expect("valid test input");
         assert_eq!(view.layout_state(), LayoutState::BroadcastView);
@@ -294,7 +287,7 @@ mod tests {
     /// We verify the view is iterable in read-only fashion; the absence of any
     /// `&mut` path is covered as a compile-fail doctest in W11T10.
     #[test]
-    fn test_broadcast_read_only_iterable() {
+    fn test_broadcast_to_read_only_iterable() {
         let tensor: Tensor2<f64> =
             Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
         let view = tensor.broadcast_to([2, 3]).expect("valid test input");
