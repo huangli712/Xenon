@@ -381,7 +381,9 @@ mod tests {
     fn test_broadcast_to_empty_does_not_classify_as_broadcast_view() {
         let tensor: Tensor2<f64> = Tensor2::zeros([1, 3])
             .expect("valid test input");
-        let view = tensor.broadcast_to([0, 3]).expect("valid test input");
+        let view = tensor
+            .broadcast_to([0, 3])
+            .expect("valid test input");
         // `product(shape) == 0` ⇒ HAS_ZERO_STRIDE = false ⇒ not BroadcastView.
         assert_ne!(view.layout_state(), LayoutState::BroadcastView);
         assert!(!view.flags().has_zero_stride());
@@ -391,9 +393,13 @@ mod tests {
     /// the `TensorView` return type (which has no `&mut` access methods).
     #[test]
     fn test_broadcast_to_read_only_iterable() {
-        let tensor: Tensor2<f64> =
-            Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
-        let view = tensor.broadcast_to([2, 3]).expect("valid test input");
+        let tensor: Tensor2<f64> = Tensor2::from_shape_vec(
+            [1, 3],
+            vec![1.0, 2.0, 3.0]
+        ).expect("valid test input");
+        let view = tensor
+            .broadcast_to([2, 3])
+            .expect("valid test input");
         let n: usize = view.iter().count();
         assert_eq!(n, 6);
     }
