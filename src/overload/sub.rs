@@ -629,9 +629,17 @@ mod tests {
     /// Verifies element-wise `subtraction` between two same-shaped tensors.
     #[test]
     fn test_sub_basic() {
-        let left = Tensor::from_shape_vec([2], vec![5, 7]).expect("valid test input");
-        let right = Tensor::from_shape_vec([2], vec![3, 4]).expect("valid test input");
-        assert_eq!((left - right).expect("broadcast succeeds").as_slice().expect("c"), &[2, 3]);
+        let left = Tensor::from_shape_vec([2], vec![5, 7])
+            .expect("valid test input");
+        let right = Tensor::from_shape_vec([2], vec![3, 4])
+            .expect("valid test input");
+        assert_eq!(
+            (left - right)
+                .expect("broadcast succeeds")
+                .as_slice()
+                .expect("c"),
+            &[2, 3]
+        );
     }
 
     /// Verifies element-wise `subtraction` with broadcasting support.
