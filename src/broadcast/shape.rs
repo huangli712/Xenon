@@ -269,7 +269,8 @@ mod tests {
     /// axis.
     #[test]
     fn test_broadcast_shape_error() {
-        let err = broadcast_shape(&[2, 3], &[4, 3]).expect_err("incompatible shapes");
+        let err = broadcast_shape(&[2, 3], &[4, 3])
+            .expect_err("incompatible shapes");
         match err {
             XenonError::BroadcastError {
                 operation,
@@ -292,7 +293,8 @@ mod tests {
     /// that axis index, verifying the right-aligned `out_axis` computation.
     #[test]
     fn test_broadcast_shape_error_non_leading_axis() {
-        let err = broadcast_shape(&[2, 3], &[2, 4]).expect_err("axis-1 conflict");
+        let err = broadcast_shape(&[2, 3], &[2, 4])
+            .expect_err("axis-1 conflict");
         match err {
             XenonError::BroadcastError {
                 operation,
@@ -340,7 +342,8 @@ mod tests {
     #[test]
     fn test_broadcast_strides_zero_stride() {
         // orig [1, 3] with strides [3, 1] → target [2, 3]: axis 0 broadcast, stride 0.
-        let s = broadcast_strides(&[1, 3], &[3, 1], &[2, 3]).expect("compatible strides");
+        let s = broadcast_strides(&[1, 3], &[3, 1], &[2, 3])
+            .expect("compatible strides");
         assert_eq!(s, vec![0, 1]);
     }
 
