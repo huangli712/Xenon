@@ -1,11 +1,10 @@
 //! Broadcasting utilities.
 //!
-//! Public API list (see `15-broadcast.md §5.1`):
+//! Public API list:
 //! - `broadcast_shape(a, b) -> Result<IxDyn, XenonError>`
 //! - `can_broadcast(a, b) -> bool`
 //! - `broadcast_strides(orig_shape, orig_strides, target_shape) -> Result<Vec<usize>, XenonError>`
-//! - `TensorBase::broadcast_to<E: IntoDimension>(&self, shape: E)`
-//!   — inherent method on `TensorBase`, defined in `view.rs`; visible via `TensorBase`.
+//! - `broadcast_with` (pub(crate) — shared broadcast prologue for math operators)
 
 mod shape;
 mod view;

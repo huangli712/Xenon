@@ -1,7 +1,32 @@
-use crate::dimension::IxDyn;
-use crate::error::{InvalidArgumentKind, XenonError};
-
 use std::borrow::Cow;
+
+use crate::error::{InvalidArgumentKind, XenonError};
+use crate::dimension::IxDyn;
+
+/// Constructs `XenonError::BroadcastError` with all fields populated per
+/// `26-error.md §5.1` line 124-130.
+///
+/// - `operation`: caller name (e.g. "broadcast_shape", "broadcast_strides").
+/// - `lhs_shape` / `rhs_shape`: the two compared shapes. For `broadcast_strides`
+///   (single-input broadcast), pass `orig_shape` and `target_shape` respectively.
+/// - `attempted_target_shape`: caller-supplied target if known (only relevant in
+///   `broadcast_to` / `broadcast_strides` paths); `None` for pure `broadcast_shape`.
+/// - `axis`: the conflicting axis index (right-aligned, 0-based on the result rank).
+pub(crate) fn broadcast_error(
+    operation: &'static str,
+    lhs_shape: &[usize],
+    rhs_shape: &[usize],
+    attempted_target_shape: Option<&[usize]>,
+    axis: usize,
+) -> XenonError {
+    XenonError::BroadcastError {
+        operation: Cow::Borrowed(operation),
+        lhs_shape: lhs_shape.to_vec(),
+        rhs_shape: rhs_shape.to_vec(),
+        attempted_target_shape: attempted_target_shape.map(|s| s.to_vec()),
+        axis: Some(axis),
+    }
+}
 
 /// Numpy-style broadcast compatibility check. Semantically equivalent to
 /// `broadcast_shape(a, b).is_ok()` per `15-broadcast.md §8.4` invariant.
@@ -158,31 +183,6 @@ pub fn broadcast_strides(
         };
     }
     Ok(out)
-}
-
-/// Constructs `XenonError::BroadcastError` with all fields populated per
-/// `26-error.md §5.1` line 124-130.
-///
-/// - `operation`: caller name (e.g. "broadcast_shape", "broadcast_strides").
-/// - `lhs_shape` / `rhs_shape`: the two compared shapes. For `broadcast_strides`
-///   (single-input broadcast), pass `orig_shape` and `target_shape` respectively.
-/// - `attempted_target_shape`: caller-supplied target if known (only relevant in
-///   `broadcast_to` / `broadcast_strides` paths); `None` for pure `broadcast_shape`.
-/// - `axis`: the conflicting axis index (right-aligned, 0-based on the result rank).
-pub(super) fn broadcast_error(
-    operation: &'static str,
-    lhs_shape: &[usize],
-    rhs_shape: &[usize],
-    attempted_target_shape: Option<&[usize]>,
-    axis: usize,
-) -> XenonError {
-    XenonError::BroadcastError {
-        operation: Cow::Borrowed(operation),
-        lhs_shape: lhs_shape.to_vec(),
-        rhs_shape: rhs_shape.to_vec(),
-        attempted_target_shape: attempted_target_shape.map(|s| s.to_vec()),
-        axis: Some(axis),
-    }
 }
 
 #[cfg(test)]
