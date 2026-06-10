@@ -341,7 +341,8 @@ mod tests {
     /// Tests that a singleton axis broadcasts to a larger target with stride 0.
     #[test]
     fn test_broadcast_strides_zero_stride() {
-        // orig [1, 3] with strides [3, 1] → target [2, 3]: axis 0 broadcast, stride 0.
+        // orig [1, 3] with strides [3, 1] → target [2, 3]: axis 0 broadcast,
+        // stride 0.
         let s = broadcast_strides(&[1, 3], &[3, 1], &[2, 3])
             .expect("compatible strides");
         assert_eq!(s, vec![0, 1]);
@@ -350,8 +351,10 @@ mod tests {
     /// Tests that strides are preserved when no broadcast occurs (shapes match).
     #[test]
     fn test_broadcast_strides_non_negative() {
-        // No broadcast occurs when shapes already match: orig stride is preserved.
-        let s = broadcast_strides(&[2, 3], &[3, 1], &[2, 3]).expect("compatible strides");
+        // No broadcast occurs when shapes already match: orig stride
+        // is preserved.
+        let s = broadcast_strides(&[2, 3], &[3, 1], &[2, 3])
+            .expect("compatible strides");
         assert_eq!(s, vec![3, 1]);
     }
 
@@ -362,7 +365,8 @@ mod tests {
         // Source: shape [4] with stride [0] (already a broadcast view).
         // Re-broadcast to [2, 4]: leading axis is new broadcast (stride 0),
         // trailing axis matches dim and keeps the existing zero stride.
-        let s = broadcast_strides(&[4], &[0], &[2, 4]).expect("compatible strides");
+        let s = broadcast_strides(&[4], &[0], &[2, 4])
+            .expect("compatible strides");
         assert_eq!(s, vec![0, 0]);
     }
 
@@ -370,7 +374,8 @@ mod tests {
     /// target axis of length 0 writes stride 0.
     #[test]
     fn test_broadcast_strides_empty_axis() {
-        let s = broadcast_strides(&[1, 3], &[3, 1], &[0, 3]).expect("compatible strides");
+        let s = broadcast_strides(&[1, 3], &[3, 1], &[0, 3])
+            .expect("compatible strides");
         assert_eq!(s, vec![0, 1]);
     }
 
