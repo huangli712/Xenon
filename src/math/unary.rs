@@ -441,10 +441,7 @@ where
 /// Tensor methods for `neg` and `square`, available on every `Numeric`
 /// element type (including complex).
 // neg / square: all Numeric (including Complex).
-#[expect(
-    private_bounds,
-    reason = "UnaryArith is a private sealed trait; public API bound is equivalent to Numeric"
-)]
+#[expect(private_bounds)]
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -461,7 +458,11 @@ where
     pub fn neg(&self) -> Tensor<A, D> {
         apply_unary_with_dispatch(
             self,
-            |x, idx, shape| <A as UnaryArith>::neg_step_with_ctx(x, idx, shape),
+            |x, idx, shape| <A as UnaryArith>::neg_step_with_ctx(
+                x,
+                idx,
+                shape
+            ),
             UnaryArithOp::Neg,
         )
     }
@@ -471,7 +472,11 @@ where
     pub fn square(&self) -> Tensor<A, D> {
         apply_unary_with_dispatch(
             self,
-            |x, idx, shape| <A as UnaryArith>::square_step_with_ctx(x, idx, shape),
+            |x, idx, shape| <A as UnaryArith>::square_step_with_ctx(
+                x,
+                idx,
+                shape
+            ),
             UnaryArithOp::Square,
         )
     }
