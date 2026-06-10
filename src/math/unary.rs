@@ -885,22 +885,22 @@ mod tests {
     /// `floor(1.7) == 1.0` and `ceil(1.3) == 2.0`.
     #[test]
     fn test_floor_ceil() {
-        let t =
-            Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.7, 1.3]).expect("valid tensor shape");
+        let t = Tensor::<f64, Ix1>::from_shape_vec([2], vec![1.7, 1.3])
+            .expect("valid tensor shape");
         let f = t.floor();
         let c = t.ceil();
         assert_eq!(*f.get(&[0]).expect("valid index"), 1.0);
         assert_eq!(*c.get(&[1]).expect("valid index"), 2.0);
     }
 
-    // ── Complex op tests ──
-
     /// `modulus` of `3 + 4i` returns `5.0` (within a 1e-10 tolerance) and
     /// produces a real tensor of the same shape.
     #[test]
     fn test_modulus() {
-        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(3.0_f64, 4.0)])
-            .expect("valid tensor shape");
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec(
+            [1],
+            vec![Complex::new(3.0_f64, 4.0)]
+        ).expect("valid tensor shape");
         let r = t.modulus();
         assert!(
             (*r.get(&[0]).expect("valid index") - 5.0).abs() < 1e-10,
@@ -913,28 +913,28 @@ mod tests {
     /// imaginary part negated).
     #[test]
     fn test_conjugate() {
-        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0_f64, 2.0)])
-            .expect("valid tensor shape");
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec(
+            [1],
+            vec![Complex::new(1.0_f64, 2.0)]
+        ).expect("valid tensor shape");
         let r = t.conjugate();
         assert_eq!(r.get(&[0]).expect("valid index").re(), 1.0);
         assert_eq!(r.get(&[0]).expect("valid index").im(), -2.0);
     }
 
-    // ── Logical NOT test ──
-
     /// `not` on a bool tensor flips each element (`true → false`,
     /// `false → true`) and preserves the shape.
     #[test]
     fn test_not_bool() {
-        let t = Tensor::<bool, Ix1>::from_shape_vec([3], vec![true, false, true])
-            .expect("valid tensor shape");
+        let t = Tensor::<bool, Ix1>::from_shape_vec(
+            [3],
+            vec![true, false, true]
+        ).expect("valid tensor shape");
         let result = t.not();
         assert!(!(*result.get(&[0]).expect("valid index")));
         assert!(*result.get(&[1]).expect("valid index"));
         assert!(!(*result.get(&[2]).expect("valid index")));
     }
-
-    // ── Integer overflow panic diagnostics ──
 
     /// `neg(i32::MIN)` overflows the checked negation and panics.
     #[test]
@@ -953,8 +953,6 @@ mod tests {
         let result = catch_unwind(|| t.abs());
         assert!(result.is_err(), "abs(i32::MIN) must panic on overflow");
     }
-
-    // ── Float abs / signum ──
 
     /// `abs` on an `f64` tensor returns the IEEE 754 magnitude.
     #[test]
@@ -979,13 +977,13 @@ mod tests {
         assert!((*r.get(&[2]).expect("valid index") + 1.0).abs() < 1e-10);
     }
 
-    // ── Complex neg / square (independent dispatch branch) ──
-
     /// `neg` on `Complex<f64>` negates both components: `-(1+2i) = -1-2i`.
     #[test]
     fn test_neg_complex() {
-        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec([1], vec![Complex::new(1.0, 2.0)])
-            .expect("valid tensor shape");
+        let t = Tensor::<Complex<f64>, Ix1>::from_shape_vec(
+            [1],
+            vec![Complex::new(1.0, 2.0)]
+        ).expect("valid tensor shape");
         let r = t.neg();
         let v = r.get(&[0]).expect("valid index");
         assert!((v.re() + 1.0).abs() < 1e-10);
