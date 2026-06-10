@@ -167,8 +167,8 @@ where
     A: Element,
     D: Dimension,
 {
-    /// Broadcast `self` to `shape`. Returns a read-only zero-copy view sharing the
-    /// underlying storage.
+    /// Broadcast `self` to `shape`. Returns a read-only zero-copy view sharing
+    /// the underlying storage.
     ///
     /// # Errors
     ///
@@ -194,14 +194,15 @@ where
     /// let view = tensor.broadcast_to([2, 3]).expect("valid test input");
     /// let _slice: &mut [f64] = view.as_mut_slice();  // No such method on TensorView.
     /// ```
-    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'_, A, E::Dim>, XenonError>
+    pub fn broadcast_to<E>(
+        &self, shape: E
+    ) -> Result<TensorView<'_, A, E::Dim>, XenonError>
     where
         E: IntoDimension,
     {
         broadcast_to(self, shape)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
