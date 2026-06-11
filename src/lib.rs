@@ -116,8 +116,6 @@ pub mod shape;
 /// Tensor iterators: element, axis, and indexed traversal.
 pub mod iter;
 
-/// Utility operations: clip, fill, to_contiguous, into_contiguous.
-pub mod util;
 
 /// Set operations: unique deduplication.
 pub mod set;
