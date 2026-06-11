@@ -5,26 +5,8 @@
 
 use core::fmt::{Display, Formatter};
 
+use super::types::PositiveZero;
 use super::{Complex, ComplexFloat};
-
-/// Crate-private helper: distinguishes IEEE-754 `+0.0` from `-0.0`.
-pub(crate) trait PositiveZero {
-    fn is_positive_zero(&self) -> bool;
-}
-
-impl PositiveZero for f32 {
-    #[inline]
-    fn is_positive_zero(&self) -> bool {
-        self.to_bits() == 0.0f32.to_bits()
-    }
-}
-
-impl PositiveZero for f64 {
-    #[inline]
-    fn is_positive_zero(&self) -> bool {
-        self.to_bits() == 0.0f64.to_bits()
-    }
-}
 
 impl<T> Display for Complex<T>
 where
