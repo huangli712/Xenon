@@ -1,8 +1,8 @@
-//! Display implementations and formatting helpers for error types.
+//! Formatting helper for error messages.
 //!
-//! Provides [`Display`] impls for all error enums and the [`FmtShape`]
-//! helper for rendering `[usize]` slices in numpy-style bracket notation
-//! (e.g., `[2 × 3 × 4]`).
+//! Provides [`FmtShape`] — a lightweight wrapper for rendering
+//! `[usize]` shape/stride slices in numpy-style bracket notation
+//! (e.g., `[2 × 3 × 4]`). Used by [`Display`] impls in sibling modules.
 
 use core::fmt::{self, Display, Formatter};
 
