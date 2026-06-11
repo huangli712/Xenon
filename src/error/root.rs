@@ -330,7 +330,6 @@ mod tests {
         StorageKindTag, TypedViewRejection,
         WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory,
     };
-    use std::borrow::Cow;
     use std::error::Error;
 
     /// Verify XenonError enum is constructable with each variant.
