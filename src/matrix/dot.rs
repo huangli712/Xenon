@@ -18,7 +18,7 @@ use crate::dispatch::{ExecPath, select_exec_path};
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
-use crate::parallel::dot::par_dot;
+use super::dot_parallel::par_dot;
 
 #[cfg(feature = "simd")]
 use super::driver::{
@@ -284,7 +284,7 @@ where
 ///   `Numeric`, preserving IEEE 754 NaN / Inf propagation.
 ///
 /// Shared by the serial baseline ([`dot_step`]) and the parallel kernel
-/// ([`crate::parallel::dot::par_dot`]) so both paths emit identical
+/// ([`super::dot_parallel::par_dot`]) so both paths emit identical
 /// multiplication-overflow diagnostics.
 ///
 /// # Safety

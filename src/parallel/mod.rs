@@ -16,10 +16,6 @@ pub(crate) mod reduce;
 #[cfg(feature = "parallel")]
 pub(crate) mod sum;
 
-/// Parallel dot product (`par_dot`).
-#[cfg(feature = "parallel")]
-pub(crate) mod dot;
-
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
     use crate::dimension::{Dimension, Ix1};
