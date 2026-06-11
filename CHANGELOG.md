@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.40] — 2026-06-11
+
+### Removed
+
+- Deleted `src/simd/` directory.
+- `ArithOp` and `UnaryArithOp` intermediate enums.
+- Stale `simd_vector_width` skeleton test.
+
+### Changed
+
+- Consolidated SIMD kernels into domain modules in math/, matrix/, reduction/.
+- Moved operation enums (`BinaryOp`, `UnaryOp`) to `math/types.rs`.
+- Moved `get_arch` to `dispatch/simd.rs`.
+- Replaced `ArithOp`/`UnaryArithOp` with direct `BinaryOp`/`Option<UnaryOp>`.
+- Style: reordered imports, removed stale tests, normalized blank lines.
+
 ## [v0.0.39] — 2026-06-10
 
 ### Changed
