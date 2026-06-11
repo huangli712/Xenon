@@ -813,9 +813,9 @@ mod tests {
         let e = XenonError::InvalidShape {
             operation: Cow::Borrowed("from_shape_vec"),
             shape: vec![2, 3],
-            kind: InvalidShapeKind::ElementCountMismatch { 
+            kind: InvalidShapeKind::ElementCountMismatch {
                 expected: 6,
-                actual: 5 
+                actual: 5
             },
             offending_dim: Some(0),
         };
@@ -831,7 +831,7 @@ mod tests {
         let e = XenonError::InvalidArgument {
             operation: Cow::Borrowed("slice"),
             kind: InvalidArgumentKind::DuplicateOrEmpty {
-                argument: Cow::Borrowed("axes") 
+                argument: Cow::Borrowed("axes")
             },
         };
         let s = format!("{}", e);
@@ -863,7 +863,7 @@ mod tests {
             operation: Cow::Borrowed("export"),
             category: FfiErrorCategory::InvalidRank {
                 expected: 2,
-                actual: 3 
+                actual: 3
             },
             backend: FfiBackend::Blas,
         };
@@ -880,7 +880,7 @@ mod tests {
             operation: Cow::Borrowed("new"),
             category: WorkspaceErrorCategory::AllocFailed {
                 size: 2048,
-                align: 128 
+                align: 128
             },
         };
         let s = format!("{}", e);
