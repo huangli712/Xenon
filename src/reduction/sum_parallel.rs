@@ -192,4 +192,27 @@ mod tests {
         assert_eq!(result, Complex::new(16.0f64, 20.0));
         reset_parallel_threshold();
     }
+
+    /// Single-worker and multi-worker `par_sum` agree with the serial sum.
+    #[test]
+    fn test_par_sum_single_and_multi_worker_agree() {
+        let _threshold_guard = ThresholdTestGuard::new();
+        set_parallel_threshold(1);
+        let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
+        let tensor = unsafe { view_1d_f64(&data) };
+
+        let strategy_single = ParallelExecStrategy::new(None, Some(1))
+            .expect("valid strategy with max_workers=1");
+        let guard_single = acquire_guard(&tensor);
+        let sum_single = par_sum(&tensor, &strategy_single, guard_single);
+
+        let strategy_multi = ParallelExecStrategy::auto();
+        let guard_multi = acquire_guard(&tensor);
+        let sum_multi = par_sum(&tensor, &strategy_multi, guard_multi);
+
+        let serial: f64 = data.iter().sum();
+        assert!((sum_single - serial).abs() < 1e-10 * serial.abs().max(1.0));
+        assert!((sum_multi - serial).abs() < 1e-10 * serial.abs().max(1.0));
+        reset_parallel_threshold();
+    }
 }

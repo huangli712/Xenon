@@ -146,10 +146,6 @@ pub mod matrix;
 /// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
-/// Parallel computation backend (opt-in via `parallel` feature).
-#[cfg(feature = "parallel")]
-pub(crate) mod parallel;
-
 // Re-export commonly used and test-only items at the crate root.
 pub use prelude::*;
 
