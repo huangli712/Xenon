@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.42] — 2026-06-11
+
+### Removed
+
+- Error module: single `error.rs` → directory module (`error/mod.rs`).
+- `FmtShape` extracted to `error/display.rs`.
+- `XenonError`/`Result` extracted to `error/root.rs`.
+- Error category enums extracted to `error/enums.rs`.
+- Dead `OrAny` helper and redundant `Cow` import.
+
 ## [v0.0.41] — 2026-06-11
 
 ### Removed
