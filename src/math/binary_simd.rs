@@ -13,7 +13,8 @@ use std::slice;
 use std::mem::size_of;
 
 use crate::complex::Complex;
-use crate::simd::{BinaryOp, get_arch};
+use super::types::BinaryOp;
+use crate::simd::get_arch;
 
 // ----------------------------------------------------------------------------
 // Thresholds
@@ -644,7 +645,7 @@ pub(crate) fn dispatch_binary_complex_f64(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::BinaryOp;
+    use super::super::types::BinaryOp;
     use super::super::driver::dispatch_vector_binary_op;
 
     /// Width used for boundary / tail coverage tests.

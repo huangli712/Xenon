@@ -8,12 +8,7 @@
 //! - `get_arch()` caches a `pulp::Arch` singleton via `OnceLock`.
 
 #[cfg(feature = "simd")]
-mod types;
-
-#[cfg(feature = "simd")]
 mod driver;
-
-pub(crate) use types::{BinaryOp, UnaryOp};
 
 #[allow(unused_imports)]
 pub(crate) use driver::{

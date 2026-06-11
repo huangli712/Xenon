@@ -9,7 +9,8 @@ use std::marker::PhantomData;
 
 use crate::complex::Complex;
 use super::binary_simd::{ELEMENTWISE_THRESHOLD, COMPLEX_ELEMENTWISE_THRESHOLD};
-use crate::simd::{UnaryOp, get_arch};
+use super::types::UnaryOp;
+use crate::simd::get_arch;
 
 // ----------------------------------------------------------------------------
 // Neg kernel
@@ -233,7 +234,7 @@ pub(crate) fn dispatch_unary_complex_f64(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::UnaryOp;
+    use super::super::types::UnaryOp;
     use super::super::binary_simd::ELEMENTWISE_THRESHOLD;
     use super::super::driver::dispatch_vector_unary_op;
 
