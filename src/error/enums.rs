@@ -766,12 +766,18 @@ mod tests {
     /// Verify `WorkspaceErrorCategory` Display output for all 6 variants.
     #[test]
     fn test_workspace_error_category_display() {
-        let s = format!("{}", WorkspaceErrorCategory::AllocFailed { size: 1024, align: 64 });
+        let s = format!("{}", WorkspaceErrorCategory::AllocFailed {
+            size: 1024,
+            align: 64 
+        });
         assert!(s.contains("allocation failed"));
         assert!(s.contains("1024"));
         assert!(s.contains("64"));
 
-        let s = format!("{}", WorkspaceErrorCategory::InvalidLayout { size: 0, align: 1 });
+        let s = format!("{}", WorkspaceErrorCategory::InvalidLayout {
+            size: 0,
+            align: 1 
+        });
         assert!(s.contains("invalid layout"));
 
         let s = format!("{}", WorkspaceErrorCategory::BorrowConflict {
@@ -782,12 +788,18 @@ mod tests {
         assert!(s.contains("Exclusive"));
         assert!(s.contains("Shared"));
 
-        let s = format!("{}", WorkspaceErrorCategory::SplitOutOfBounds { mid: 5, len: 10 });
+        let s = format!("{}", WorkspaceErrorCategory::SplitOutOfBounds {
+            mid: 5,
+            len: 10 
+        });
         assert!(s.contains("split out of bounds"));
         assert!(s.contains("5"));
         assert!(s.contains("10"));
 
-        let s = format!("{}", WorkspaceErrorCategory::GrowOverflow { current_capacity: 100, additional: 50 });
+        let s = format!("{}", WorkspaceErrorCategory::GrowOverflow {
+            current_capacity: 100,
+            additional: 50 
+        });
         assert!(s.contains("grow overflow"));
         assert!(s.contains("100"));
         assert!(s.contains("50"));
@@ -823,12 +835,18 @@ mod tests {
     fn test_typed_view_rejection_display() {
         assert_eq!(format!("{}", TypedViewRejection::ZeroSizedType), "zero-sized type");
 
-        let s = format!("{}", TypedViewRejection::AlignmentMismatch { required: 8, actual: 1 });
+        let s = format!("{}", TypedViewRejection::AlignmentMismatch { 
+            required: 8,
+            actual: 1 
+        });
         assert!(s.contains("alignment mismatch"));
         assert!(s.contains("8"));
         assert!(s.contains("1"));
 
-        let s = format!("{}", TypedViewRejection::TypedByteLengthOverflow { count: 1024, elem_size: 8 });
+        let s = format!("{}", TypedViewRejection::TypedByteLengthOverflow {
+            count: 1024,
+            elem_size: 8 
+        });
         assert!(s.contains("byte length overflow"));
         assert!(s.contains("1024"));
         assert!(s.contains("8"));
@@ -847,12 +865,21 @@ mod tests {
     /// Verify `InvalidArgumentKind` Display output for all 6 variants.
     #[test]
     fn test_invalid_argument_kind_display() {
-        let s = format!("{}", InvalidArgumentKind::RangeOutOfBounds { axis: 0, axis_len: 5, start: 3, end: 10 });
+        let s = format!("{}", InvalidArgumentKind::RangeOutOfBounds {
+            axis: 0,
+            axis_len: 5,
+            start: 3,
+            end: 10 
+        });
         assert!(s.contains("out of bounds"));
         assert!(s.contains("axis 0"));
         assert!(s.contains("5"));
 
-        let s = format!("{}", InvalidArgumentKind::RangeStartAfterEnd { axis: 1, start: 5, end: 3 });
+        let s = format!("{}", InvalidArgumentKind::RangeStartAfterEnd {
+            axis: 1,
+            start: 5,
+            end: 3 
+        });
         assert!(s.contains("start (5) after end (3)"));
         assert!(s.contains("axis 1"));
 
@@ -865,15 +892,24 @@ mod tests {
         assert!(s.contains(">= 0"));
         assert!(s.contains("-1"));
 
-        let s = format!("{}", InvalidArgumentKind::InvalidConfig { argument: Cow::Borrowed("threshold"), constraint: Cow::Borrowed("> 0"), actual: Cow::Borrowed("0") });
+        let s = format!("{}", InvalidArgumentKind::InvalidConfig {
+            argument: Cow::Borrowed("threshold"),
+            constraint: Cow::Borrowed("> 0"),
+            actual: Cow::Borrowed("0") 
+        });
         assert!(s.contains("invalid config"));
         assert!(s.contains("threshold"));
 
-        let s = format!("{}", InvalidArgumentKind::DuplicateOrEmpty { argument: Cow::Borrowed("axes") });
+        let s = format!("{}", InvalidArgumentKind::DuplicateOrEmpty {
+            argument: Cow::Borrowed("axes") 
+        });
         assert!(s.contains("duplicate or empty"));
         assert!(s.contains("axes"));
 
-        let s = format!("{}", InvalidArgumentKind::OperationSpecific { argument: Cow::Borrowed("min"), constraint: Cow::Borrowed("min > max") });
+        let s = format!("{}", InvalidArgumentKind::OperationSpecific {
+            argument: Cow::Borrowed("min"),
+            constraint: Cow::Borrowed("min > max") 
+        });
         assert!(s.contains("`min`"));
         assert!(s.contains("min > max"));
     }
