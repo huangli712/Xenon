@@ -12,7 +12,7 @@ use crate::tensor::TensorBase;
 
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
 use crate::dispatch::{with_parallel_worker_context};
-use super::chunks::compute_safe_chunks;
+use crate::dispatch::chunks::compute_safe_chunks;
 use crate::matrix::{dot_mul_step, dot_reduce_step};
 
 /// Parallel dot product of two 1-D tensors.

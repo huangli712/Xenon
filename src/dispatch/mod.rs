@@ -16,6 +16,9 @@ mod types;
 mod exec;
 mod support;
 
+#[cfg(feature = "parallel")]
+pub(crate) mod chunks;
+
 #[cfg(feature = "simd")]
 mod simd;
 

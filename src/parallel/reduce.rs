@@ -10,7 +10,7 @@ use crate::tensor::TensorBase;
 
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
 use crate::dispatch::{with_parallel_worker_context};
-use super::chunks::compute_safe_chunks;
+use crate::dispatch::chunks::compute_safe_chunks;
 
 /// Generic parallel reduction over a tensor's elements.
 ///

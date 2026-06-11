@@ -1,9 +1,5 @@
 //! Parallel backend module. Only compiled with the `parallel` feature.
 
-/// Chunk-size computation for parallel splitting.
-#[cfg(feature = "parallel")]
-pub(crate) mod chunks;
-
 /// Single-input parallel element-wise maps (`par_map`, `par_map_checked`).
 #[cfg(feature = "parallel")]
 pub(crate) mod unary;
