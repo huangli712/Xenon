@@ -543,21 +543,6 @@ mod tests {
     use super::*;
     use std::borrow::Cow;
 
-    /// Helper for formatting optional values in error messages.
-    ///
-    /// Displays `<any>` if `None`, otherwise formats the value via `Display`.
-    struct OrAny<T>(Option<T>);
-
-    impl<T: Display> Display for OrAny<T> {
-        /// Formats `Some(v)` as `v` and `None` as `<any>`.
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            match &self.0 {
-                Some(v) => write!(f, "{v}"),
-                None => write!(f, "<any>"),
-            }
-        }
-    }
-
     /// Verify FFI auxiliary enums are constructable.
     #[test]
     fn test_ffi_aux_enums_construct() {

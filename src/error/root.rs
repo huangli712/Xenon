@@ -330,7 +330,6 @@ mod tests {
         StorageKindTag, TypedViewRejection,
         WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory,
     };
-    use core::fmt::Debug;
     use std::borrow::Cow;
     use std::error::Error;
 
