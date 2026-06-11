@@ -1,9 +1,5 @@
 //! Parallel backend module. Only compiled with the `parallel` feature.
 
-/// Single-input parallel element-wise maps (`par_map`, `par_map_checked`).
-#[cfg(feature = "parallel")]
-pub(crate) mod unary;
-
 /// Parallel reduction skeleton (`par_reduce_impl`).
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;

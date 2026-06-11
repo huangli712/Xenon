@@ -21,7 +21,7 @@ use super::types::UnaryOp;
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
-use crate::parallel::unary::par_map;
+use super::unary_parallel::par_map;
 
 #[cfg(feature = "simd")]
 use super::driver::dispatch_vector_unary_op;

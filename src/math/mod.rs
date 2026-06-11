@@ -13,6 +13,9 @@ mod types;
 #[cfg(feature = "parallel")]
 pub(crate) mod binary_parallel;
 
+#[cfg(feature = "parallel")]
+pub(crate) mod unary_parallel;
+
 #[cfg(feature = "simd")]
 mod binary_simd;
 
