@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.45] — 2026-06-11
+
+### Changed
+
+- Style: doc comments, separators, wrapped calls, and import cleanup across `error/` submodules.
+
 ## [v0.0.44] — 2026-06-11
 
 ### Removed
