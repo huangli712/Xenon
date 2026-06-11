@@ -11,6 +11,8 @@ use std::vec::Vec;
 
 use super::display::FmtShape;
 
+// --- FfiErrorCategory -------------------------------------------------------
+
 /// FFI error category for `XenonError::Ffi`. All categories are
 /// fully structured; no free-text fallback variant.
 ///
@@ -71,6 +73,8 @@ impl Display for FfiErrorCategory {
     }
 }
 
+// --- FfiBackend -------------------------------------------------------------
+
 /// Backend identifier for `XenonError::Ffi.backend`.
 ///
 /// Closed enum: any future backend must extend this enum (SemVer-tracked).
@@ -92,6 +96,8 @@ impl Display for FfiBackend {
         }
     }
 }
+
+// --- WorkspaceErrorCategory -------------------------------------------------
 
 /// Workspace error category for `XenonError::Workspace`. All categories
 /// carry structured context; no free-text fallback variant.
@@ -184,6 +190,8 @@ impl Display for WorkspaceErrorCategory {
     }
 }
 
+// --- WorkspaceBorrowKind ----------------------------------------------------
+
 /// Type of workspace borrow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceBorrowKind {
@@ -207,6 +215,8 @@ impl Display for WorkspaceBorrowKind {
         }
     }
 }
+
+// --- WorkspaceBorrowState ---------------------------------------------------
 
 /// Current borrow state tracked by the workspace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,6 +248,8 @@ impl Display for WorkspaceBorrowState {
         }
     }
 }
+
+// --- TypedViewRejection -----------------------------------------------------
 
 /// Identifies a typed view rejection reason.
 ///
@@ -273,7 +285,9 @@ impl Display for TypedViewRejection {
     /// Formats the typed view rejection reason with structured detail fields.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroSizedType => write!(f, "zero-sized type"),
+            Self::ZeroSizedType => {
+                write!(f, "zero-sized type")
+            },
             Self::AlignmentMismatch { required, actual } => {
                 write!(f, "alignment mismatch: required {required}, actual {actual}")
             },
@@ -283,6 +297,8 @@ impl Display for TypedViewRejection {
         }
     }
 }
+
+// --- ConversionFailureReason ------------------------------------------------
 
 /// Reason for type conversion failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,6 +331,8 @@ impl Display for ConversionFailureReason {
         }
     }
 }
+
+// --- InvalidArgumentKind ----------------------------------------------------
 
 /// Kind for `XenonError::InvalidArgument`.
 ///
@@ -409,6 +427,8 @@ impl Display for InvalidArgumentKind {
     }
 }
 
+// --- InvalidLayoutReason ----------------------------------------------------
+
 /// Reason for `XenonError::InvalidLayout`.
 ///
 /// Closed enum: each reason has program-matchable semantics.
@@ -484,6 +504,8 @@ impl Display for InvalidLayoutReason {
     }
 }
 
+// --- StorageKindTag ---------------------------------------------------------
+
 /// Tag identifying which storage kind is currently in use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageKindTag {
@@ -511,6 +533,8 @@ impl Display for StorageKindTag {
         }
     }
 }
+
+// --- InvalidShapeKind -------------------------------------------------------
 
 /// Kind for `XenonError::InvalidShape`.
 ///
@@ -636,8 +660,6 @@ mod tests {
         }
     }
 
-    // ── Workspace error category + constructor helper tests ──
-
     /// Verify all `WorkspaceErrorCategory` variants are constructable
     /// and carry structured fields.
     #[test]
@@ -700,8 +722,6 @@ mod tests {
         };
         assert!(format!("{r:?}").contains("TypedByteLengthOverflow"));
     }
-
-    // ── Display output tests for auxiliary enums ──
 
     /// Verify `FfiErrorCategory` Display output for all 4 variants.
     #[test]
