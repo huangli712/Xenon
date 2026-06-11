@@ -1,4 +1,8 @@
-//! SIMD type definitions: operation enums.
+//! Element-wise operation selectors.
+//!
+//! `BinaryOp` is feature-independent (named by the ungated dispatch layer
+//! in `binary.rs`). `UnaryOp` is only used by the SIMD path, so it is
+//! gated behind the `simd` feature.
 
 // ----------------------------------------------------------------------------
 // Operation enums
@@ -21,6 +25,7 @@ pub(crate) enum BinaryOp {
 }
 
 /// Unary element-wise operation selector.
+#[cfg(feature = "simd")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum UnaryOp {
     /// Element-wise negation.

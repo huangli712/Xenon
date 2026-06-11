@@ -9,7 +9,6 @@ mod binary;
 mod unary;
 mod compare;
 
-#[cfg(feature = "simd")]
 mod types;
 
 #[cfg(feature = "simd")]

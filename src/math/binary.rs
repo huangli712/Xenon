@@ -20,40 +20,9 @@ use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "parallel")]
 use crate::parallel::binary::par_zip_checked;
 
-#[cfg(feature = "simd")]
 use super::types::BinaryOp;
 #[cfg(feature = "simd")]
 use super::driver::dispatch_vector_binary_op;
-
-// ----------------------------------------------------------------------------
-// Arithmetic operation selector (feature-independent)
-// ----------------------------------------------------------------------------
-
-/// Selector for the four element-wise arithmetic operations.
-///
-/// Defined unconditionally so the dispatch layer can name an operation
-/// without depending on the `simd` feature. When `simd` is enabled it is
-/// mapped to the SIMD-internal `BinaryOp` to drive vector kernels.
-#[derive(Copy, Clone)]
-pub(crate) enum ArithOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-}
-
-/// Maps the feature-independent [`ArithOp`] selector to the SIMD-internal
-/// [`BinaryOp`] tag. Only compiled when `simd` is enabled.
-#[cfg(feature = "simd")]
-#[inline]
-pub(crate) fn simd_op_tag(op: ArithOp) -> Option<BinaryOp> {
-    Some(match op {
-        ArithOp::Add => BinaryOp::Add,
-        ArithOp::Sub => BinaryOp::Sub,
-        ArithOp::Mul => BinaryOp::Mul,
-        ArithOp::Div => BinaryOp::Div,
-    })
-}
 
 // ----------------------------------------------------------------------------
 // Private per-type dispatch trait for binary arithmetic
@@ -365,7 +334,7 @@ where
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::add_step(x, y, idx, shape),
-            ArithOp::Add,
+            BinaryOp::Add,
         )
     }
 
@@ -388,7 +357,7 @@ where
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
-            ArithOp::Sub,
+            BinaryOp::Sub,
         )
     }
 
@@ -411,7 +380,7 @@ where
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::mul_step(x, y, idx, shape),
-            ArithOp::Mul,
+            BinaryOp::Mul,
         )
     }
 
@@ -434,7 +403,7 @@ where
             self,
             other,
             |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
-            ArithOp::Div,
+            BinaryOp::Div,
         )
     }
 }
@@ -536,7 +505,7 @@ where
             &other,
             self,
             |x, y, idx, shape| <A as BinaryArith>::sub_step(x, y, idx, shape),
-            ArithOp::Sub,
+            BinaryOp::Sub,
         ).expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
                   guarantees compatibility")
     }
@@ -553,7 +522,7 @@ where
             &other,
             self,
             |x, y, idx, shape| <A as BinaryArith>::div_step(x, y, idx, shape),
-            ArithOp::Div,
+            BinaryOp::Div,
         ).expect("scalar broadcast cannot fail: BroadcastDim<Ix0>\
                   guarantees compatibility")
     }
@@ -644,7 +613,7 @@ pub(crate) fn apply_binary_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     step: F,
-    op: ArithOp,
+    op: BinaryOp,
 ) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
 where
     A: Element + SimdElement + 'static,
@@ -675,7 +644,7 @@ where
         ExecPath::Simd => {
             #[cfg(feature = "simd")]
             {
-                try_simd_binary(&a_view, &b_view, simd_op_tag(op))
+                try_simd_binary(&a_view, &b_view, op)
                     .unwrap_or_else(
                         || apply_binary_serial(&a_view, &b_view, scalar_op)
                     )
@@ -709,14 +678,13 @@ where
     Ok(result)
 }
 
-/// Homogeneous arithmetic SIMD helper. Returns `None` if `op_tag` is
-/// `None`, the SIMD kernel reports it did not handle the op, or either
-/// view is non-contiguous.
+/// Homogeneous arithmetic SIMD helper. Returns `None` if the SIMD kernel
+/// reports it did not handle the op, or either view is non-contiguous.
 #[cfg(feature = "simd")]
 fn try_simd_binary<A, S1, S2, D>(
     a: &TensorBase<S1, D>,
     b: &TensorBase<S2, D>,
-    op_tag: Option<BinaryOp>,
+    op: BinaryOp,
 ) -> Option<Tensor<A, D>>
 where
     A: Element + SimdElement,
@@ -724,13 +692,12 @@ where
     S2: Storage<Elem = A>,
     D: Dimension,
 {
-    let tag = op_tag?;
     let lhs_slice: &[A] = a.as_slice()?;
     let rhs_slice: &[A] = b.as_slice()?;
     let mut result = Tensor::<A, _>::zeros(a.raw_dim())
         .expect("input dimension must be valid");
     let dst: &mut [A] = result.as_mut_slice()?;
-    if dispatch_vector_binary_op(tag, lhs_slice, rhs_slice, dst) {
+    if dispatch_vector_binary_op(op, lhs_slice, rhs_slice, dst) {
         Some(result)
     } else {
         None
