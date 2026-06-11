@@ -644,7 +644,8 @@ pub(crate) fn dispatch_binary_complex_f64(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::{dispatch_vector_binary_op, BinaryOp};
+    use crate::simd::BinaryOp;
+    use super::super::driver::dispatch_vector_binary_op;
 
     /// Width used for boundary / tail coverage tests.
     const SIMD_WIDTH: usize = 64;

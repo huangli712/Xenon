@@ -8,7 +8,7 @@ use std::slice;
 use std::marker::PhantomData;
 
 use crate::complex::Complex;
-use crate::simd::{ELEMENTWISE_THRESHOLD, COMPLEX_ELEMENTWISE_THRESHOLD};
+use super::binary_simd::{ELEMENTWISE_THRESHOLD, COMPLEX_ELEMENTWISE_THRESHOLD};
 use crate::simd::{UnaryOp, get_arch};
 
 // ----------------------------------------------------------------------------
@@ -233,7 +233,8 @@ pub(crate) fn dispatch_unary_complex_f64(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::{ELEMENTWISE_THRESHOLD, UnaryOp};
+    use crate::simd::UnaryOp;
+    use super::super::binary_simd::ELEMENTWISE_THRESHOLD;
     use super::super::driver::dispatch_vector_unary_op;
 
     /// Number of random cases per property test.

@@ -10,6 +10,9 @@ mod unary;
 mod compare;
 
 #[cfg(feature = "simd")]
+mod binary_simd;
+
+#[cfg(feature = "simd")]
 mod unary_simd;
 
 #[cfg(feature = "simd")]

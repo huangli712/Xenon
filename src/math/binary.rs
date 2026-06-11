@@ -21,7 +21,9 @@ use crate::dispatch::ParallelExecStrategy;
 use crate::parallel::binary::par_zip_checked;
 
 #[cfg(feature = "simd")]
-use crate::simd::{BinaryOp, dispatch_vector_binary_op};
+use crate::simd::BinaryOp;
+#[cfg(feature = "simd")]
+use super::driver::dispatch_vector_binary_op;
 
 // ----------------------------------------------------------------------------
 // Arithmetic operation selector (feature-independent)
