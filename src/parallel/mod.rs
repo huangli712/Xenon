@@ -1,9 +1,5 @@
 //! Parallel backend module. Only compiled with the `parallel` feature.
 
-/// Parallel reduction skeleton (`par_reduce_impl`).
-#[cfg(feature = "parallel")]
-pub(crate) mod reduce;
-
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
     use crate::dimension::{Dimension, Ix1};

@@ -8,7 +8,7 @@ use crate::storage::Storage;
 use crate::tensor::TensorBase;
 
 use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
-use crate::parallel::reduce::par_reduce_impl;
+use super::reduce_parallel::par_reduce_impl;
 
 /// Parallel sum of all elements in a tensor.
 ///

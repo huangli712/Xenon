@@ -6,6 +6,9 @@ mod sum;
 mod impls;
 
 #[cfg(feature = "parallel")]
+pub(crate) mod reduce_parallel;
+
+#[cfg(feature = "parallel")]
 pub(crate) mod sum_parallel;
 
 #[cfg(feature = "simd")]
