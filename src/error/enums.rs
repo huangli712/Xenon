@@ -5,6 +5,7 @@
 //! workspace errors, and type conversions.
 
 use core::fmt::{self, Debug, Display, Formatter};
+
 use std::borrow::Cow;
 use std::vec::Vec;
 
