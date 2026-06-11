@@ -4,10 +4,6 @@
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;
 
-/// Parallel sum reduction (`par_sum`).
-#[cfg(feature = "parallel")]
-pub(crate) mod sum;
-
 #[cfg(all(test, feature = "parallel"))]
 mod feature_matrix_tests {
     use crate::dimension::{Dimension, Ix1};
@@ -21,7 +17,7 @@ mod feature_matrix_tests {
     use crate::dispatch::{ParallelExecStrategy, ParallelGuard};
     use crate::dispatch::{reset_parallel_threshold, set_parallel_threshold};
 
-    use super::sum::par_sum;
+    use crate::reduction::sum_parallel::par_sum;
 
     /// Force the parallel path and return its guard, panicking if the
     /// parallel path was not selected.

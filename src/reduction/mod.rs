@@ -5,6 +5,9 @@
 mod sum;
 mod impls;
 
+#[cfg(feature = "parallel")]
+pub(crate) mod sum_parallel;
+
 #[cfg(feature = "simd")]
 mod sum_simd;
 

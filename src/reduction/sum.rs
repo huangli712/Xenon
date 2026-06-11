@@ -21,7 +21,7 @@ use crate::dispatch::ExecPath;
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
-use crate::parallel::sum::par_sum;
+use super::sum_parallel::par_sum;
 
 #[cfg(feature = "simd")]
 use crate::complex::Complex;

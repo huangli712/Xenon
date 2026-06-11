@@ -199,7 +199,7 @@ pub use crate::math::binary_parallel::{par_zip, par_zip_checked};
 pub use crate::matrix::dot_parallel::par_dot;
 
 #[cfg(feature = "parallel")]
-pub use crate::parallel::sum::par_sum;
+pub use crate::reduction::sum_parallel::par_sum;
 
 #[cfg(test)]
 mod tests {
