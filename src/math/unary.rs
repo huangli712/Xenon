@@ -21,34 +21,10 @@ use crate::dispatch::ParallelExecStrategy;
 #[cfg(feature = "parallel")]
 use crate::parallel::unary::par_map;
 
-#[cfg(feature = "simd")]
 use super::types::UnaryOp;
+
 #[cfg(feature = "simd")]
 use super::driver::dispatch_vector_unary_op;
-
-/// Selector for the dispatch-routed unary arithmetic ops
-/// (`abs` / `neg` / `square` / `signum`). Defined unconditionally so the
-/// dispatch layer can name an operation without depending on the `simd`
-/// feature.
-#[derive(Copy, Clone)]
-enum UnaryArithOp {
-    Abs,
-    Neg,
-    Square,
-    Signum,
-}
-
-/// Maps the feature-independent [`UnaryArithOp`] selector to the
-/// SIMD-internal [`UnaryOp`] tag. Only `Neg` has a SIMD kernel today; the
-/// rest fall through to scalar. Only compiled when `simd` is enabled.
-#[cfg(feature = "simd")]
-#[inline]
-fn simd_unary_op_tag(op: UnaryArithOp) -> Option<UnaryOp> {
-    match op {
-        UnaryArithOp::Neg => Some(UnaryOp::Neg),
-        UnaryArithOp::Abs | UnaryArithOp::Square | UnaryArithOp::Signum => None,
-    }
-}
 
 /// Per-type unary step for `neg` and `square`.
 ///
@@ -420,7 +396,7 @@ where
                 idx,
                 shape
             ),
-            UnaryArithOp::Abs,
+            None,
         )
     }
 
@@ -435,7 +411,7 @@ where
                 idx,
                 shape
             ),
-            UnaryArithOp::Signum,
+            None,
         )
     }
 }
@@ -465,7 +441,7 @@ where
                 idx,
                 shape
             ),
-            UnaryArithOp::Neg,
+            Some(UnaryOp::Neg),
         )
     }
 
@@ -479,7 +455,7 @@ where
                 idx,
                 shape
             ),
-            UnaryArithOp::Square,
+            None,
         )
     }
 }
@@ -715,10 +691,14 @@ where
 /// The `step` closure carries `(idx, &shape)` for the integer path; the
 /// float path adapts it to a context-free kernel via `|x| step(x, 0, &[])`,
 /// which is zero-cost since float / complex impls ignore those parameters.
+///
+/// `op_tag` names the SIMD kernel to attempt: `Some(UnaryOp::Neg)` for
+/// `neg` (the only unary op with a kernel today), `None` for `abs` /
+/// `square` / `signum`, which have no kernel and fall back to scalar.
 fn apply_unary_with_dispatch<A, S, D, F>(
     input: &TensorBase<S, D>,
     step: F,
-    op: UnaryArithOp,
+    op_tag: Option<UnaryOp>,
 ) -> Tensor<A, D>
 where
     A: Element + SimdElement + 'static,
@@ -744,12 +724,12 @@ where
         ExecPath::Simd => {
             #[cfg(feature = "simd")]
             {
-                try_simd_unary(input, simd_unary_op_tag(op))
+                try_simd_unary(input, op_tag)
                     .unwrap_or_else(|| apply_unary_serial(input, scalar_op))
             }
             #[cfg(not(feature = "simd"))]
             {
-                let _ = op;
+                let _ = op_tag;
                 apply_unary_serial(input, scalar_op)
             }
         },

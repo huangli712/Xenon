@@ -1,8 +1,9 @@
 //! Element-wise operation selectors.
 //!
-//! `BinaryOp` is feature-independent (named by the ungated dispatch layer
-//! in `binary.rs`). `UnaryOp` is only used by the SIMD path, so it is
-//! gated behind the `simd` feature.
+//! Both `BinaryOp` and `UnaryOp` are feature-independent: the ungated
+//! dispatch layer in `binary.rs` / `unary.rs` names them to select an
+//! element-wise operation. When `simd` is enabled they also tag the SIMD
+//! kernels; without `simd` the dispatch layer simply ignores them.
 
 // ----------------------------------------------------------------------------
 // Operation enums
@@ -25,7 +26,6 @@ pub(crate) enum BinaryOp {
 }
 
 /// Unary element-wise operation selector.
-#[cfg(feature = "simd")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum UnaryOp {
     /// Element-wise negation.
