@@ -1,3 +1,10 @@
+//! Primary error type and crate `Result` alias.
+//!
+//! Defines [`XenonError`] — the unified error enum for all public Xenon APIs —
+//! and the [`Result`] type alias used throughout the crate.
+//! Also provides constructor helpers for commonly used error variants
+//! (e.g., workspace split/boundary errors).
+
 use core::fmt::{self, Display, Formatter};
 use std::borrow::Cow;
 use std::error::Error;

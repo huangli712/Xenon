@@ -1,3 +1,9 @@
+//! Structured error payloads used as [`XenonError`] variant fields.
+//!
+//! These enums carry the structured data for each error category —
+//! shape validation, argument checks, layout validation, FFI errors,
+//! workspace errors, and type conversions.
+
 use core::fmt::{self, Debug, Display, Formatter};
 use std::borrow::Cow;
 use std::vec::Vec;
