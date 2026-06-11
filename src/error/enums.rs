@@ -726,21 +726,32 @@ mod tests {
     /// Verify `FfiErrorCategory` Display output for all 4 variants.
     #[test]
     fn test_ffi_error_category_display() {
-        let s = format!("{}", FfiErrorCategory::NullPointer { argument: Cow::Borrowed("ptr") });
+        let s = format!("{}", FfiErrorCategory::NullPointer {
+            argument: Cow::Borrowed("ptr") 
+        });
         assert!(s.contains("null pointer"));
         assert!(s.contains("ptr"));
 
-        let s = format!("{}", FfiErrorCategory::InvalidRank { expected: 2, actual: 3 });
+        let s = format!("{}", FfiErrorCategory::InvalidRank {
+            expected: 2,
+            actual: 3 
+        });
         assert!(s.contains("invalid rank"));
         assert!(s.contains("expected 2"));
         assert!(s.contains("actual 3"));
 
-        let s = format!("{}", FfiErrorCategory::BlasIncompatibleLayout { shape: vec![2, 3], strides: vec![1, 2] });
+        let s = format!("{}", FfiErrorCategory::BlasIncompatibleLayout {
+            shape: vec![2, 3],
+            strides: vec![1, 2] 
+        });
         assert!(s.contains("BLAS-incompatible"));
         assert!(s.contains("[2 × 3]"));
         assert!(s.contains("[1 × 2]"));
 
-        let s = format!("{}", FfiErrorCategory::IntegerOverflow { value: 5000, target_width_bits: 32 });
+        let s = format!("{}", FfiErrorCategory::IntegerOverflow {
+            value: 5000,
+            target_width_bits: 32 
+        });
         assert!(s.contains("5000"));
         assert!(s.contains("i32"));
     }
@@ -763,7 +774,10 @@ mod tests {
         let s = format!("{}", WorkspaceErrorCategory::InvalidLayout { size: 0, align: 1 });
         assert!(s.contains("invalid layout"));
 
-        let s = format!("{}", WorkspaceErrorCategory::BorrowConflict { requested: WorkspaceBorrowKind::Exclusive, current: WorkspaceBorrowState::Shared });
+        let s = format!("{}", WorkspaceErrorCategory::BorrowConflict {
+            requested: WorkspaceBorrowKind::Exclusive,
+            current: WorkspaceBorrowState::Shared 
+        });
         assert!(s.contains("borrow conflict"));
         assert!(s.contains("Exclusive"));
         assert!(s.contains("Shared"));
@@ -778,7 +792,9 @@ mod tests {
         assert!(s.contains("100"));
         assert!(s.contains("50"));
 
-        let s = format!("{}", WorkspaceErrorCategory::TypedViewRejected { detail: TypedViewRejection::ZeroSizedType });
+        let s = format!("{}", WorkspaceErrorCategory::TypedViewRejected {
+            detail: TypedViewRejection::ZeroSizedType 
+        });
         assert!(s.contains("typed view rejected"));
         assert!(s.contains("ZeroSizedType"));
     }
@@ -840,7 +856,11 @@ mod tests {
         assert!(s.contains("start (5) after end (3)"));
         assert!(s.contains("axis 1"));
 
-        let s = format!("{}", InvalidArgumentKind::NumericOutOfRange { argument: Cow::Borrowed("n"), domain: Cow::Borrowed(">= 0"), actual: Cow::Borrowed("-1") });
+        let s = format!("{}", InvalidArgumentKind::NumericOutOfRange {
+            argument: Cow::Borrowed("n"),
+            domain: Cow::Borrowed(">= 0"),
+            actual: Cow::Borrowed("-1") 
+        });
         assert!(s.contains("`n`"));
         assert!(s.contains(">= 0"));
         assert!(s.contains("-1"));
