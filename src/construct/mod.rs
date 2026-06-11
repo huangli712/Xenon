@@ -24,3 +24,4 @@
 //! - `AllocationFailed` — underlying allocator cannot satisfy request
 
 pub mod impls;
+pub mod clip;
