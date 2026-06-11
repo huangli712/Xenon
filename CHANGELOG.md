@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.44] — 2026-06-11
+
+### Removed
+
+- Deleted `src/util/` module (functionality moved to `construct/` and `convert/`).
+
 ## [v0.0.43] — 2026-06-11
 
 ### Removed
