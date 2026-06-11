@@ -569,6 +569,8 @@ impl Display for InvalidShapeKind {
     }
 }
 
+// --- Tests ------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -660,8 +662,8 @@ mod tests {
         }
     }
 
-    /// Verify all `WorkspaceErrorCategory` variants are constructable
-    /// and carry structured fields.
+    /// Verify all `WorkspaceErrorCategory` variants are constructable and
+    /// carry structured fields.
     #[test]
     fn test_workspace_workspace_error_category() {
         // InvalidLayout
@@ -833,7 +835,10 @@ mod tests {
     /// Verify `TypedViewRejection` Display output for all 3 variants.
     #[test]
     fn test_typed_view_rejection_display() {
-        assert_eq!(format!("{}", TypedViewRejection::ZeroSizedType), "zero-sized type");
+        assert_eq!(
+            format!("{}", TypedViewRejection::ZeroSizedType),
+            "zero-sized type"
+        );
 
         let s = format!("{}", TypedViewRejection::AlignmentMismatch { 
             required: 8,
@@ -855,11 +860,26 @@ mod tests {
     /// Verify `ConversionFailureReason` Display output for all 5 variants.
     #[test]
     fn test_conversion_failure_reason_display() {
-        assert_eq!(format!("{}", ConversionFailureReason::LossyIntegerNarrowing), "lossy integer narrowing");
-        assert_eq!(format!("{}", ConversionFailureReason::LossyFloatNarrowing), "lossy float narrowing");
-        assert_eq!(format!("{}", ConversionFailureReason::FloatToInteger), "float to integer");
-        assert_eq!(format!("{}", ConversionFailureReason::IntegerToFloatPrecisionLoss), "integer to float precision loss");
-        assert_eq!(format!("{}", ConversionFailureReason::NonZeroImaginaryPart), "non-zero imaginary part");
+        assert_eq!(
+            format!("{}", ConversionFailureReason::LossyIntegerNarrowing),
+            "lossy integer narrowing"
+        );
+        assert_eq!(
+            format!("{}", ConversionFailureReason::LossyFloatNarrowing),
+            "lossy float narrowing"
+        );
+        assert_eq!(
+            format!("{}", ConversionFailureReason::FloatToInteger),
+            "float to integer"
+        );
+        assert_eq!(
+            format!("{}", ConversionFailureReason::IntegerToFloatPrecisionLoss),
+            "integer to float precision loss"
+        );
+        assert_eq!(
+            format!("{}", ConversionFailureReason::NonZeroImaginaryPart),
+            "non-zero imaginary part"
+        );
     }
 
     /// Verify `InvalidArgumentKind` Display output for all 6 variants.
