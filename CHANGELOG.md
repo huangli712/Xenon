@@ -300,9 +300,6 @@ All notable changes to this project are documented in this file.
 - Standardized section header style to `---` format.
 - Simplified `#[expect(clippy::clone_on_copy)]` by removing `reason` attributes.
 - Improved `util/mod.rs` doc comment with operation table and intra-doc links.
-
-### Test
-
 - Implemented `test_into_contiguous_repacks_noncanonical_f_contiguous_owned` for tail-padded owned tensor.
 
 ## [v0.0.26] — 2026-06-04
