@@ -9,4 +9,10 @@ mod binary;
 mod unary;
 mod compare;
 
+#[cfg(feature = "simd")]
+mod unary_simd;
+
+#[cfg(feature = "simd")]
+mod driver;
+
 pub(crate) use binary::BinaryArith;

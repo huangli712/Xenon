@@ -18,17 +18,15 @@ mod types;
 mod binary;
 
 #[cfg(feature = "simd")]
-mod unary;
-
-#[cfg(feature = "simd")]
 mod driver;
 
 pub(crate) use types::{BinaryOp, UnaryOp};
+
+pub(crate) use binary::{ELEMENTWISE_THRESHOLD, COMPLEX_ELEMENTWISE_THRESHOLD};
 
 #[allow(unused_imports)]
 pub(crate) use driver::{
     get_arch,
     simd_vector_width,
     dispatch_vector_binary_op,
-    dispatch_vector_unary_op,
 };

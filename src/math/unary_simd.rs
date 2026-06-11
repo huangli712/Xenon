@@ -8,7 +8,7 @@ use std::slice;
 use std::marker::PhantomData;
 
 use crate::complex::Complex;
-use crate::simd::binary;
+use crate::simd::{ELEMENTWISE_THRESHOLD, COMPLEX_ELEMENTWISE_THRESHOLD};
 use crate::simd::{UnaryOp, get_arch};
 
 // ----------------------------------------------------------------------------
@@ -156,7 +156,7 @@ pub(crate) fn dispatch_unary_f32(
     src: &[f32],
     dst: &mut [f32]
 ) -> bool {
-    if src.len() < binary::ELEMENTWISE_THRESHOLD {
+    if src.len() < ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -178,7 +178,7 @@ pub(crate) fn dispatch_unary_f64(
     src: &[f64],
     dst: &mut [f64]
 ) -> bool {
-    if src.len() < binary::ELEMENTWISE_THRESHOLD {
+    if src.len() < ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -200,7 +200,7 @@ pub(crate) fn dispatch_unary_complex_f32(
     src: &[Complex<f32>],
     dst: &mut [Complex<f32>],
 ) -> bool {
-    if src.len() < binary::COMPLEX_ELEMENTWISE_THRESHOLD {
+    if src.len() < COMPLEX_ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -216,7 +216,7 @@ pub(crate) fn dispatch_unary_complex_f64(
     src: &[Complex<f64>],
     dst: &mut [Complex<f64>],
 ) -> bool {
-    if src.len() < binary::COMPLEX_ELEMENTWISE_THRESHOLD {
+    if src.len() < COMPLEX_ELEMENTWISE_THRESHOLD {
         return false;
     }
     let arch = get_arch();
@@ -233,8 +233,8 @@ pub(crate) fn dispatch_unary_complex_f64(
 #[cfg(all(test, feature = "simd"))]
 mod tests {
     use crate::complex::Complex;
-    use crate::simd::binary;
-    use crate::simd::{dispatch_vector_unary_op, UnaryOp};
+    use crate::simd::{ELEMENTWISE_THRESHOLD, UnaryOp};
+    use super::super::driver::dispatch_vector_unary_op;
 
     /// Number of random cases per property test.
     const CASES: usize = 32;
@@ -391,7 +391,7 @@ mod tests {
     fn prop_elementwise_neg_f64(seed: u64) {
         let mut rng = seed;
         for _case in 0..CASES {
-            let len = binary::ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
+            let len = ELEMENTWISE_THRESHOLD + gen_len(&mut rng, MAX_LEN);
             let src: Vec<f64> = (0..len).map(|_| gen_f64(&mut rng)).collect();
             let mut dst = vec![0.0_f64; len];
             if dispatch_vector_unary_op(UnaryOp::Neg, &src, &mut dst) {

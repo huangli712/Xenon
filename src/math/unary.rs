@@ -22,7 +22,9 @@ use crate::dispatch::ParallelExecStrategy;
 use crate::parallel::unary::par_map;
 
 #[cfg(feature = "simd")]
-use crate::simd::{UnaryOp, dispatch_vector_unary_op};
+use crate::simd::UnaryOp;
+#[cfg(feature = "simd")]
+use super::driver::dispatch_vector_unary_op;
 
 /// Selector for the dispatch-routed unary arithmetic ops
 /// (`abs` / `neg` / `square` / `signum`). Defined unconditionally so the
