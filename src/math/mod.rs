@@ -10,6 +10,9 @@ mod unary;
 mod compare;
 mod types;
 
+#[cfg(feature = "parallel")]
+pub(crate) mod binary_parallel;
+
 #[cfg(feature = "simd")]
 mod binary_simd;
 

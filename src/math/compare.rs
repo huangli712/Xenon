@@ -16,7 +16,7 @@ use crate::tensor::{Tensor, TensorBase};
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
-use crate::parallel::binary::par_zip_checked;
+use super::binary_parallel::par_zip_checked;
 
 // ----------------------------------------------------------------------------
 // equal / not_equal for Element + PartialEq types

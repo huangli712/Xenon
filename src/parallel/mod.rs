@@ -4,10 +4,6 @@
 #[cfg(feature = "parallel")]
 pub(crate) mod unary;
 
-/// Dual-input parallel element-wise maps (`par_zip`, `par_zip_checked`).
-#[cfg(feature = "parallel")]
-pub(crate) mod binary;
-
 /// Parallel reduction skeleton (`par_reduce_impl`).
 #[cfg(feature = "parallel")]
 pub(crate) mod reduce;

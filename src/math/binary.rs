@@ -20,7 +20,7 @@ use super::types::BinaryOp;
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
-use crate::parallel::binary::par_zip_checked;
+use super::binary_parallel::par_zip_checked;
 
 #[cfg(feature = "simd")]
 use super::driver::dispatch_vector_binary_op;
