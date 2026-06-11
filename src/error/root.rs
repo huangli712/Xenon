@@ -339,14 +339,9 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::{
-        ConversionFailureReason, FfiBackend, FfiErrorCategory,
-        InvalidArgumentKind, InvalidLayoutReason, InvalidShapeKind,
-        StorageKindTag, TypedViewRejection,
-        WorkspaceBorrowKind, WorkspaceBorrowState, WorkspaceErrorCategory,
-    };
+    use super::super::*;
     use std::error::Error;
+    use std::borrow::Cow;
 
     /// Verify XenonError enum is constructable with each variant.
     #[test]
@@ -734,14 +729,16 @@ mod tests {
         assert!(msg.contains("3"), "msg: {msg}");
     }
 
-    // ── Workspace constructor helper tests ──
-
     /// Verify all 3 workspace constructor helpers carry `operation` and
     /// structured context.
     #[test]
     fn test_workspace_constructor_helpers() {
         // split_oob carries `operation`, `mid`, `len`.
-        let err = XenonError::workspace_split_oob("Workspace::split_at_mut", 10, 5);
+        let err = XenonError::workspace_split_oob(
+            "Workspace::split_at_mut",
+            10,
+            5
+        );
         let s = format!("{err:?}");
         assert!(s.contains("Workspace::split_at_mut"));
         assert!(s.contains("SplitOutOfBounds"));
@@ -760,15 +757,17 @@ mod tests {
         assert!(s.contains("Exclusive"));
 
         // grow_overflow carries `operation`, `current_capacity`, `additional`.
-        let err = XenonError::workspace_grow_overflow("Workspace::ensure_capacity", usize::MAX, 1);
+        let err = XenonError::workspace_grow_overflow(
+            "Workspace::ensure_capacity",
+            usize::MAX,
+            1
+        );
         let s = format!("{err:?}");
         assert!(s.contains("Workspace::ensure_capacity"));
         assert!(s.contains("GrowOverflow"));
         assert!(s.contains("current_capacity"));
         assert!(s.contains("additional"));
     }
-
-    // ── Display output tests for remaining XenonError variants ──
 
     /// Verify `InvalidLayout` variant Display includes storage kind and reason.
     #[test]
@@ -814,7 +813,10 @@ mod tests {
         let e = XenonError::InvalidShape {
             operation: Cow::Borrowed("from_shape_vec"),
             shape: vec![2, 3],
-            kind: InvalidShapeKind::ElementCountMismatch { expected: 6, actual: 5 },
+            kind: InvalidShapeKind::ElementCountMismatch { 
+                expected: 6,
+                actual: 5 
+            },
             offending_dim: Some(0),
         };
         let s = format!("{}", e);
@@ -828,14 +830,17 @@ mod tests {
     fn test_display_invalid_argument() {
         let e = XenonError::InvalidArgument {
             operation: Cow::Borrowed("slice"),
-            kind: InvalidArgumentKind::DuplicateOrEmpty { argument: Cow::Borrowed("axes") },
+            kind: InvalidArgumentKind::DuplicateOrEmpty {
+                argument: Cow::Borrowed("axes") 
+            },
         };
         let s = format!("{}", e);
         assert!(s.contains("slice"));
         assert!(s.contains("duplicate or empty"));
     }
 
-    /// Verify `InvalidStorageMode` variant Display includes shape when present.
+    /// Verify `InvalidStorageMode` variant Display includes shape
+    /// when present.
     #[test]
     fn test_display_invalid_storage_mode() {
         let e = XenonError::InvalidStorageMode {
@@ -856,7 +861,10 @@ mod tests {
     fn test_display_ffi_error() {
         let e = XenonError::Ffi {
             operation: Cow::Borrowed("export"),
-            category: FfiErrorCategory::InvalidRank { expected: 2, actual: 3 },
+            category: FfiErrorCategory::InvalidRank {
+                expected: 2,
+                actual: 3 
+            },
             backend: FfiBackend::Blas,
         };
         let s = format!("{}", e);
@@ -870,7 +878,10 @@ mod tests {
     fn test_display_workspace_error() {
         let e = XenonError::Workspace {
             operation: Cow::Borrowed("new"),
-            category: WorkspaceErrorCategory::AllocFailed { size: 2048, align: 128 },
+            category: WorkspaceErrorCategory::AllocFailed {
+                size: 2048,
+                align: 128 
+            },
         };
         let s = format!("{}", e);
         assert!(s.contains("new"));
