@@ -16,6 +16,9 @@ mod types;
 mod exec;
 mod support;
 
+#[cfg(feature = "simd")]
+mod simd;
+
 // --- threshold re-exports ---
 
 #[cfg(any(test, feature = "parallel"))]
@@ -48,3 +51,8 @@ pub(crate) use exec::with_parallel_worker_context;
 
 #[cfg(any(test, feature = "parallel", feature = "simd"))]
 pub use support::ThresholdTestGuard;
+
+// --- simd re-exports ---
+
+#[cfg(feature = "simd")]
+pub(crate) use simd::get_arch;

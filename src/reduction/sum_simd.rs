@@ -226,7 +226,7 @@ pub(crate) fn try_sum_f32_impl(data: &[f32]) -> Option<f32> {
     if data.len() < SUM_THRESHOLD {
         return None;
     }
-    let arch = crate::simd::get_arch();
+    let arch = crate::dispatch::get_arch();
     Some(arch.dispatch(SumF32Kernel { data }))
 }
 
@@ -235,7 +235,7 @@ pub(crate) fn try_sum_f64_impl(data: &[f64]) -> Option<f64> {
     if data.len() < SUM_THRESHOLD {
         return None;
     }
-    let arch = crate::simd::get_arch();
+    let arch = crate::dispatch::get_arch();
     Some(arch.dispatch(SumF64Kernel { data }))
 }
 
@@ -246,7 +246,7 @@ pub(crate) fn try_sum_complex_f32_impl(
     if data.len() < COMPLEX_SUM_THRESHOLD {
         return None;
     }
-    let arch = crate::simd::get_arch();
+    let arch = crate::dispatch::get_arch();
     Some(arch.dispatch(ComplexSumF32Kernel { data }))
 }
 
@@ -257,7 +257,7 @@ pub(crate) fn try_sum_complex_f64_impl(
     if data.len() < COMPLEX_SUM_THRESHOLD {
         return None;
     }
-    let arch = crate::simd::get_arch();
+    let arch = crate::dispatch::get_arch();
     Some(arch.dispatch(ComplexSumF64Kernel { data }))
 }
 

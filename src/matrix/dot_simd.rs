@@ -10,7 +10,7 @@ use std::slice;
 use std::mem::size_of;
 
 use crate::complex::Complex;
-use crate::simd::get_arch;
+use crate::dispatch::get_arch;
 
 // ----------------------------------------------------------------------------
 // Thresholds

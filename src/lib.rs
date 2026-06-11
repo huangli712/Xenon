@@ -146,10 +146,6 @@ pub mod matrix;
 /// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
-/// SIMD vectorized computation backend (opt-in via `simd` feature).
-#[cfg(feature = "simd")]
-pub(crate) mod simd;
-
 /// Parallel computation backend (opt-in via `parallel` feature).
 #[cfg(feature = "parallel")]
 pub(crate) mod parallel;
