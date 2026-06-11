@@ -15,13 +15,13 @@ use crate::element::{CheckedNeg, OrderedCompareElement, SimdElement};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
+use super::types::UnaryOp;
+
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
 use crate::parallel::unary::par_map;
-
-use super::types::UnaryOp;
 
 #[cfg(feature = "simd")]
 use super::driver::dispatch_vector_unary_op;

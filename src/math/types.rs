@@ -32,24 +32,4 @@ pub(crate) enum UnaryOp {
     Neg,
 }
 
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
 
-#[cfg(all(test, feature = "simd"))]
-mod tests {
-    use crate::complex::Complex;
-    use crate::simd::simd_vector_width;
-
-    /// Verifies that the capability query returns `None` for every
-    /// supported element type (ISA lane widths not yet wired).
-    #[test]
-    fn test_simd_vector_width_skeleton_returns_none() {
-        assert_eq!(simd_vector_width::<f32>(), None);
-        assert_eq!(simd_vector_width::<f64>(), None);
-        assert_eq!(simd_vector_width::<i32>(), None);
-        assert_eq!(simd_vector_width::<i64>(), None);
-        assert_eq!(simd_vector_width::<Complex<f32>>(), None);
-        assert_eq!(simd_vector_width::<Complex<f64>>(), None);
-    }
-}

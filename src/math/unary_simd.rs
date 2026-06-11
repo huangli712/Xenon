@@ -8,9 +8,10 @@ use std::slice;
 use std::marker::PhantomData;
 
 use crate::complex::Complex;
+use crate::simd::get_arch;
+
 use super::binary_simd::{ELEMENTWISE_THRESHOLD, COMPLEX_ELEMENTWISE_THRESHOLD};
 use super::types::UnaryOp;
-use crate::simd::get_arch;
 
 // ----------------------------------------------------------------------------
 // Neg kernel
