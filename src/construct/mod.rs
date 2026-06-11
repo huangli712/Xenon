@@ -25,3 +25,4 @@
 
 pub mod impls;
 pub mod clip;
+pub mod fill;
