@@ -938,27 +938,72 @@ mod tests {
     /// sampling of all 13 variants.
     #[test]
     fn test_invalid_layout_reason_display() {
-        assert_eq!(format!("{}", InvalidLayoutReason::ShapeProductOverflow), "shape product overflow");
-        assert_eq!(format!("{}", InvalidLayoutReason::StrideExceedsIsizeMax), "stride exceeds isize::MAX");
-        assert_eq!(format!("{}", InvalidLayoutReason::StrideSpanOverflow), "stride span overflow");
-        assert_eq!(format!("{}", InvalidLayoutReason::AccessRangeOverflow), "access range overflow");
-        assert_eq!(format!("{}", InvalidLayoutReason::ZeroStrideRejectedForViewMut), "zero stride rejected for ViewMut");
-        assert_eq!(format!("{}", InvalidLayoutReason::AmbiguousOverlap), "ambiguous overlap");
-        assert_eq!(format!("{}", InvalidLayoutReason::OwnedRequiresZeroOffset), "owned requires zero offset");
-        assert_eq!(format!("{}", InvalidLayoutReason::LenShapeMismatch), "len-shape mismatch");
-        assert_eq!(format!("{}", InvalidLayoutReason::CapacityBelowLen), "capacity below len");
-        assert_eq!(format!("{}", InvalidLayoutReason::AlignmentInvalid), "alignment invalid");
-        assert_eq!(format!("{}", InvalidLayoutReason::OwnedRequiresCanonicalFOrder), "owned requires canonical F-order");
-        assert_eq!(format!("{}", InvalidLayoutReason::AccessRangeExceedsStorage), "access range exceeds storage");
-        assert_eq!(format!("{}", InvalidLayoutReason::EmptyTensorOffsetExceedsStorage), "empty tensor offset exceeds storage");
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::ShapeProductOverflow),
+            "shape product overflow"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::StrideExceedsIsizeMax),
+            "stride exceeds isize::MAX"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::StrideSpanOverflow),
+            "stride span overflow"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::AccessRangeOverflow),
+            "access range overflow"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::ZeroStrideRejectedForViewMut),
+            "zero stride rejected for ViewMut"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::AmbiguousOverlap),
+            "ambiguous overlap"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::OwnedRequiresZeroOffset),
+            "owned requires zero offset"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::LenShapeMismatch),
+            "len-shape mismatch"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::CapacityBelowLen), 
+            "capacity below len"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::AlignmentInvalid),
+            "alignment invalid"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::OwnedRequiresCanonicalFOrder), 
+            "owned requires canonical F-order"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::AccessRangeExceedsStorage),
+            "access range exceeds storage"
+        );
+        assert_eq!(
+            format!("{}", InvalidLayoutReason::EmptyTensorOffsetExceedsStorage), 
+            "empty tensor offset exceeds storage"
+        );
     }
 
     /// Verify `InvalidShapeKind` Display output for both variants.
     #[test]
     fn test_invalid_shape_kind_display() {
-        assert_eq!(format!("{}", InvalidShapeKind::ProductOverflow), "product overflow");
+        assert_eq!(
+            format!("{}", InvalidShapeKind::ProductOverflow),
+            "product overflow"
+        );
 
-        let s = format!("{}", InvalidShapeKind::ElementCountMismatch { expected: 6, actual: 5 });
+        let s = format!("{}", InvalidShapeKind::ElementCountMismatch {
+            expected: 6,
+            actual: 5 
+        });
         assert!(s.contains("element count mismatch"));
         assert!(s.contains("expected 6"));
         assert!(s.contains("got 5"));
