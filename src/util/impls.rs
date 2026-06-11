@@ -2,7 +2,6 @@
 //!
 //! All operations are exposed as inherent methods on [`TensorBase`].
 
-
 use crate::dimension::Dimension;
 use crate::element::Element;
 use crate::layout::{Strides, compute_layout_flags};
@@ -89,27 +88,14 @@ where
     pub fn into_contiguous(self) -> Tensor<A, D> {
         if is_canonical_f_contiguous_owned(&self) {
             let dim = self.raw_dim();
-            let strides = Strides::f_contiguous(&dim)
-                .expect("canonical predicate implies shape is valid");
+            let strides =
+                Strides::f_contiguous(&dim).expect("canonical predicate implies shape is valid");
             let owned = self.storage.into_owned_storage();
-            let flags = compute_layout_flags::<A, D>(
-                &dim,
-                &strides,
-                owned.as_ptr()
-            );
+            let flags = compute_layout_flags::<A, D>(&dim, &strides, owned.as_ptr());
             // SAFETY: is_canonical_f_contiguous_owned verified F-order,
             // owned, offset==0, storage_len==shape product. D: Clone
             // ensured raw_dim() snapshot precedes the move.
-            unsafe {
-                TensorBase::new_unchecked(
-                    owned,
-                    dim,
-                    strides,
-                    0,
-                    flags,
-                    false
-                )
-            }
+            unsafe { TensorBase::new_unchecked(owned, dim, strides, 0, flags, false) }
         } else {
             // Repack: into_owned() cannot be used because for Owned
             // storage it is O(1) and preserves tail padding / non-zero
@@ -121,7 +107,6 @@ where
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -145,11 +130,27 @@ mod tests {
     /// to_contiguous on a transposed input produces F-order output.
     #[test]
     fn test_to_contiguous_transposed_becomes_f() {
-        let tensor = Tensor2::<i32>::from_shape_vec(
-            [2, 3],
-            vec![1, 2, 3, 4, 5, 6]
-        ).expect("from_shape_vec matching shape");
+        let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+            .expect("from_shape_vec matching shape");
         let contiguous = tensor.transpose().to_contiguous();
+        assert!(contiguous.is_f_contiguous());
+        assert_eq!(contiguous.shape(), &[3, 2]);
+        assert_eq!(*contiguous.get(&[0, 0]).expect("valid index"), 1);
+        assert_eq!(*contiguous.get(&[0, 1]).expect("valid index"), 2);
+        assert_eq!(*contiguous.get(&[1, 0]).expect("valid index"), 3);
+        assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
+        assert_eq!(*contiguous.get(&[2, 0]).expect("valid index"), 5);
+        assert_eq!(*contiguous.get(&[2, 1]).expect("valid index"), 6);
+    }
+
+    /// to_contiguous on a non-contiguous tensor produces canonical F-order.
+    #[test]
+    fn test_to_contiguous_non_contiguous() {
+        let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+            .expect("from_shape_vec matching shape");
+        let transposed = tensor.transpose();
+        assert!(!transposed.is_f_contiguous());
+        let contiguous = transposed.to_contiguous();
         assert!(contiguous.is_f_contiguous());
         assert_eq!(contiguous.shape(), &[3, 2]);
         assert_eq!(*contiguous.get(&[0, 0]).expect("valid index"), 1);
@@ -184,19 +185,11 @@ mod tests {
         use crate::tensor::TensorBase;
 
         // Owned storage with 5 elements, but shape [4] has product 4.
-        let owned = Owned::from_vec(vec![1_i32, 2, 3, 4, 99])
-            .expect("from_vec");
+        let owned = Owned::from_vec(vec![1_i32, 2, 3, 4, 99]).expect("from_vec");
         let shape = Ix1(4);
-        let strides = Strides::f_contiguous(&shape)
-            .expect("f_contiguous strides");
-        let flags = compute_layout_flags::<i32, Ix1>(
-            &shape,
-            &strides,
-            owned.as_ptr()
-        );
-        let padded = unsafe {
-            TensorBase::new_unchecked(owned, shape, strides, 0, flags, false)
-        };
+        let strides = Strides::f_contiguous(&shape).expect("f_contiguous strides");
+        let flags = compute_layout_flags::<i32, Ix1>(&shape, &strides, owned.as_ptr());
+        let padded = unsafe { TensorBase::new_unchecked(owned, shape, strides, 0, flags, false) };
         assert!(padded.is_f_contiguous());
         assert_eq!(padded.storage_kind(), StorageKind::Owned);
         assert_ne!(padded.storage_len(), padded.len());
@@ -224,25 +217,5 @@ mod tests {
         assert_eq!(*contiguous.get(&[1, 0]).expect("valid index"), 2);
         assert_eq!(*contiguous.get(&[0, 1]).expect("valid index"), 3);
         assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
-    }
-
-    /// to_contiguous on a non-contiguous tensor produces canonical F-order.
-    #[test]
-    fn test_to_contiguous_non_contiguous() {
-        let tensor = Tensor2::<i32>::from_shape_vec(
-            [2, 3],
-            vec![1, 2, 3, 4, 5, 6]
-        ).expect("from_shape_vec matching shape");
-        let transposed = tensor.transpose();
-        assert!(!transposed.is_f_contiguous());
-        let contiguous = transposed.to_contiguous();
-        assert!(contiguous.is_f_contiguous());
-        assert_eq!(contiguous.shape(), &[3, 2]);
-        assert_eq!(*contiguous.get(&[0, 0]).expect("valid index"), 1);
-        assert_eq!(*contiguous.get(&[0, 1]).expect("valid index"), 2);
-        assert_eq!(*contiguous.get(&[1, 0]).expect("valid index"), 3);
-        assert_eq!(*contiguous.get(&[1, 1]).expect("valid index"), 4);
-        assert_eq!(*contiguous.get(&[2, 0]).expect("valid index"), 5);
-        assert_eq!(*contiguous.get(&[2, 1]).expect("valid index"), 6);
     }
 }
