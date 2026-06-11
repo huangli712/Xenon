@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.43] — 2026-06-11
+
+### Removed
+
+- Deleted `.docs/` directory (stale design docs and build artifacts).
+
 ## [v0.0.42] — 2026-06-11
 
 ### Removed
