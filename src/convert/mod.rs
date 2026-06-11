@@ -15,3 +15,4 @@
 
 mod cast;
 mod impls;
+mod contiguous;
