@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.41] — 2026-06-11
+
+### Removed
+
+- Deleted `src/parallel/` directory (moved parallel kernels to domain modules).
+
+### Changed
+
+- Moved `par_map`/`par_map_checked` to `math/unary_parallel.rs`.
+- Moved `par_zip`/`par_zip_checked` to `math/binary_parallel.rs`.
+- Moved `par_dot` to `matrix/dot_parallel.rs`.
+- Moved `par_sum` to `reduction/sum_parallel.rs`.
+- Moved `par_reduce_impl` to `reduction/reduce_parallel.rs`.
+- Moved `compute_safe_chunks` to `dispatch/chunks.rs`.
+
 ## [v0.0.40] — 2026-06-11
 
 ### Removed

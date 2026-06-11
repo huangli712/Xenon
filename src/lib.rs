@@ -164,8 +164,8 @@ mod tests {
         );
         assert_eq!(
             env!("CARGO_PKG_VERSION"),
-            "0.0.40",
-            "Cargo.toml [package] version must be '0.0.40'"
+            "0.0.41",
+            "Cargo.toml [package] version must be '0.0.41'"
         );
     }
 
