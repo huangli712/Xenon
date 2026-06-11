@@ -13,8 +13,9 @@ use std::slice;
 use std::mem::size_of;
 
 use crate::complex::Complex;
-use super::types::BinaryOp;
 use crate::simd::get_arch;
+
+use super::types::BinaryOp;
 
 // ----------------------------------------------------------------------------
 // Thresholds

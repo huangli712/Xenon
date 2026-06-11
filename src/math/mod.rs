@@ -8,7 +8,6 @@
 mod binary;
 mod unary;
 mod compare;
-
 mod types;
 
 #[cfg(feature = "simd")]

@@ -14,13 +14,14 @@ use crate::element::{Element, Numeric, SimdElement};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
+use super::types::BinaryOp;
+
 #[cfg(feature = "parallel")]
 use crate::dispatch::ParallelExecStrategy;
 
 #[cfg(feature = "parallel")]
 use crate::parallel::binary::par_zip_checked;
 
-use super::types::BinaryOp;
 #[cfg(feature = "simd")]
 use super::driver::dispatch_vector_binary_op;
 

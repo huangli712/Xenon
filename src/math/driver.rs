@@ -8,6 +8,7 @@ use std::any::TypeId;
 
 use crate::complex::Complex;
 use crate::element::SimdElement;
+
 use super::binary_simd;
 use super::types::{BinaryOp, UnaryOp};
 use super::unary_simd;
