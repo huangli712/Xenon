@@ -2,6 +2,7 @@
 //!
 //! Defines [`XenonError`] — the unified error enum for all public Xenon APIs —
 //! and the [`Result`] type alias used throughout the crate.
+//!
 //! Also provides constructor helpers for commonly used error variants
 //! (e.g., workspace split/boundary errors).
 
@@ -10,8 +11,8 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::vec::Vec;
 
-use super::display::FmtShape;
 use super::{
+    display::FmtShape,
     ConversionFailureReason, FfiBackend, FfiErrorCategory,
     InvalidArgumentKind, InvalidLayoutReason, InvalidShapeKind,
     StorageKindTag,
@@ -280,18 +281,23 @@ impl Error for XenonError {
 
 // Constructor helpers for common error variants.
 impl XenonError {
-    // --- Workspace constructor helpers ---
-    //
     // Each helper preserves the `operation` field and accepts structured
     // borrow / overflow context so callers (the borrow/split/expand modules)
     // never lose diagnostic fidelity. The `operation` string is `&'static str`
     // to remain `Cow::Borrowed`-friendly with no allocation.
 
     /// Construct a `Workspace::SplitOutOfBounds` error.
-    pub fn workspace_split_oob(operation: &'static str, mid: usize, len: usize) -> Self {
+    pub fn workspace_split_oob(
+        operation: &'static str,
+        mid: usize,
+        len: usize
+    ) -> Self {
         XenonError::Workspace {
             operation: Cow::Borrowed(operation),
-            category: WorkspaceErrorCategory::SplitOutOfBounds { mid, len },
+            category: WorkspaceErrorCategory::SplitOutOfBounds {
+                mid,
+                len
+            },
         }
     }
 
@@ -303,7 +309,10 @@ impl XenonError {
     ) -> Self {
         XenonError::Workspace {
             operation: Cow::Borrowed(operation),
-            category: WorkspaceErrorCategory::BorrowConflict { requested, current },
+            category: WorkspaceErrorCategory::BorrowConflict {
+                requested,
+                current
+            },
         }
     }
 
