@@ -12,7 +12,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- Consolidated SIMD kernels into domain modules in math/, matrix/, reduction/.
+- Consolidated SIMD kernels into domain modules in `math`, `matrix`, `reduction`.
 - Moved operation enums (`BinaryOp`, `UnaryOp`) to `math/types.rs`.
 - Moved `get_arch` to `dispatch/simd.rs`.
 - Replaced `ArithOp`/`UnaryArithOp` with direct `BinaryOp`/`Option<UnaryOp>`.
