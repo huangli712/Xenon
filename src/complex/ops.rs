@@ -50,11 +50,12 @@ impl<T: ComplexFloat> Mul for Complex<T> {
     }
 }
 
-/// Complex division using the Smith algorithm in `f64` precision.
+/// Complex division using the Smith algorithm in `f32` precision.
 ///
-/// The branch `|re| >= |im|` avoids forming `c² + d²` directly,
-/// preventing intermediate overflow.
-impl Div for Complex<f64> {
+/// This is an independent implementation; it does **not** delegate to
+/// `Complex<f64>`. The branch `|re| >= |im|` avoids intermediate overflow
+/// within `f32` arithmetic.
+impl Div for Complex<f32> {
     type Output = Self;
 
     #[inline]
@@ -77,12 +78,11 @@ impl Div for Complex<f64> {
     }
 }
 
-/// Complex division using the Smith algorithm in `f32` precision.
+/// Complex division using the Smith algorithm in `f64` precision.
 ///
-/// This is an independent implementation; it does **not** delegate to
-/// `Complex<f64>`. The branch `|re| >= |im|` avoids intermediate overflow
-/// within `f32` arithmetic.
-impl Div for Complex<f32> {
+/// The branch `|re| >= |im|` avoids forming `c² + d²` directly,
+/// preventing intermediate overflow.
+impl Div for Complex<f64> {
     type Output = Self;
 
     #[inline]
