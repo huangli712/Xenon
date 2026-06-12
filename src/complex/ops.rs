@@ -117,7 +117,7 @@ mod tests {
 
     /// -(1+2j) = (-1-2j).
     #[test]
-    fn test_neg_complex() {
+    fn test_neg_complex_f64() {
         assert_eq!(-Complex::new(1.0_f64, 2.0), Complex::new(-1.0, -2.0));
     }
 
@@ -132,7 +132,7 @@ mod tests {
 
     /// (1+2j) + (3+4j) = (4+6j).
     #[test]
-    fn test_add_complex() {
+    fn test_add_complex_f64() {
         assert_eq!(
             Complex::new(1.0_f64, 2.0) + Complex::new(3.0, 4.0),
             Complex::new(4.0, 6.0)
@@ -150,7 +150,7 @@ mod tests {
 
     /// (5+7j) - (2+3j) = (3+4j).
     #[test]
-    fn test_sub_complex() {
+    fn test_sub_complex_f64() {
         assert_eq!(
             Complex::new(5.0_f64, 7.0) - Complex::new(2.0, 3.0),
             Complex::new(3.0, 4.0)
@@ -168,7 +168,7 @@ mod tests {
 
     /// (1+2j) * (3+4j) = (-5+10j).
     #[test]
-    fn test_mul_complex() {
+    fn test_mul_complex_f64() {
         assert_eq!(
             Complex::new(1.0_f64, 2.0) * Complex::new(3.0, 4.0),
             Complex::new(-5.0, 10.0)
@@ -177,7 +177,7 @@ mod tests {
 
     /// `f32` basic division: (6+8j)/(3+4j) = 2+0j.
     #[test]
-    fn test_div_complex_f32() {
+    fn test_div_basic_f32() {
         let z = Complex::new(6.0_f32, 8.0) / Complex::new(3.0_f32, 4.0);
         assert!((z.re - 2.0).abs() < 1e-5);
         assert!(z.im.abs() < 1e-5);
@@ -185,7 +185,7 @@ mod tests {
 
     /// `f64` basic division: (6+8j)/(3+4j) = 2+0j.
     #[test]
-    fn test_div_complex_f64() {
+    fn test_div_basic_f64() {
         let z = Complex::new(6.0_f64, 8.0) / Complex::new(3.0_f64, 4.0);
         assert!((z.re - 2.0).abs() < 1e-12);
         assert!(z.im.abs() < 1e-12);
@@ -193,7 +193,7 @@ mod tests {
 
     /// `f32` division by zero propagates NaN or ∞ per IEEE 754.
     #[test]
-    fn test_div_zero_propagates_ieee754_f32() {
+    fn test_div_zero_f32() {
         let z = Complex::new(1.0_f32, 2.0) / Complex::new(0.0_f32, 0.0);
         assert!(z.re.is_nan() || z.re.is_infinite());
         assert!(z.im.is_nan() || z.im.is_infinite());
@@ -201,7 +201,7 @@ mod tests {
 
     /// `f64` division by zero propagates NaN or ∞ per IEEE 754.
     #[test]
-    fn test_div_zero_propagates_ieee754_f64() {
+    fn test_div_zero_f64() {
         let z = Complex::new(1.0_f64, 2.0) / Complex::new(0.0_f64, 0.0);
         assert!(z.re.is_nan() || z.re.is_infinite());
         assert!(z.im.is_nan() || z.im.is_infinite());
@@ -209,7 +209,7 @@ mod tests {
 
     /// `f32` division exercices the |im| > |re| Smith branch.
     #[test]
-    fn test_div_branch_selection_large_im_f32() {
+    fn test_div_large_im_f32() {
         let result = Complex::new(1.0_f32, 0.0) / Complex::new(0.0_f32, 1.0);
         assert!(result.re.abs() < 1e-5);
         assert!((result.im - (-1.0)).abs() < 1e-5);
@@ -217,7 +217,7 @@ mod tests {
 
     /// `f64` division exercices the |im| > |re| Smith branch.
     #[test]
-    fn test_div_branch_selection_large_im_f64() {
+    fn test_div_large_im_f64() {
         let result = Complex::new(1.0_f64, 0.0) / Complex::new(0.0_f64, 1.0);
         assert!(result.re.abs() < 1e-12);
         assert!((result.im - (-1.0)).abs() < 1e-12);

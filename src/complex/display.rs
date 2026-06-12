@@ -150,14 +150,14 @@ mod tests {
 
     /// `f32` NaN imaginary part.
     #[test]
-    fn test_display_f32_nan_imag() {
+    fn test_display_nan_imag_f32() {
         let s = format!("{}", Complex::new(1.0_f32, f32::NAN));
         assert_eq!(s, "1+NaNj");
     }
 
     /// `f32` `-0.0` preservation.
     #[test]
-    fn test_display_f32_neg_zero_preserved() {
+    fn test_display_neg_zero_preserved_f32() {
         assert_eq!(Complex::new(3.0_f32, -0.0f32).to_string(), "3-0j");
     }
 

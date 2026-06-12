@@ -281,7 +281,7 @@ mod tests {
 
     /// `new()` sets both fields and they can be read back directly.
     #[test]
-    fn test_complex_new() {
+    fn test_complex_new_f64() {
         let z = Complex::new(3.0_f64, 4.0);
         assert_eq!(z.re, 3.0);
         assert_eq!(z.im, 4.0);
@@ -363,7 +363,7 @@ mod tests {
 
     /// `re()` and `im()` return the same values as the public fields.
     #[test]
-    fn test_complex_accessors() {
+    fn test_complex_accessors_f64() {
         let z = Complex::new(3.0_f64, 4.0);
         assert_eq!(z.re(), 3.0);
         assert_eq!(z.im(), 4.0);
@@ -373,7 +373,7 @@ mod tests {
 
     /// `is_real` / `is_imaginary` correctly classify pure real, pure imaginary, and mixed cases.
     #[test]
-    fn test_is_real_imaginary() {
+    fn test_is_real_imaginary_f64() {
         assert!(Complex::new(3.0_f64, 0.0).is_real());
         assert!(!Complex::new(3.0_f64, 4.0).is_real());
         assert!(Complex::new(0.0, 3.0_f64).is_imaginary());
@@ -385,14 +385,14 @@ mod tests {
 
     /// `NaN` is never equal to itself (IEEE-754 semantics).
     #[test]
-    fn test_eq_nan() {
+    fn test_eq_nan_f64() {
         let nan = Complex::new(f64::NAN, 0.0);
         assert_ne!(nan, nan);
     }
 
     /// Component-wise equality: equal re+im → equal, any mismatch → not equal.
     #[test]
-    fn test_eq_componentwise() {
+    fn test_eq_componentwise_f64() {
         assert_eq!(Complex::new(1.0_f64, 2.0), Complex::new(1.0, 2.0));
         assert_ne!(Complex::new(1.0_f64, 2.0), Complex::new(1.0, 3.0));
     }
@@ -407,7 +407,7 @@ mod tests {
 
     /// `from_imag` puts value in the imaginary slot; `conj` negates the imaginary part.
     #[test]
-    fn test_from_imag_and_conj() {
+    fn test_from_imag_and_conj_f64() {
         let z = Complex::from_imag(4.0_f64);
         assert_eq!(z, Complex::new(0.0, 4.0));
         assert_eq!(z.conj(), Complex::new(0.0, -4.0));
@@ -440,7 +440,7 @@ mod tests {
 
     /// `From<T>` promotes a real scalar to `Complex<T, 0>`.
     #[test]
-    fn test_from_real() {
+    fn test_from_real_f64() {
         assert_eq!(Complex::from(5.0_f64), Complex::new(5.0, 0.0));
         assert_eq!(Complex::from(-1.0_f64), Complex::new(-1.0, 0.0));
     }
@@ -449,19 +449,19 @@ mod tests {
 
     /// `is_real` returns true even when the imaginary part is `-0.0`.
     #[test]
-    fn test_is_real_neg_zero_imag() {
+    fn test_is_real_neg_zero_imag_f64() {
         assert!(Complex::new(3.0_f64, -0.0).is_real());
     }
 
     /// `Default` produces `Complex(0, 0)`.
     #[test]
-    fn test_complex_default() {
+    fn test_complex_default_f64() {
         assert_eq!(Complex::<f64>::default(), Complex::new(0.0, 0.0));
     }
 
     /// `is_imaginary` returns true even when the real part is `-0.0`.
     #[test]
-    fn test_is_imaginary_neg_zero_real() {
+    fn test_is_imaginary_neg_zero_real_f64() {
         assert!(Complex::new(-0.0_f64, 5.0).is_imaginary());
     }
 
@@ -470,7 +470,7 @@ mod tests {
     /// Verifies the doc example in the `Complex<T>` struct comment
     /// remains compilable.
     #[test]
-    fn test_complex_docs_compile_example() {
+    fn test_complex_docs_compile_example_f64() {
         let z = Complex::new(3.0_f64, 4.0);
         assert!((z.norm() - 5.0).abs() < 1e-12);
         assert_eq!(format!("{}", z), "3+4j");

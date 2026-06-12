@@ -94,7 +94,7 @@ mod tests {
 
     /// Classic 3-4-5 triangle: norm = 5, norm_sqr = 25.
     #[test]
-    fn test_norm_3_4_5() {
+    fn test_norm_basic_f64() {
         let z = Complex::new(3.0_f64, 4.0);
         assert_eq!(z.norm(), 5.0);
         assert_eq!(z.norm_sqr(), 25.0);
@@ -102,21 +102,21 @@ mod tests {
 
     /// `norm_sqr` = re² + im².
     #[test]
-    fn test_norm_sqr() {
+    fn test_norm_sqr_f64() {
         let z = Complex::new(3.0_f64, 4.0);
         assert_eq!(z.norm_sqr(), 3.0 * 3.0 + 4.0 * 4.0);
     }
 
     /// `hypot` avoids overflow with large values.
     #[test]
-    fn test_norm_no_overflow() {
+    fn test_norm_overflow_f64() {
         let z = Complex::new(1.0e200_f64, 1.0e200);
         assert!(z.norm().is_finite());
     }
 
     /// Detects NaN in either component.
     #[test]
-    fn test_is_nan() {
+    fn test_is_nan_f64() {
         assert!(Complex::new(f64::NAN, 0.0).is_nan());
         assert!(Complex::new(0.0_f64, f64::NAN).is_nan());
         assert!(!Complex::new(1.0_f64, 2.0).is_nan());
@@ -124,7 +124,7 @@ mod tests {
 
     /// Detects non-finite (NaN or ∞) in either component.
     #[test]
-    fn test_is_finite() {
+    fn test_is_finite_f64() {
         assert!(Complex::new(1.0_f64, 2.0).is_finite());
         assert!(!Complex::new(f64::INFINITY, 0.0).is_finite());
         assert!(!Complex::new(0.0_f64, f64::NAN).is_finite());
