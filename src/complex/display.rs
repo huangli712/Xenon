@@ -117,6 +117,12 @@ mod tests {
         assert_eq!(Complex::new(0.0_f64, 4.0).to_string(), "4j");
     }
 
+    /// `-0.0` real part with non-zero imaginary: real sign is lost per IEEE 754 eq.
+    #[test]
+    fn test_display_neg_zero_real_nonzero_imag() {
+        assert_eq!(Complex::new(-0.0_f64, 4.0).to_string(), "4j");
+    }
+
     /// Zero: `0`.
     #[test]
     fn test_display_zero() {

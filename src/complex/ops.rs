@@ -109,10 +109,25 @@ impl Div for Complex<f64> {
 mod tests {
     use super::*;
 
+    /// f32: -(1+2j) = (-1-2j).
+    #[test]
+    fn test_neg_complex_f32() {
+        assert_eq!(-Complex::new(1.0_f32, 2.0), Complex::new(-1.0, -2.0));
+    }
+
     /// -(1+2j) = (-1-2j).
     #[test]
     fn test_neg_complex() {
         assert_eq!(-Complex::new(1.0_f64, 2.0), Complex::new(-1.0, -2.0));
+    }
+
+    /// f32: (1+2j) + (3+4j) = (4+6j).
+    #[test]
+    fn test_add_complex_f32() {
+        assert_eq!(
+            Complex::new(1.0_f32, 2.0) + Complex::new(3.0, 4.0),
+            Complex::new(4.0, 6.0)
+        );
     }
 
     /// (1+2j) + (3+4j) = (4+6j).
@@ -124,12 +139,30 @@ mod tests {
         );
     }
 
+    /// f32: (5+7j) - (2+3j) = (3+4j).
+    #[test]
+    fn test_sub_complex_f32() {
+        assert_eq!(
+            Complex::new(5.0_f32, 7.0) - Complex::new(2.0, 3.0),
+            Complex::new(3.0, 4.0)
+        );
+    }
+
     /// (5+7j) - (2+3j) = (3+4j).
     #[test]
     fn test_sub_complex() {
         assert_eq!(
             Complex::new(5.0_f64, 7.0) - Complex::new(2.0, 3.0),
             Complex::new(3.0, 4.0)
+        );
+    }
+
+    /// f32: (1+2j) * (3+4j) = (-5+10j).
+    #[test]
+    fn test_mul_complex_f32() {
+        assert_eq!(
+            Complex::new(1.0_f32, 2.0) * Complex::new(3.0, 4.0),
+            Complex::new(-5.0, 10.0)
         );
     }
 

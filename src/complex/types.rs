@@ -297,6 +297,22 @@ mod tests {
         accepts_complex_float(Complex::new(1.0_f64, 2.0));
     }
 
+    // -- PositiveZero --
+
+    /// f32: +0.0 is positive zero, -0.0 is not.
+    #[test]
+    fn test_positive_zero_f32() {
+        assert!(0.0f32.is_positive_zero());
+        assert!(!(-0.0f32).is_positive_zero());
+    }
+
+    /// f64: +0.0 is positive zero, -0.0 is not.
+    #[test]
+    fn test_positive_zero_f64() {
+        assert!(0.0f64.is_positive_zero());
+        assert!(!(-0.0f64).is_positive_zero());
+    }
+
     // -- Layout (size + alignment) --
 
     /// `Complex<f32>` is 8 bytes with alignment matching `f32`.
@@ -383,12 +399,43 @@ mod tests {
 
     // -- From / conj --
 
+    /// `from_imag` for `f32`.
+    #[test]
+    fn test_from_imag_f32() {
+        assert_eq!(Complex::from_imag(4.0_f32), Complex::new(0.0, 4.0));
+    }
+
     /// `from_imag` puts value in the imaginary slot; `conj` negates the imaginary part.
     #[test]
     fn test_from_imag_and_conj() {
         let z = Complex::from_imag(4.0_f64);
         assert_eq!(z, Complex::new(0.0, 4.0));
         assert_eq!(z.conj(), Complex::new(0.0, -4.0));
+    }
+
+    /// `conj` of NaN components remains NaN (f32).
+    #[test]
+    fn test_conj_nan_f32() {
+        let z = Complex::new(f32::NAN, f32::NAN);
+        let c = z.conj();
+        assert!(c.re.is_nan());
+        assert!(c.im.is_nan());
+    }
+
+    /// `conj` of NaN components remains NaN (f64).
+    #[test]
+    fn test_conj_nan_f64() {
+        let z = Complex::new(f64::NAN, f64::NAN);
+        let c = z.conj();
+        assert!(c.re.is_nan());
+        assert!(c.im.is_nan());
+    }
+
+    /// `From<f32>` promotes a real scalar to `Complex<f32, 0>`.
+    #[test]
+    fn test_from_real_f32() {
+        assert_eq!(Complex::from(5.0_f32), Complex::new(5.0, 0.0));
+        assert_eq!(Complex::from(-1.0_f32), Complex::new(-1.0, 0.0));
     }
 
     /// `From<T>` promotes a real scalar to `Complex<T, 0>`.
