@@ -143,5 +143,4 @@ mod tests {
         let z = Complex::new(1.0e200_f64, 1.0e200);
         assert!(z.norm_sqr().is_infinite());
     }
-
 }
