@@ -207,7 +207,7 @@ mod tests {
         assert!(z.im.is_nan() || z.im.is_infinite());
     }
 
-    /// `f32` division exercices the |im| > |re| Smith branch.
+    /// `f32` division exercises the |im| > |re| Smith branch.
     #[test]
     fn test_div_large_im_f32() {
         let result = Complex::new(1.0_f32, 0.0) / Complex::new(0.0_f32, 1.0);
@@ -215,7 +215,7 @@ mod tests {
         assert!((result.im - (-1.0)).abs() < 1e-5);
     }
 
-    /// `f64` division exercices the |im| > |re| Smith branch.
+    /// `f64` division exercises the |im| > |re| Smith branch.
     #[test]
     fn test_div_large_im_f64() {
         let result = Complex::new(1.0_f64, 0.0) / Complex::new(0.0_f64, 1.0);

@@ -1,4 +1,4 @@
-//! Core types: [`ComplexFloat`] trait and [`Complex`] struct.
+//! Core types: [`PositiveZero`], [`ComplexFloat`], and [`Complex`].
 
 /// Crate-private helper: distinguishes IEEE-754 `+0.0` from `-0.0`.
 pub(crate) trait PositiveZero {
@@ -21,8 +21,8 @@ impl PositiveZero for f64 {
 
 /// Public bound for `Complex<T>` — sealed to `f32` and `f64`.
 ///
-/// The supertrait set captures every algebraic / ordering capability used by
-/// the complex arithmetic and `Display` impls. `f32` and `f64` from the
+/// The supertrait set captures every capability used by the complex
+/// arithmetic and `Display` impls. `f32` and `f64` from the
 /// standard library naturally satisfy every supertrait listed below.
 ///
 /// # Sealed boundary
