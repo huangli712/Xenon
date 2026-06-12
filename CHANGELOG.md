@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- f32 test coverage across complex module (add, sub, mul, neg, norm, is_nan, is_finite, conj).
+- f32 test coverage across complex module (`add`, `sub`, `mul`, `neg`, etc).
 
 ### Changed
 
@@ -20,7 +20,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- Style: doc comments, separators, wrapped calls, and import cleanup across `error/` submodules.
+- Style: doc comments, wrapped calls, and import cleanup across `error/` submodules.
 
 ## [v0.0.44] — 2026-06-11
 
