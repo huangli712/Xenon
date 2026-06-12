@@ -142,12 +142,6 @@ mod tests {
 
     // -- Edge cases --
 
-    /// Preserves `-0.0` in both components.
-    #[test]
-    fn test_display_neg_zero_real_zero_preserved() {
-        assert_eq!(Complex::new(0.0_f64, -0.0).to_string(), "0-0j");
-    }
-
     /// `f32` NaN imaginary part.
     #[test]
     fn test_display_f32_nan_imag() {
@@ -159,6 +153,12 @@ mod tests {
     #[test]
     fn test_display_f32_neg_zero_preserved() {
         assert_eq!(Complex::new(3.0_f32, -0.0f32).to_string(), "3-0j");
+    }
+
+    /// Preserves `-0.0` in both components.
+    #[test]
+    fn test_display_neg_zero_real_zero_preserved() {
+        assert_eq!(Complex::new(0.0_f64, -0.0).to_string(), "0-0j");
     }
 
     /// NaN with precision renders correctly.

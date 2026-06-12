@@ -62,6 +62,13 @@ impl Complex<f64> {
 mod tests {
     use super::*;
 
+    /// Norm works for `f32` as well.
+    #[test]
+    fn test_norm_f32() {
+        let z = Complex::new(3.0_f32, 4.0);
+        assert_eq!(z.norm(), 5.0);
+    }
+
     /// Classic 3-4-5 triangle: norm = 5, norm_sqr = 25.
     #[test]
     fn test_norm_3_4_5() {
@@ -100,10 +107,4 @@ mod tests {
         assert!(!Complex::new(0.0_f64, f64::NAN).is_finite());
     }
 
-    /// Norm works for `f32` as well.
-    #[test]
-    fn test_norm_f32() {
-        let z = Complex::new(3.0_f32, 4.0);
-        assert_eq!(z.norm(), 5.0);
-    }
 }

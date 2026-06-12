@@ -109,6 +109,12 @@ impl Div for Complex<f64> {
 mod tests {
     use super::*;
 
+    /// -(1+2j) = (-1-2j).
+    #[test]
+    fn test_neg_complex() {
+        assert_eq!(-Complex::new(1.0_f64, 2.0), Complex::new(-1.0, -2.0));
+    }
+
     /// (1+2j) + (3+4j) = (4+6j).
     #[test]
     fn test_add_complex() {
@@ -136,14 +142,6 @@ mod tests {
         );
     }
 
-    /// `f64` basic division: (6+8j)/(3+4j) = 2+0j.
-    #[test]
-    fn test_div_complex_f64() {
-        let z = Complex::new(6.0_f64, 8.0) / Complex::new(3.0_f64, 4.0);
-        assert!((z.re - 2.0).abs() < 1e-12);
-        assert!(z.im.abs() < 1e-12);
-    }
-
     /// `f32` basic division: (6+8j)/(3+4j) = 2+0j.
     #[test]
     fn test_div_complex_f32() {
@@ -152,12 +150,12 @@ mod tests {
         assert!(z.im.abs() < 1e-5);
     }
 
-    /// `f64` division by zero propagates NaN or ∞ per IEEE 754.
+    /// `f64` basic division: (6+8j)/(3+4j) = 2+0j.
     #[test]
-    fn test_div_zero_propagates_ieee754_f64() {
-        let z = Complex::new(1.0_f64, 2.0) / Complex::new(0.0_f64, 0.0);
-        assert!(z.re.is_nan() || z.re.is_infinite());
-        assert!(z.im.is_nan() || z.im.is_infinite());
+    fn test_div_complex_f64() {
+        let z = Complex::new(6.0_f64, 8.0) / Complex::new(3.0_f64, 4.0);
+        assert!((z.re - 2.0).abs() < 1e-12);
+        assert!(z.im.abs() < 1e-12);
     }
 
     /// `f32` division by zero propagates NaN or ∞ per IEEE 754.
@@ -168,12 +166,12 @@ mod tests {
         assert!(z.im.is_nan() || z.im.is_infinite());
     }
 
-    /// `f64` division exercices the |im| > |re| Smith branch.
+    /// `f64` division by zero propagates NaN or ∞ per IEEE 754.
     #[test]
-    fn test_div_branch_selection_large_im_f64() {
-        let result = Complex::new(1.0_f64, 0.0) / Complex::new(0.0_f64, 1.0);
-        assert!(result.re.abs() < 1e-12);
-        assert!((result.im - (-1.0)).abs() < 1e-12);
+    fn test_div_zero_propagates_ieee754_f64() {
+        let z = Complex::new(1.0_f64, 2.0) / Complex::new(0.0_f64, 0.0);
+        assert!(z.re.is_nan() || z.re.is_infinite());
+        assert!(z.im.is_nan() || z.im.is_infinite());
     }
 
     /// `f32` division exercices the |im| > |re| Smith branch.
@@ -184,10 +182,12 @@ mod tests {
         assert!((result.im - (-1.0)).abs() < 1e-5);
     }
 
-    /// -(1+2j) = (-1-2j).
+    /// `f64` division exercices the |im| > |re| Smith branch.
     #[test]
-    fn test_neg_complex() {
-        assert_eq!(-Complex::new(1.0_f64, 2.0), Complex::new(-1.0, -2.0));
+    fn test_div_branch_selection_large_im_f64() {
+        let result = Complex::new(1.0_f64, 0.0) / Complex::new(0.0_f64, 1.0);
+        assert!(result.re.abs() < 1e-12);
+        assert!((result.im - (-1.0)).abs() < 1e-12);
     }
 
     /// Explicit real-to-complex promotion: `Complex::from(r)` works with all operators.

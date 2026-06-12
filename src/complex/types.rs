@@ -299,16 +299,6 @@ mod tests {
 
     // -- Layout (size + alignment) --
 
-    /// `Complex<f64>` is 16 bytes with alignment matching `f64`.
-    #[test]
-    fn test_complex_layout_f64() {
-        assert_eq!(core::mem::size_of::<Complex<f64>>(), 16);
-        assert_eq!(
-            core::mem::align_of::<Complex<f64>>(),
-            core::mem::align_of::<f64>()
-        );
-    }
-
     /// `Complex<f32>` is 8 bytes with alignment matching `f32`.
     #[test]
     fn test_complex_layout_f32() {
@@ -319,18 +309,17 @@ mod tests {
         );
     }
 
-    // -- Field offsets --
-
-    /// `re` is at offset 0 and `im` immediately follows `re`.
+    /// `Complex<f64>` is 16 bytes with alignment matching `f64`.
     #[test]
-    fn test_complex_field_offsets_f64() {
-        let z = Complex::<f64>::new(0.0, 0.0);
-        let base = (&z) as *const _ as usize;
-        let re_addr = (&z.re) as *const _ as usize;
-        let im_addr = (&z.im) as *const _ as usize;
-        assert_eq!(re_addr - base, 0);
-        assert_eq!(im_addr - base, core::mem::size_of::<f64>());
+    fn test_complex_layout_f64() {
+        assert_eq!(core::mem::size_of::<Complex<f64>>(), 16);
+        assert_eq!(
+            core::mem::align_of::<Complex<f64>>(),
+            core::mem::align_of::<f64>()
+        );
     }
+
+    // -- Field offsets --
 
     /// Same offset layout for `f32`.
     #[test]
@@ -341,6 +330,17 @@ mod tests {
         let im_addr = (&z.im) as *const _ as usize;
         assert_eq!(re_addr - base, 0);
         assert_eq!(im_addr - base, core::mem::size_of::<f32>());
+    }
+
+    /// `re` is at offset 0 and `im` immediately follows `re`.
+    #[test]
+    fn test_complex_field_offsets_f64() {
+        let z = Complex::<f64>::new(0.0, 0.0);
+        let base = (&z) as *const _ as usize;
+        let re_addr = (&z.re) as *const _ as usize;
+        let im_addr = (&z.im) as *const _ as usize;
+        assert_eq!(re_addr - base, 0);
+        assert_eq!(im_addr - base, core::mem::size_of::<f64>());
     }
 
     // -- Accessors --
