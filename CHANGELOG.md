@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.46] — 2026-06-12
+
+### Added
+
+- f32 test coverage across complex module (add, sub, mul, neg, norm, is_nan, is_finite, conj).
+
+### Changed
+
+- Moved `PositiveZero` to `types.rs`, reordered `mod.rs` by dependency.
+- Replaced Unicode section separators with ASCII across complex module.
+- Reordered impl blocks and tests to f32-before-f64 pattern.
+- Renamed tests to consistent `test_<scenario>_<type>` pattern.
+- Standardized section separator format to `---` with trailing dashes.
+
 ## [v0.0.45] — 2026-06-11
 
 ### Changed
