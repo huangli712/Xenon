@@ -5,9 +5,9 @@
 //! and `f64`. Arithmetic operations, formatting, and math methods
 //! are implemented in sub-modules.
 
-mod display;
-mod math;
-mod ops;
 mod types;
+mod ops;
+mod math;
+mod display;
 
 pub use types::{Complex, ComplexFloat};

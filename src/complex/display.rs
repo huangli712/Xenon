@@ -16,14 +16,14 @@ where
     ///
     /// # Formatting rules
     ///
-    /// | Input | Output |
-    /// |---|---|
-    /// | `Complex::new(3.0, 4.0)` | `"3+4j"` |
+    /// | Input                     | Output   |
+    /// |---------------------------|----------|
+    /// | `Complex::new(3.0, 4.0)`  | `"3+4j"` |
     /// | `Complex::new(3.0, -4.0)` | `"3-4j"` |
-    /// | `Complex::new(3.0, 0.0)` | `"3"` |
+    /// | `Complex::new(3.0, 0.0)`  | `"3"`    |
     /// | `Complex::new(3.0, -0.0)` | `"3-0j"` |
-    /// | `Complex::new(0.0, 4.0)` | `"4j"` |
-    /// | `Complex::new(0.0, 0.0)` | `"0"` |
+    /// | `Complex::new(0.0, 4.0)`  | `"4j"`   |
+    /// | `Complex::new(0.0, 0.0)`  | `"0"`    |
     ///
     /// Negative zero (`-0.0`) is distinguished from positive zero via the
     /// crate-private `PositiveZero` helper, which checks the IEEE-754 bit
@@ -83,7 +83,7 @@ where
 mod tests {
     use super::*;
 
-    // -- Basic formatting --
+    // --- Basic formatting ---------------------------------------------------
 
     /// Positive imaginary part: `3+4j`.
     #[test]
@@ -117,7 +117,8 @@ mod tests {
         assert_eq!(Complex::new(0.0_f64, 4.0).to_string(), "4j");
     }
 
-    /// `-0.0` real part with non-zero imaginary: real sign is lost per IEEE 754 eq.
+    /// `-0.0` real part with non-zero imaginary: real sign is lost per
+    /// IEEE 754 eq.
     #[test]
     fn test_display_neg_zero_real_nonzero_imag() {
         assert_eq!(Complex::new(-0.0_f64, 4.0).to_string(), "4j");
@@ -146,7 +147,7 @@ mod tests {
         assert_eq!(format!("{:.2}", Complex::new(0.0_f64, 2.0)), "2.00j");
     }
 
-    // -- Edge cases --
+    // --- Edge cases ---------------------------------------------------------
 
     /// `f32` NaN imaginary part.
     #[test]
@@ -196,7 +197,7 @@ mod tests {
         );
     }
 
-    // -- Infinity --
+    // --- Infinity -----------------------------------------------------------
 
     /// Infinity + NaN: `inf+NaNj`.
     #[test]
@@ -226,7 +227,7 @@ mod tests {
         assert_eq!(s, "NaN+NaNj");
     }
 
-    // -- Precision --
+    // --- Precision ----------------------------------------------------------
 
     /// NaN real, positive imaginary.
     #[test]
