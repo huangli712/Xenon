@@ -83,7 +83,7 @@ where
 mod tests {
     use super::*;
 
-    // ── Basic formatting ──
+    // -- Basic formatting --
 
     /// Positive imaginary part: `3+4j`.
     #[test]
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(format!("{:.2}", Complex::new(0.0_f64, 2.0)), "2.00j");
     }
 
-    // ── Edge cases ──
+    // -- Edge cases --
 
     /// Preserves `-0.0` in both components.
     #[test]
@@ -190,7 +190,7 @@ mod tests {
         );
     }
 
-    // ── Infinity ──
+    // -- Infinity --
 
     /// Infinity + NaN: `inf+NaNj`.
     #[test]
@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(s, "NaN+NaNj");
     }
 
-    // ── Precision ──
+    // -- Precision --
 
     /// NaN real, positive imaginary.
     #[test]

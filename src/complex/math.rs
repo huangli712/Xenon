@@ -6,16 +6,16 @@
 
 use super::Complex;
 
-impl Complex<f64> {
+impl Complex<f32> {
     /// Modulus |z| = sqrt(re² + im²), via `hypot` to avoid overflow.
     #[inline]
-    pub fn norm(self) -> f64 {
+    pub fn norm(self) -> f32 {
         self.re.hypot(self.im)
     }
 
     /// Squared modulus |z|² = re² + im² (no sqrt).
     #[inline]
-    pub fn norm_sqr(self) -> f64 {
+    pub fn norm_sqr(self) -> f32 {
         self.re * self.re + self.im * self.im
     }
 
@@ -32,16 +32,16 @@ impl Complex<f64> {
     }
 }
 
-impl Complex<f32> {
+impl Complex<f64> {
     /// Modulus |z| = sqrt(re² + im²), via `hypot` to avoid overflow.
     #[inline]
-    pub fn norm(self) -> f32 {
+    pub fn norm(self) -> f64 {
         self.re.hypot(self.im)
     }
 
     /// Squared modulus |z|² = re² + im² (no sqrt).
     #[inline]
-    pub fn norm_sqr(self) -> f32 {
+    pub fn norm_sqr(self) -> f64 {
         self.re * self.re + self.im * self.im
     }
 
