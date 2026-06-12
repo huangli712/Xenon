@@ -244,7 +244,7 @@ const _: () = {
     assert!(align_of::<Complex<f64>>() == align_of::<f64>());
 };
 
-// -- From<T>: explicit real-to-complex construction --
+// --- From<T>: explicit real-to-complex construction -------------------------
 
 impl<T: ComplexFloat> From<T> for Complex<T> {
     /// Converts a real number into a complex number with zero imaginary part.
@@ -263,7 +263,7 @@ impl<T: ComplexFloat> From<T> for Complex<T> {
     }
 }
 
-// -- PartialEq: component-wise IEEE-754 equality --
+// --- PartialEq: component-wise IEEE-754 equality ----------------------------
 
 impl<T: ComplexFloat> PartialEq for Complex<T> {
     /// Component-wise IEEE-754 equality. `NaN != NaN` is preserved.
@@ -277,7 +277,7 @@ impl<T: ComplexFloat> PartialEq for Complex<T> {
 mod tests {
     use super::*;
 
-    // -- Construction --
+    // --- Construction -------------------------------------------------------
 
     /// `new()` sets both fields and they can be read back directly.
     #[test]
@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(z.im, 4.0);
     }
 
-    // -- Trait sealing --
+    // --- Trait sealing ------------------------------------------------------
 
     /// `ComplexFloat` accepts `f32` and `f64`, rejects all other types.
     #[test]
@@ -297,7 +297,7 @@ mod tests {
         accepts_complex_float(Complex::new(1.0_f64, 2.0));
     }
 
-    // -- PositiveZero --
+    // --- PositiveZero -------------------------------------------------------
 
     /// f32: +0.0 is positive zero, -0.0 is not.
     #[test]
@@ -335,7 +335,7 @@ mod tests {
         );
     }
 
-    // -- Field offsets --
+    // --- Field offsets ------------------------------------------------------
 
     /// Same offset layout for `f32`.
     #[test]
@@ -359,7 +359,7 @@ mod tests {
         assert_eq!(im_addr - base, core::mem::size_of::<f64>());
     }
 
-    // -- Accessors --
+    // --- Accessors ----------------------------------------------------------
 
     /// `re()` and `im()` return the same values as the public fields.
     #[test]
@@ -369,19 +369,23 @@ mod tests {
         assert_eq!(z.im(), 4.0);
     }
 
-    // -- Predicates --
+    // --- Predicates ---------------------------------------------------------
 
-    /// `is_real` / `is_imaginary` correctly classify pure real, pure imaginary, and mixed cases.
+    /// `is_real` / `is_imaginary` correctly classify pure real, pure
+    /// imaginary, and mixed cases.
     #[test]
     fn test_is_real_imaginary_f64() {
         assert!(Complex::new(3.0_f64, 0.0).is_real());
         assert!(!Complex::new(3.0_f64, 4.0).is_real());
         assert!(Complex::new(0.0, 3.0_f64).is_imaginary());
         assert!(!Complex::new(3.0_f64, 4.0).is_imaginary());
-        assert!(Complex::new(0.0, 0.0).is_real() && Complex::new(0.0, 0.0).is_imaginary());
+        assert!(
+            Complex::new(0.0, 0.0).is_real() && 
+            Complex::new(0.0, 0.0).is_imaginary()
+        );
     }
 
-    // -- PartialEq tests --
+    // --- PartialEq tests ----------------------------------------------------
 
     /// `NaN` is never equal to itself (IEEE-754 semantics).
     #[test]
@@ -397,7 +401,7 @@ mod tests {
         assert_ne!(Complex::new(1.0_f64, 2.0), Complex::new(1.0, 3.0));
     }
 
-    // -- From / conj --
+    // --- From / conj --------------------------------------------------------
 
     /// `from_imag` for `f32`.
     #[test]
@@ -405,7 +409,8 @@ mod tests {
         assert_eq!(Complex::from_imag(4.0_f32), Complex::new(0.0, 4.0));
     }
 
-    /// `from_imag` puts value in the imaginary slot; `conj` negates the imaginary part.
+    /// `from_imag` puts value in the imaginary slot; `conj` negates the
+    /// imaginary part.
     #[test]
     fn test_from_imag_and_conj_f64() {
         let z = Complex::from_imag(4.0_f64);
@@ -445,7 +450,7 @@ mod tests {
         assert_eq!(Complex::from(-1.0_f64), Complex::new(-1.0, 0.0));
     }
 
-    // -- Edge cases --
+    // --- Edge cases ---------------------------------------------------------
 
     /// `is_real` returns true even when the imaginary part is `-0.0`.
     #[test]
@@ -465,7 +470,7 @@ mod tests {
         assert!(Complex::new(-0.0_f64, 5.0).is_imaginary());
     }
 
-    // -- Integration --
+    // --- Integration --------------------------------------------------------
 
     /// Verifies the doc example in the `Complex<T>` struct comment
     /// remains compilable.

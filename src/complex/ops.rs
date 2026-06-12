@@ -223,7 +223,8 @@ mod tests {
         assert!((result.im - (-1.0)).abs() < 1e-12);
     }
 
-    /// Explicit real-to-complex promotion: `Complex::from(r)` works with all operators.
+    /// Explicit real-to-complex promotion: `Complex::from(r)` works with
+    /// all operators.
     #[test]
     fn test_explicit_real_to_complex_ops() {
         let c = Complex::new(1.0_f64, 2.0);
