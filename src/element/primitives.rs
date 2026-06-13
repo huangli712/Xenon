@@ -37,7 +37,10 @@ pub trait Element:
     const ELEMENT_TYPE: ElementType;
 
     /// Canonical, stable name for this element type.
-    const ELEMENT_TYPE_NAME: &'static str;
+    ///
+    /// Derived from `ELEMENT_TYPE` via `ElementType::name()`; impls do not
+    /// override it.
+    const ELEMENT_TYPE_NAME: &'static str = Self::ELEMENT_TYPE.name();
 }
 
 /// `bool`: `zero()` is `false`, `one()` is `true`.
@@ -49,7 +52,6 @@ impl Element for bool {
         true
     }
     const ELEMENT_TYPE: ElementType = ElementType::Bool;
-    const ELEMENT_TYPE_NAME: &'static str = "bool";
 }
 
 /// `i32`: standard integer identities.
@@ -61,7 +63,6 @@ impl Element for i32 {
         1
     }
     const ELEMENT_TYPE: ElementType = ElementType::I32;
-    const ELEMENT_TYPE_NAME: &'static str = "i32";
 }
 
 /// `i64`: standard integer identities.
@@ -73,7 +74,6 @@ impl Element for i64 {
         1
     }
     const ELEMENT_TYPE: ElementType = ElementType::I64;
-    const ELEMENT_TYPE_NAME: &'static str = "i64";
 }
 
 /// `f32`: IEEE‑754 identities.
@@ -85,7 +85,6 @@ impl Element for f32 {
         1.0
     }
     const ELEMENT_TYPE: ElementType = ElementType::F32;
-    const ELEMENT_TYPE_NAME: &'static str = "f32";
 }
 
 /// `f64`: IEEE‑754 identities.
@@ -97,7 +96,6 @@ impl Element for f64 {
         1.0
     }
     const ELEMENT_TYPE: ElementType = ElementType::F64;
-    const ELEMENT_TYPE_NAME: &'static str = "f64";
 }
 
 /// `Complex<f32>`: `zero()` is `0 + 0i`, `one()` is `1 + 0i`.
@@ -109,7 +107,6 @@ impl Element for Complex<f32> {
         Complex::new(1.0, 0.0)
     }
     const ELEMENT_TYPE: ElementType = ElementType::Complex32;
-    const ELEMENT_TYPE_NAME: &'static str = "Complex<f32>";
 }
 
 /// `Complex<f64>`: `zero()` is `0 + 0i`, `one()` is `1 + 0i`.
@@ -121,7 +118,6 @@ impl Element for Complex<f64> {
         Complex::new(1.0, 0.0)
     }
     const ELEMENT_TYPE: ElementType = ElementType::Complex64;
-    const ELEMENT_TYPE_NAME: &'static str = "Complex<f64>";
 }
 
 /// Returns the `ElementType` discriminant for `A`.

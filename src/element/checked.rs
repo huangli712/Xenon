@@ -13,7 +13,7 @@
 use crate::private::Sealed;
 use super::Numeric;
 
-// --- CheckedAdd ---
+// --- CheckedAdd -------------------------------------------------------------
 
 /// Checked addition for integer types.
 ///
@@ -40,7 +40,7 @@ impl CheckedAdd for i64 {
     }
 }
 
-// --- CheckedSub ---
+// --- CheckedSub -------------------------------------------------------------
 
 /// Checked subtraction for integer types.
 ///
@@ -67,7 +67,7 @@ impl CheckedSub for i64 {
     }
 }
 
-// --- CheckedMul ---
+// --- CheckedMul -------------------------------------------------------------
 
 /// Checked multiplication for integer types.
 ///
@@ -94,34 +94,7 @@ impl CheckedMul for i64 {
     }
 }
 
-// --- CheckedNeg ---
-
-/// Checked negation for integer types.
-///
-/// Returns `None` when negating `i32::MIN` or `i64::MIN` (whose absolute
-/// value cannot be represented).
-///
-/// Only `i32` and `i64` implement this trait.
-pub(crate) trait CheckedNeg: Numeric + Sealed {
-    /// Returns `Some(-self)` if no overflow, `None` otherwise.
-    fn checked_neg(self) -> Option<Self>;
-}
-
-impl CheckedNeg for i32 {
-    #[inline]
-    fn checked_neg(self) -> Option<Self> {
-        i32::checked_neg(self)
-    }
-}
-
-impl CheckedNeg for i64 {
-    #[inline]
-    fn checked_neg(self) -> Option<Self> {
-        i64::checked_neg(self)
-    }
-}
-
-// --- CheckedDiv ---
+// --- CheckedDiv -------------------------------------------------------------
 
 /// Checked division for integer types.
 ///
@@ -146,6 +119,33 @@ impl CheckedDiv for i64 {
     #[inline]
     fn checked_div(self, rhs: Self) -> Option<Self> {
         i64::checked_div(self, rhs)
+    }
+}
+
+// --- CheckedNeg -------------------------------------------------------------
+
+/// Checked negation for integer types.
+///
+/// Returns `None` when negating `i32::MIN` or `i64::MIN` (whose absolute
+/// value cannot be represented).
+///
+/// Only `i32` and `i64` implement this trait.
+pub(crate) trait CheckedNeg: Numeric + Sealed {
+    /// Returns `Some(-self)` if no overflow, `None` otherwise.
+    fn checked_neg(self) -> Option<Self>;
+}
+
+impl CheckedNeg for i32 {
+    #[inline]
+    fn checked_neg(self) -> Option<Self> {
+        i32::checked_neg(self)
+    }
+}
+
+impl CheckedNeg for i64 {
+    #[inline]
+    fn checked_neg(self) -> Option<Self> {
+        i64::checked_neg(self)
     }
 }
 
