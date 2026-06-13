@@ -192,6 +192,13 @@ mod tests {
         assert_eq!(<f64 as RealScalar>::sqrt(9.0), 3.0);
     }
 
+    /// Verifies `RealScalar::sin` for `f32` at zero.
+    #[test]
+    fn test_f32_sin() {
+        let val = <f32 as RealScalar>::sin(0.0_f32);
+        assert!((val - 0.0_f32).abs() < 1e-6_f32);
+    }
+
     /// Verifies `RealScalar::sin` for `f64` at zero.
     #[test]
     fn test_f64_sin() {
@@ -254,45 +261,45 @@ mod tests {
     /// Property: sqrt(a)² ≈ a for `f32` and `f64`.
     #[test]
     fn test_property_sqrt_square_inverse() {
-        let tol64 = 1e-10_f64;
-        for a in [0.0_f64, 0.25, 1.0, 2.0, 9.0, 100.0] {
-            let y = <f64 as RealScalar>::sqrt(a);
-            assert!((y * y - a).abs() < tol64 * a.max(1.0));
-        }
         let tol32 = 1e-5_f32;
         for a in [0.0_f32, 0.25, 1.0, 9.0] {
             let y = <f32 as RealScalar>::sqrt(a);
             assert!((y * y - a).abs() < tol32 * a.max(1.0));
+        }
+        let tol64 = 1e-10_f64;
+        for a in [0.0_f64, 0.25, 1.0, 2.0, 9.0, 100.0] {
+            let y = <f64 as RealScalar>::sqrt(a);
+            assert!((y * y - a).abs() < tol64 * a.max(1.0));
         }
     }
 
     /// Property: ln(exp(a)) ≈ a for `f32` and `f64`.
     #[test]
     fn test_property_exp_ln_inverse() {
-        let tol64 = 1e-10_f64;
-        for a in [-2.0_f64, -0.5, 0.0, 0.5, 2.0] {
-            let round = <f64 as RealScalar>::ln(<f64 as RealScalar>::exp(a));
-            assert!((round - a).abs() < tol64 * a.abs().max(1.0));
-        }
         let tol32 = 1e-5_f32;
         for a in [-2.0_f32, 0.0, 2.0] {
             let round = <f32 as RealScalar>::ln(<f32 as RealScalar>::exp(a));
             assert!((round - a).abs() < tol32 * a.abs().max(1.0));
+        }
+        let tol64 = 1e-10_f64;
+        for a in [-2.0_f64, -0.5, 0.0, 0.5, 2.0] {
+            let round = <f64 as RealScalar>::ln(<f64 as RealScalar>::exp(a));
+            assert!((round - a).abs() < tol64 * a.abs().max(1.0));
         }
     }
 
     /// Property: exp(ln(x)) ≈ x for `f32` and `f64`.
     #[test]
     fn test_property_ln_exp_inverse() {
-        let tol64 = 1e-10_f64;
-        for x in [0.5_f64, 1.0, std::f64::consts::E, 10.0] {
-            let round = <f64 as RealScalar>::exp(<f64 as RealScalar>::ln(x));
-            assert!((round - x).abs() < tol64 * x.max(1.0));
-        }
         let tol32 = 1e-5_f32;
         for x in [0.5_f32, 1.0, 10.0] {
             let round = <f32 as RealScalar>::exp(<f32 as RealScalar>::ln(x));
             assert!((round - x).abs() < tol32 * x.max(1.0));
+        }
+        let tol64 = 1e-10_f64;
+        for x in [0.5_f64, 1.0, std::f64::consts::E, 10.0] {
+            let round = <f64 as RealScalar>::exp(<f64 as RealScalar>::ln(x));
+            assert!((round - x).abs() < tol64 * x.max(1.0));
         }
     }
 
@@ -307,13 +314,6 @@ mod tests {
     fn test_f32_signum() {
         assert_eq!(<f32 as RealScalar>::signum(5.0_f32), 1.0_f32);
         assert_eq!(<f32 as RealScalar>::signum(-3.0_f32), -1.0_f32);
-    }
-
-    /// Verifies `RealScalar::sin` for `f32` at zero.
-    #[test]
-    fn test_f32_sin() {
-        let val = <f32 as RealScalar>::sin(0.0_f32);
-        assert!((val - 0.0_f32).abs() < 1e-6_f32);
     }
 
     /// Verifies `RealScalar::floor` for `f32`.
