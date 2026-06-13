@@ -13,7 +13,7 @@
 use crate::private::Sealed;
 use super::Numeric;
 
-// ── CheckedAdd ────────────────────────────────────────────────────────────
+// --- CheckedAdd ---
 
 /// Checked addition for integer types.
 ///
@@ -40,7 +40,7 @@ impl CheckedAdd for i64 {
     }
 }
 
-// ── CheckedSub ────────────────────────────────────────────────────────────
+// --- CheckedSub ---
 
 /// Checked subtraction for integer types.
 ///
@@ -67,7 +67,7 @@ impl CheckedSub for i64 {
     }
 }
 
-// ── CheckedMul ────────────────────────────────────────────────────────────
+// --- CheckedMul ---
 
 /// Checked multiplication for integer types.
 ///
@@ -94,7 +94,7 @@ impl CheckedMul for i64 {
     }
 }
 
-// ── CheckedNeg ────────────────────────────────────────────────────────────
+// --- CheckedNeg ---
 
 /// Checked negation for integer types.
 ///
@@ -121,7 +121,7 @@ impl CheckedNeg for i64 {
     }
 }
 
-// ── CheckedDiv ────────────────────────────────────────────────────────────
+// --- CheckedDiv ---
 
 /// Checked division for integer types.
 ///
