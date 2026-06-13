@@ -50,9 +50,11 @@ impl Element for bool {
     fn zero() -> Self {
         false
     }
+
     fn one() -> Self {
         true
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::Bool;
 }
 
@@ -61,9 +63,11 @@ impl Element for i32 {
     fn zero() -> Self {
         0
     }
+   
     fn one() -> Self {
         1
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::I32;
 }
 
@@ -72,9 +76,11 @@ impl Element for i64 {
     fn zero() -> Self {
         0
     }
+   
     fn one() -> Self {
         1
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::I64;
 }
 
@@ -83,9 +89,11 @@ impl Element for f32 {
     fn zero() -> Self {
         0.0
     }
+   
     fn one() -> Self {
         1.0
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::F32;
 }
 
@@ -94,9 +102,11 @@ impl Element for f64 {
     fn zero() -> Self {
         0.0
     }
+   
     fn one() -> Self {
         1.0
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::F64;
 }
 
@@ -105,9 +115,11 @@ impl Element for Complex<f32> {
     fn zero() -> Self {
         Complex::new(0.0, 0.0)
     }
+   
     fn one() -> Self {
         Complex::new(1.0, 0.0)
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::Complex32;
 }
 
@@ -116,16 +128,18 @@ impl Element for Complex<f64> {
     fn zero() -> Self {
         Complex::new(0.0, 0.0)
     }
+   
     fn one() -> Self {
         Complex::new(1.0, 0.0)
     }
+    
     const ELEMENT_TYPE: ElementType = ElementType::Complex64;
 }
 
 /// Returns the `ElementType` discriminant for `A`.
 ///
-/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated constant.
-/// This is a zero-cost const function.
+/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated
+/// constant. This is a zero-cost const function.
 pub(crate) const fn element_type_of<A: Element>() -> ElementType {
     A::ELEMENT_TYPE
 }
@@ -133,6 +147,15 @@ pub(crate) const fn element_type_of<A: Element>() -> ElementType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verifies `bool` `Element` impl and compile‑time trait bound.
+    #[test]
+    fn test_bool_element_only() {
+        fn assert_element<A: Element>() {}
+        assert_element::<bool>();
+        assert!(!bool::zero());
+        assert!(bool::one());
+    }
 
     /// Verifies `f32` `Element::zero` and `Element::one`.
     #[test]
@@ -146,15 +169,6 @@ mod tests {
     fn test_f64_zero_one() {
         assert_eq!(<f64 as Element>::zero(), 0.0_f64);
         assert_eq!(<f64 as Element>::one(), 1.0_f64);
-    }
-
-    /// Verifies `bool` `Element` impl and compile‑time trait bound.
-    #[test]
-    fn test_bool_element_only() {
-        fn assert_element<A: Element>() {}
-        assert_element::<bool>();
-        assert!(!bool::zero());
-        assert!(bool::one());
     }
 
     /// Verifies `Complex<f64>` `Element::zero` and `Element::one`.
