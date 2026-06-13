@@ -31,8 +31,8 @@ impl SimdElement for Complex<f64> {}
 mod tests {
     use super::*;
 
-    /// Compile-time verification that all 6 numeric element types
-    /// implement the `SimdElement` marker trait.
+    /// Compile-time verification that all 6 numeric element types implement
+    /// the `SimdElement` marker trait.
     #[test]
     fn test_marker_trait_impls() {
         fn assert_simd<T: SimdElement>() {}
