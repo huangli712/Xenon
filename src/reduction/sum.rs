@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use crate::error::XenonError;
 use crate::dimension::{Axis, Dimension, RemoveAxis};
-use crate::element::Numeric;
+use crate::element::{CheckedAdd, Numeric};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 use crate::dispatch::select_exec_path;
@@ -374,8 +374,7 @@ where
         // pointer-compatible and reading through a `*const i32` is sound.
         let a: i32 = unsafe { *(&acc as *const A as *const i32) };
         let v: i32 = unsafe { *(&value as *const A as *const i32) };
-        return a
-            .checked_add(v)
+        return <i32 as CheckedAdd>::checked_add(a, v)
             // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
             .map(|r| unsafe { transmute_copy::<i32, A>(&r) });
     }
@@ -383,8 +382,7 @@ where
         // SAFETY: TypeId equality proves `A == i64`.
         let a: i64 = unsafe { *(&acc as *const A as *const i64) };
         let v: i64 = unsafe { *(&value as *const A as *const i64) };
-        return a
-            .checked_add(v)
+        return <i64 as CheckedAdd>::checked_add(a, v)
             // SAFETY: `A == i64`; transmute is identity.
             .map(|r| unsafe { transmute_copy::<i64, A>(&r) });
     }

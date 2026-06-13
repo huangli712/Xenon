@@ -10,27 +10,27 @@
 //!
 //! # Relationship to `Numeric`
 //!
-//! `SealedElement` covers the same six types as [`Numeric`](crate::element::Numeric),
-//! yet carries a deliberately weaker contract: it does **not** require the
-//! arithmetic operators (`Add`/`Sub`/`Mul`/`Div`/`Neg`). The operations gated
-//! by this trait only need "a numeric element type that is not `bool`", never
-//! ring arithmetic. Binding them to `Numeric` would over-constrain the public
+//! `SealedElement` covers the same six types as `Numeric`, yet carries a
+//! deliberately weaker contract: it does **not** require the arithmetic
+//! operators (`Add`/`Sub`/`Mul`/`Div`/`Neg`). The operations gated by this
+//! trait only need "a numeric element type that is not `bool`", never ring
+//! arithmetic. Binding them to `Numeric` would over-constrain the public
 //! signature and misstate intent, so the marker is kept independent.
 //!
 //! # Application scenarios
 //!
-//! Reach for `SealedElement` as the bound whenever an operation must accept the
-//! full numeric set yet exclude `bool` at compile time, without depending on
-//! arithmetic. Current consumers:
+//! Reach for `SealedElement` as the bound whenever an operation must accept
+//! the full numeric set yet exclude `bool` at compile time, without depending
+//! on arithmetic. Current consumers:
 //!
-//! | Operation | Entry point | Why `bool` is excluded |
-//! |-----------|-------------|------------------------|
-//! | Identity matrix | `Tensor::eye` | a `bool` identity matrix has no meaningful `1`/`0` diagonal |
-//! | Deduplication | `TensorBase::unique` | `unique` over `bool` is degenerate (at most two values) |
-//! | Type conversion | `TensorBase::cast` | the 6×6 numeric cast matrix has no `bool` row or column |
+//! | Operation       | Entry point          |
+//! |-----------------|----------------------|
+//! | Identity matrix | `TensorBase::eye`    |
+//! | Deduplication   | `TensorBase::unique` |
+//! | Type conversion | `TensorBase::cast`   |
 //!
-//! Future numeric-only, arithmetic-free operations (for example additional set
-//! operations like `intersect`/`union`, or histogram/value-table builders)
+//! Future numeric-only, arithmetic-free operations (for example additional
+//! set operations like `intersect`/`union`, or histogram/value-table builders)
 //! should reuse this bound rather than re-declaring yet another identical
 //! marker trait.
 //!
@@ -50,9 +50,7 @@ use crate::private::Sealed;
 /// not `Element` types and therefore cannot implement this trait either.
 ///
 /// This is a shared compile-time gate for numeric-only operations that do not
-/// need arithmetic operators (`eye`, `unique`, `cast`). See the
-/// [module documentation](self) for the full rationale and application
-/// scenarios.
+/// need arithmetic operators (`eye`, `unique`, `cast`).
 ///
 /// # Sealed
 ///

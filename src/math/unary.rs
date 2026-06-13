@@ -11,7 +11,7 @@ use crate::dispatch::{ExecPath, select_exec_path};
 use crate::complex::{Complex, ComplexFloat};
 use crate::dimension::Dimension;
 use crate::element::{Element, Numeric, RealScalar, ComplexScalar};
-use crate::element::{CheckedNeg, OrderedCompareElement, SimdElement};
+use crate::element::{CheckedMul, CheckedNeg, OrderedCompareElement, SimdElement};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
@@ -88,7 +88,7 @@ impl UnaryArith for i32 {
 
     #[inline]
     fn square_step(x: Self) -> Self {
-        x.checked_mul(x).unwrap_or_else(|| {
+        <Self as CheckedMul>::checked_mul(x, x).unwrap_or_else(|| {
             panic!(
                 "integer overflow: operation=square, type={}, trigger={}",
                 "i32", x
@@ -109,7 +109,7 @@ impl UnaryArith for i32 {
 
     #[inline]
     fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-        x.checked_mul(x).unwrap_or_else(|| {
+        <Self as CheckedMul>::checked_mul(x, x).unwrap_or_else(|| {
             panic!(
                 "integer overflow: operation=square, type={}, trigger={}, \
                  element_index={}, shape={:?}",
@@ -135,7 +135,7 @@ impl UnaryArith for i64 {
     
     #[inline]
     fn square_step(x: Self) -> Self {
-        x.checked_mul(x).unwrap_or_else(|| {
+        <Self as CheckedMul>::checked_mul(x, x).unwrap_or_else(|| {
             panic!(
                 "integer overflow: operation=square, type={}, trigger={}",
                 "i64", x
@@ -156,7 +156,7 @@ impl UnaryArith for i64 {
     
     #[inline]
     fn square_step_with_ctx(x: Self, idx: usize, shape: &[usize]) -> Self {
-        x.checked_mul(x).unwrap_or_else(|| {
+        <Self as CheckedMul>::checked_mul(x, x).unwrap_or_else(|| {
             panic!(
                 "integer overflow: operation=square, type={}, trigger={}, \
                  element_index={}, shape={:?}",

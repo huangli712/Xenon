@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use crate::error::{InvalidArgumentKind, XenonError};
 use crate::dimension::Dimension;
-use crate::element::Numeric;
+use crate::element::{CheckedAdd, CheckedMul, Numeric};
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
 use crate::dispatch::{ExecPath, select_exec_path};
@@ -301,7 +301,7 @@ where
         // SAFETY: TypeId equality proves `A == i32`.
         let xi: i32 = unsafe { *(&x as *const A as *const i32) };
         let yi: i32 = unsafe { *(&y as *const A as *const i32) };
-        let product = xi.checked_mul(yi).unwrap_or_else(|| {
+        let product = <i32 as CheckedMul>::checked_mul(xi, yi).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during multiplication at \
                  element {index} of shape [{len}] (type i32)"
@@ -314,7 +314,7 @@ where
         // SAFETY: TypeId equality proves `A == i64`.
         let xi: i64 = unsafe { *(&x as *const A as *const i64) };
         let yi: i64 = unsafe { *(&y as *const A as *const i64) };
-        let product = xi.checked_mul(yi).unwrap_or_else(|| {
+        let product = <i64 as CheckedMul>::checked_mul(xi, yi).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during multiplication at \
                  element {index} of shape [{len}] (type i64)"
@@ -349,7 +349,7 @@ where
         // SAFETY: TypeId equality proves `A == i32`.
         let acci: i32 = unsafe { *(&acc as *const A as *const i32) };
         let prod: i32 = unsafe { *(&product as *const A as *const i32) };
-        let sum = acci.checked_add(prod).unwrap_or_else(|| {
+        let sum = <i32 as CheckedAdd>::checked_add(acci, prod).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during accumulation at \
                  element {index} of shape [{len}] (type i32)"
@@ -362,7 +362,7 @@ where
         // SAFETY: TypeId equality proves `A == i64`.
         let acci: i64 = unsafe { *(&acc as *const A as *const i64) };
         let prod: i64 = unsafe { *(&product as *const A as *const i64) };
-        let sum = acci.checked_add(prod).unwrap_or_else(|| {
+        let sum = <i64 as CheckedAdd>::checked_add(acci, prod).unwrap_or_else(|| {
             panic!(
                 "dot: integer overflow during accumulation at \
                  element {index} of shape [{len}] (type i64)"
@@ -394,7 +394,7 @@ where
         // SAFETY: TypeId equality proves `A == i32`.
         let xi: i32 = unsafe { *(&x as *const A as *const i32) };
         let yi: i32 = unsafe { *(&y as *const A as *const i32) };
-        let sum = xi.checked_add(yi).unwrap_or_else(|| {
+        let sum = <i32 as CheckedAdd>::checked_add(xi, yi).unwrap_or_else(|| {
             panic!("dot: integer overflow during parallel reduction (type i32)")
         });
         // SAFETY: `A == i32`; reinterpreting `i32` as `A` is identity.
@@ -404,7 +404,7 @@ where
         // SAFETY: TypeId equality proves `A == i64`.
         let xi: i64 = unsafe { *(&x as *const A as *const i64) };
         let yi: i64 = unsafe { *(&y as *const A as *const i64) };
-        let sum = xi.checked_add(yi).unwrap_or_else(|| {
+        let sum = <i64 as CheckedAdd>::checked_add(xi, yi).unwrap_or_else(|| {
             panic!("dot: integer overflow during parallel reduction (type i64)")
         });
         // SAFETY: `A == i64`; reinterpreting `i64` as `A` is identity.
