@@ -153,6 +153,124 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
+    // --- abs (trait fn) -----------------------------------------------------
+
+    /// Verifies `RealScalar::abs` for `f32`.
+    #[test]
+    fn test_f32_abs() {
+        assert_eq!(<f32 as RealScalar>::abs(-3.5_f32), 3.5_f32);
+    }
+
+    // --- signum (trait fn) --------------------------------------------------
+
+    /// Verifies `RealScalar::signum` for `f32`.
+    #[test]
+    fn test_f32_signum() {
+        assert_eq!(<f32 as RealScalar>::signum(5.0_f32), 1.0_f32);
+        assert_eq!(<f32 as RealScalar>::signum(-3.0_f32), -1.0_f32);
+    }
+
+    // --- sqrt (trait fn) ----------------------------------------------------
+
+    /// Verifies `RealScalar::sqrt` for `f64`.
+    #[test]
+    fn test_f64_sqrt() {
+        assert_eq!(<f64 as RealScalar>::sqrt(4.0), 2.0);
+        assert_eq!(<f64 as RealScalar>::sqrt(9.0), 3.0);
+    }
+
+    /// Boundary: `sqrt` of a negative number returns NaN.
+    #[test]
+    fn test_boundary_f64_sqrt_neg_is_nan() {
+        assert!(<f64 as RealScalar>::is_nan(<f64 as RealScalar>::sqrt(-1.0)));
+    }
+
+    // --- sin (trait fn) -----------------------------------------------------
+
+    /// Verifies `RealScalar::sin` for `f32` at zero.
+    #[test]
+    fn test_f32_sin() {
+        let val = <f32 as RealScalar>::sin(0.0_f32);
+        assert!((val - 0.0_f32).abs() < 1e-6_f32);
+    }
+
+    /// Verifies `RealScalar::sin` for `f64` at zero.
+    #[test]
+    fn test_f64_sin() {
+        assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
+    }
+
+    // --- exp (trait fn) -----------------------------------------------------
+
+    /// Verifies exp(ln(x)) ≈ x (round‑trip identity) for `f64`.
+    #[test]
+    fn test_f64_exp_ln_inverse() {
+        let tolerance = 1e-12_f64;
+        for x in [1.0_f64, 2.0, std::f64::consts::E, 10.0, 100.0] {
+            let round_trip = <f64 as RealScalar>::exp(<f64 as RealScalar>::ln(x));
+            assert!(
+                (round_trip - x).abs() < tolerance * x.max(1.0),
+                "exp(ln({})) = {}, expected approx {}",
+                x,
+                round_trip,
+                x,
+            );
+        }
+    }
+
+    // --- ln (trait fn #6) ---------------------------------------------------
+
+    /// Boundary: `ln(0.0)` returns negative infinity.
+    #[test]
+    fn test_boundary_f64_ln_zero_is_neg_infinity() {
+        let v = <f64 as RealScalar>::ln(0.0);
+        assert!(<f64 as RealScalar>::is_infinite(v));
+        assert!(v < 0.0);
+    }
+
+    // --- floor (trait fn) ---------------------------------------------------
+
+    /// Verifies `RealScalar::floor` for `f32`.
+    #[test]
+    fn test_f32_floor() {
+        assert_eq!(<f32 as RealScalar>::floor(3.7_f32), 3.0_f32);
+    }
+
+    // --- ceil (trait fn) ----------------------------------------------------
+
+    /// Verifies `RealScalar::ceil` for `f32`.
+    #[test]
+    fn test_f32_ceil() {
+        assert_eq!(<f32 as RealScalar>::ceil(2.3_f32), 3.0_f32);
+    }
+
+    // --- predicates (trait fn) ----------------------------------------------
+
+    /// Verifies `f32` IEEE‑754 predicates: is_nan, is_infinite, is_finite.
+    #[test]
+    fn test_f32_nan_detection() {
+        assert!(<f32 as RealScalar>::is_nan(f32::NAN));
+        assert!(!<f32 as RealScalar>::is_nan(1.0f32));
+        assert!(<f32 as RealScalar>::is_infinite(f32::INFINITY));
+        assert!(<f32 as RealScalar>::is_finite(1.0f32));
+    }
+
+    /// Boundary: `is_nan` is `true` for NaN, `false` otherwise.
+    #[test]
+    fn test_boundary_f64_nan_is_nan() {
+        assert!(<f64 as RealScalar>::is_nan(f64::NAN));
+        assert!(!<f64 as RealScalar>::is_nan(1.0_f64));
+    }
+
+    /// Boundary: `is_finite` is `false` for infinity.
+    #[test]
+    fn test_boundary_f64_infinity_is_not_finite() {
+        assert!(!<f64 as RealScalar>::is_finite(f64::INFINITY));
+        assert!(<f64 as RealScalar>::is_finite(1.0_f64));
+    }
+
+    // --- other tests --------------------------------------------------------
+
     /// Verifies that the `RealScalar` API surface (8 math functions +
     /// 3 IEEE‑754 predicates) is well-formed and reachable through a
     /// generic `R: RealScalar` bound. Exercises both `f32` and `f64`.
@@ -183,79 +301,6 @@ mod tests {
         assert_eq!(f64::one(), 1.0);
         assert_eq!(<f64 as RealScalar>::sqrt(9.0), 3.0);
         assert!(<f32 as RealScalar>::is_nan(f32::NAN));
-    }
-
-    /// Verifies `RealScalar::sqrt` for `f64`.
-    #[test]
-    fn test_f64_sqrt() {
-        assert_eq!(<f64 as RealScalar>::sqrt(4.0), 2.0);
-        assert_eq!(<f64 as RealScalar>::sqrt(9.0), 3.0);
-    }
-
-    /// Verifies `RealScalar::sin` for `f32` at zero.
-    #[test]
-    fn test_f32_sin() {
-        let val = <f32 as RealScalar>::sin(0.0_f32);
-        assert!((val - 0.0_f32).abs() < 1e-6_f32);
-    }
-
-    /// Verifies `RealScalar::sin` for `f64` at zero.
-    #[test]
-    fn test_f64_sin() {
-        assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
-    }
-
-    /// Verifies `f32` IEEE‑754 predicates: is_nan, is_infinite, is_finite.
-    #[test]
-    fn test_f32_nan_detection() {
-        assert!(<f32 as RealScalar>::is_nan(f32::NAN));
-        assert!(!<f32 as RealScalar>::is_nan(1.0f32));
-        assert!(<f32 as RealScalar>::is_infinite(f32::INFINITY));
-        assert!(<f32 as RealScalar>::is_finite(1.0f32));
-    }
-
-    /// Verifies exp(ln(x)) ≈ x (round‑trip identity) for `f64`.
-    #[test]
-    fn test_f64_exp_ln_inverse() {
-        let tolerance = 1e-12_f64;
-        for x in [1.0_f64, 2.0, std::f64::consts::E, 10.0, 100.0] {
-            let round_trip = <f64 as RealScalar>::exp(<f64 as RealScalar>::ln(x));
-            assert!(
-                (round_trip - x).abs() < tolerance * x.max(1.0),
-                "exp(ln({})) = {}, expected approx {}",
-                x,
-                round_trip,
-                x,
-            );
-        }
-    }
-
-    /// Boundary: `is_nan` is `true` for NaN, `false` otherwise.
-    #[test]
-    fn test_boundary_f64_nan_is_nan() {
-        assert!(<f64 as RealScalar>::is_nan(f64::NAN));
-        assert!(!<f64 as RealScalar>::is_nan(1.0_f64));
-    }
-
-    /// Boundary: `is_finite` is `false` for infinity.
-    #[test]
-    fn test_boundary_f64_infinity_is_not_finite() {
-        assert!(!<f64 as RealScalar>::is_finite(f64::INFINITY));
-        assert!(<f64 as RealScalar>::is_finite(1.0_f64));
-    }
-
-    /// Boundary: `sqrt` of a negative number returns NaN.
-    #[test]
-    fn test_boundary_f64_sqrt_neg_is_nan() {
-        assert!(<f64 as RealScalar>::is_nan(<f64 as RealScalar>::sqrt(-1.0)));
-    }
-
-    /// Boundary: `ln(0.0)` returns negative infinity.
-    #[test]
-    fn test_boundary_f64_ln_zero_is_neg_infinity() {
-        let v = <f64 as RealScalar>::ln(0.0);
-        assert!(<f64 as RealScalar>::is_infinite(v));
-        assert!(v < 0.0);
     }
 
     /// Property: sqrt(a)² ≈ a for `f32` and `f64`.
@@ -303,31 +348,6 @@ mod tests {
         }
     }
 
-    /// Verifies `RealScalar::abs` for `f32`.
-    #[test]
-    fn test_f32_abs() {
-        assert_eq!(<f32 as RealScalar>::abs(-3.5_f32), 3.5_f32);
-    }
-
-    /// Verifies `RealScalar::signum` for `f32`.
-    #[test]
-    fn test_f32_signum() {
-        assert_eq!(<f32 as RealScalar>::signum(5.0_f32), 1.0_f32);
-        assert_eq!(<f32 as RealScalar>::signum(-3.0_f32), -1.0_f32);
-    }
-
-    /// Verifies `RealScalar::floor` for `f32`.
-    #[test]
-    fn test_f32_floor() {
-        assert_eq!(<f32 as RealScalar>::floor(3.7_f32), 3.0_f32);
-    }
-
-    /// Verifies `RealScalar::ceil` for `f32`.
-    #[test]
-    fn test_f32_ceil() {
-        assert_eq!(<f32 as RealScalar>::ceil(2.3_f32), 3.0_f32);
-    }
-
     /// Exercises several `f64` math methods on a well‑defined input.
     #[test]
     fn test_real_scalar_boundary_methods() {
@@ -340,8 +360,8 @@ mod tests {
         assert_eq!(<f64 as RealScalar>::sin(0.0), 0.0);
     }
 
-    /// Compile‑time: verifies `RealScalar` trait bounds for both
-    /// `f32` and `f64`.
+    /// Compile‑time: verifies `RealScalar` trait bounds for both `f32`
+    /// and `f64`.
     #[test]
     fn test_compile_positive_real_bounds() {
         fn assert_real<A: RealScalar>() {}
