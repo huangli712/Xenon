@@ -69,25 +69,6 @@ impl IxDyn {
     pub fn into_vec(self) -> Vec<usize> {
         self.dims
     }
-
-    /// Identity conversion. Always succeeds (returns `self`).
-    #[inline]
-    pub fn into_dyn(self) -> Self {
-        self
-    }
-
-    /// Identity conversion. Always succeeds (no rank check needed).
-    ///
-    /// # Errors
-    ///
-    /// Infallible: always returns `Ok(dyn_dim)`. The `Result` return type
-    /// matches the signature of `IxN::try_from_dyn` (Ix0..Ix6) so generic
-    /// callers can use a single uniform conversion API across all dimension
-    /// types.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        Ok(dyn_dim)
-    }
 }
 
 impl Dimension for IxDyn {
@@ -110,6 +91,24 @@ impl Dimension for IxDyn {
     #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         Ok(IxDyn::from_slice(slice))
+    }
+
+    /// Identity conversion: returns `self` unchanged (zero-copy).
+    #[inline]
+    fn into_dyn(self) -> IxDyn {
+        self
+    }
+
+    /// Identity conversion. Always succeeds; no rank check is needed.
+    ///
+    /// # Errors
+    ///
+    /// Infallible: always returns `Ok(dyn_dim)`. The fallible signature
+    /// mirrors `IxN::try_from_dyn` (Ix0..Ix6) so generic callers share one
+    /// uniform conversion API across every dimension type.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        Ok(dyn_dim)
     }
 }
 

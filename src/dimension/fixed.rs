@@ -23,33 +23,6 @@ use crate::error::XenonError;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix0;
 
-impl Ix0 {
-    /// Converts to dynamic dimension. Always succeeds. Returns a 0-rank IxDyn.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::new()
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 0`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 0 {
-            Ok(Ix0)
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix0::try_from_dyn"),
-                expected: 0,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
-
 impl Dimension for Ix0 {
     const NDIM: Option<usize> = Some(0);
 
@@ -85,6 +58,25 @@ impl Dimension for Ix0 {
             })
         }
     }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 0`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 0 {
+            Ok(Ix0)
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix0::try_from_dyn"),
+                expected: 0,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
 }
 
 impl Reverse for Ix0 {
@@ -107,6 +99,34 @@ impl RemoveAxis for Ix0 {
     }
 }
 
+impl From<()> for Ix0 {
+    /// Converts the unit tuple into Ix0 (the rank-0 dimension).
+    #[inline]
+    fn from(_: ()) -> Self {
+        Ix0
+    }
+}
+
+/// Index-based access to axis length.
+///
+/// # Panics
+///
+/// Always panics: `Ix0` is rank-0 and has no axes, so every index is out
+/// of bounds.
+impl Index<usize> for Ix0 {
+    type Output = usize;
+
+    /// Always panics, as `Ix0` has no axes to index.
+    ///
+    /// # Panics
+    ///
+    /// Panics for every `index`.
+    #[inline]
+    fn index(&self, index: usize) -> &usize {
+        panic!("Ix0 index out of bounds: {index} (rank-0 has no axes)");
+    }
+}
+
 // ----------------------------------- Ix1 -----------------------------------
 
 /// One-dimensional index.
@@ -124,34 +144,6 @@ impl RemoveAxis for Ix0 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix1(pub usize);
-
-impl Ix1 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 1`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 1 {
-            let s = dyn_dim.slice();
-            Ok(Ix1(s[0]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix1::try_from_dyn"),
-                expected: 1,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
 
 impl Dimension for Ix1 {
     const NDIM: Option<usize> = Some(1);
@@ -180,6 +172,26 @@ impl Dimension for Ix1 {
                 operation: Cow::Borrowed("Ix1::try_from_slice"),
                 expected: 1,
                 actual: slice.len(),
+            })
+        }
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 1`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 1 {
+            let s = dyn_dim.slice();
+            Ok(Ix1(s[0]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix1::try_from_dyn"),
+                expected: 1,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -228,6 +240,14 @@ impl Index<usize> for Ix1 {
     }
 }
 
+impl From<(usize,)> for Ix1 {
+    /// Converts a 1-tuple into Ix1.
+    #[inline]
+    fn from(t: (usize,)) -> Self {
+        Ix1(t.0)
+    }
+}
+
 // ----------------------------------- Ix2 -----------------------------------
 
 /// Two-dimensional index.
@@ -245,34 +265,6 @@ impl Index<usize> for Ix1 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix2(pub usize, pub usize);
-
-impl Ix2 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 2`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 2 {
-            let s = dyn_dim.slice();
-            Ok(Ix2(s[0], s[1]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix2::try_from_dyn"),
-                expected: 2,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
 
 impl Dimension for Ix2 {
     const NDIM: Option<usize> = Some(2);
@@ -300,6 +292,26 @@ impl Dimension for Ix2 {
                 operation: Cow::Borrowed("Ix2::try_from_slice"),
                 expected: 2,
                 actual: slice.len(),
+            })
+        }
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 2`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 2 {
+            let s = dyn_dim.slice();
+            Ok(Ix2(s[0], s[1]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix2::try_from_dyn"),
+                expected: 2,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -352,6 +364,14 @@ impl Index<usize> for Ix2 {
     }
 }
 
+impl From<(usize, usize)> for Ix2 {
+    /// Converts a 2-tuple into Ix2.
+    #[inline]
+    fn from(t: (usize, usize)) -> Self {
+        Ix2(t.0, t.1)
+    }
+}
+
 // ----------------------------------- Ix3 -----------------------------------
 
 /// Three-dimensional index.
@@ -367,34 +387,6 @@ impl Index<usize> for Ix2 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix3(pub usize, pub usize, pub usize);
-
-impl Ix3 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 3`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 3 {
-            let s = dyn_dim.slice();
-            Ok(Ix3(s[0], s[1], s[2]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix3::try_from_dyn"),
-                expected: 3,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
 
 impl Dimension for Ix3 {
     const NDIM: Option<usize> = Some(3);
@@ -422,6 +414,26 @@ impl Dimension for Ix3 {
                 operation: Cow::Borrowed("Ix3::try_from_slice"),
                 expected: 3,
                 actual: slice.len(),
+            })
+        }
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 3`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 3 {
+            let s = dyn_dim.slice();
+            Ok(Ix3(s[0], s[1], s[2]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix3::try_from_dyn"),
+                expected: 3,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -460,6 +472,30 @@ impl From<(usize, usize, usize)> for Ix3 {
     }
 }
 
+/// Index-based access to axis lengths.
+///
+/// # Panics
+///
+/// Panics if `index >= 3`, as `Ix3` has only three axes.
+impl Index<usize> for Ix3 {
+    type Output = usize;
+
+    /// Returns the axis length at the given index (0, 1, or 2).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= 3`.
+    #[inline]
+    fn index(&self, index: usize) -> &usize {
+        match index {
+            0 => &self.0,
+            1 => &self.1,
+            2 => &self.2,
+            _ => panic!("Ix3 index out of bounds: {index}"),
+        }
+    }
+}
+
 // ----------------------------------- Ix4 -----------------------------------
 
 /// Four-dimensional index.
@@ -475,34 +511,6 @@ impl From<(usize, usize, usize)> for Ix3 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix4(pub usize, pub usize, pub usize, pub usize);
-
-impl Ix4 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 4`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 4 {
-            let s = dyn_dim.slice();
-            Ok(Ix4(s[0], s[1], s[2], s[3]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix4::try_from_dyn"),
-                expected: 4,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
 
 impl Dimension for Ix4 {
     const NDIM: Option<usize> = Some(4);
@@ -528,6 +536,26 @@ impl Dimension for Ix4 {
                 operation: Cow::Borrowed("Ix4::try_from_slice"),
                 expected: 4,
                 actual: slice.len(),
+            })
+        }
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 4`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 4 {
+            let s = dyn_dim.slice();
+            Ok(Ix4(s[0], s[1], s[2], s[3]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix4::try_from_dyn"),
+                expected: 4,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -567,6 +595,31 @@ impl From<(usize, usize, usize, usize)> for Ix4 {
     }
 }
 
+/// Index-based access to axis lengths.
+///
+/// # Panics
+///
+/// Panics if `index >= 4`, as `Ix4` has only four axes.
+impl Index<usize> for Ix4 {
+    type Output = usize;
+
+    /// Returns the axis length at the given index (0..=3).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= 4`.
+    #[inline]
+    fn index(&self, index: usize) -> &usize {
+        match index {
+            0 => &self.0,
+            1 => &self.1,
+            2 => &self.2,
+            3 => &self.3,
+            _ => panic!("Ix4 index out of bounds: {index}"),
+        }
+    }
+}
+
 // ----------------------------------- Ix5 -----------------------------------
 
 /// Five-dimensional dimension.
@@ -587,34 +640,6 @@ impl From<(usize, usize, usize, usize)> for Ix4 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
-
-impl Ix5 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 5`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 5 {
-            let s = dyn_dim.slice();
-            Ok(Ix5(s[0], s[1], s[2], s[3], s[4]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix5::try_from_dyn"),
-                expected: 5,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
 
 impl Dimension for Ix5 {
     const NDIM: Option<usize> = Some(5);
@@ -642,6 +667,26 @@ impl Dimension for Ix5 {
                 operation: Cow::Borrowed("Ix5::try_from_slice"),
                 expected: 5,
                 actual: slice.len(),
+            })
+        }
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 5`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 5 {
+            let s = dyn_dim.slice();
+            Ok(Ix5(s[0], s[1], s[2], s[3], s[4]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix5::try_from_dyn"),
+                expected: 5,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -682,6 +727,32 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
     }
 }
 
+/// Index-based access to axis lengths.
+///
+/// # Panics
+///
+/// Panics if `index >= 5`, as `Ix5` has only five axes.
+impl Index<usize> for Ix5 {
+    type Output = usize;
+
+    /// Returns the axis length at the given index (0..=4).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= 5`.
+    #[inline]
+    fn index(&self, index: usize) -> &usize {
+        match index {
+            0 => &self.0,
+            1 => &self.1,
+            2 => &self.2,
+            3 => &self.3,
+            4 => &self.4,
+            _ => panic!("Ix5 index out of bounds: {index}"),
+        }
+    }
+}
+
 // ----------------------------------- Ix6 -----------------------------------
 
 /// Six-dimensional dimension.
@@ -702,34 +773,6 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
-
-impl Ix6 {
-    /// Converts to dynamic dimension.
-    #[inline]
-    pub fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4, self.5])
-    }
-
-    /// Attempts to convert from a dynamic dimension.
-    ///
-    /// # Errors
-    ///
-    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
-    /// when `dyn_dim.ndim() != 6`.
-    #[inline]
-    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 6 {
-            let s = dyn_dim.slice();
-            Ok(Ix6(s[0], s[1], s[2], s[3], s[4], s[5]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: Cow::Borrowed("Ix6::try_from_dyn"),
-                expected: 6,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-}
 
 impl Dimension for Ix6 {
     const NDIM: Option<usize> = Some(6);
@@ -759,6 +802,26 @@ impl Dimension for Ix6 {
                 operation: Cow::Borrowed("Ix6::try_from_slice"),
                 expected: 6,
                 actual: slice.len(),
+            })
+        }
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+    /// when `dyn_dim.ndim() != 6`.
+    #[inline]
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 6 {
+            let s = dyn_dim.slice();
+            Ok(Ix6(s[0], s[1], s[2], s[3], s[4], s[5]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix6::try_from_dyn"),
+                expected: 6,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -797,6 +860,33 @@ impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize, usize)) -> Self {
         Ix6(t.0, t.1, t.2, t.3, t.4, t.5)
+    }
+}
+
+/// Index-based access to axis lengths.
+///
+/// # Panics
+///
+/// Panics if `index >= 6`, as `Ix6` has only six axes.
+impl Index<usize> for Ix6 {
+    type Output = usize;
+
+    /// Returns the axis length at the given index (0..=5).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= 6`.
+    #[inline]
+    fn index(&self, index: usize) -> &usize {
+        match index {
+            0 => &self.0,
+            1 => &self.1,
+            2 => &self.2,
+            3 => &self.3,
+            4 => &self.4,
+            5 => &self.5,
+            _ => panic!("Ix6 index out of bounds: {index}"),
+        }
     }
 }
 
@@ -1112,6 +1202,50 @@ mod tests {
     #[should_panic(expected = "Ix2 index out of bounds")]
     fn test_ix2_index_oob_panics() {
         let _ = Ix2(3, 4)[2];
+    }
+
+    /// `From<tuple>` for the low-rank types (Ix0/Ix1/Ix2) completes the
+    /// family already covered for Ix3..Ix6.
+    #[test]
+    fn test_from_tuple_low_rank() {
+        assert_eq!(Ix0::from(()), Ix0);
+        assert_eq!(Ix1::from((5,)), Ix1(5));
+        assert_eq!(Ix2::from((3, 4)), Ix2(3, 4));
+    }
+
+    /// `Index<usize>` works for the high-rank types (Ix3..Ix6), completing
+    /// the family already covered for Ix1/Ix2.
+    #[test]
+    fn test_index_high_rank() {
+        let d3 = Ix3(2, 3, 4);
+        assert_eq!((d3[0], d3[1], d3[2]), (2, 3, 4));
+        let d4 = Ix4(2, 3, 4, 5);
+        assert_eq!((d4[0], d4[3]), (2, 5));
+        let d5 = Ix5(2, 3, 4, 5, 6);
+        assert_eq!((d5[0], d5[4]), (2, 6));
+        let d6 = Ix6(1, 2, 3, 4, 5, 6);
+        assert_eq!((d6[0], d6[5]), (1, 6));
+    }
+
+    /// Ix0 has no axes, so indexing always panics.
+    #[test]
+    #[should_panic(expected = "Ix0 index out of bounds")]
+    fn test_ix0_index_panics() {
+        let _ = Ix0[0];
+    }
+
+    /// Ix3 Index out of bounds panics.
+    #[test]
+    #[should_panic(expected = "Ix3 index out of bounds")]
+    fn test_ix3_index_oob_panics() {
+        let _ = Ix3(2, 3, 4)[3];
+    }
+
+    /// Ix6 Index out of bounds panics.
+    #[test]
+    #[should_panic(expected = "Ix6 index out of bounds")]
+    fn test_ix6_index_oob_panics() {
+        let _ = Ix6(1, 2, 3, 4, 5, 6)[6];
     }
 
     /// Zero-length axis case — size is `Ok(0)`, not an error.

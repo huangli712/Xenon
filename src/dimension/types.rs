@@ -4,11 +4,18 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 
 use super::axes::Axis;
+use super::dynamic::IxDyn;
 use crate::private::Sealed;
 use crate::error::{InvalidShapeKind, XenonError};
 
-/// Maximum number of dimensions representable on this platform.
-pub const MAX_DIMENSION: usize = usize::MAX;
+/// Highest statically-ranked dimension supported (`Ix6`).
+///
+/// Static dimension types span `Ix0` (rank 0) through `Ix6` (rank 6), so
+/// this is the largest rank expressible with a compile-time dimension
+/// type. [`IxDyn`] carries its rank at runtime and is bounded only by
+/// `usize` representability and available memory, independent of this
+/// constant.
+pub const MAX_DIMENSION: usize = 6;
 
 /// Trait for array dimension types.
 ///
@@ -32,8 +39,13 @@ pub const MAX_DIMENSION: usize = usize::MAX;
 /// assert_eq!(dim.checked_size().unwrap(), 24);
 /// ```
 pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'static {
-    /// Maximum number of dimensions for static dimension types.
-    /// `Some(N)` for static dimensions (Ix0..Ix6), `None` for IxDyn.
+    /// Compile-time rank of this dimension type, for generic introspection.
+    ///
+    /// `Some(N)` for the statically-ranked types (`Ix0`..`Ix6`, where `N`
+    /// is the fixed rank) and `None` for [`IxDyn`], whose rank is only
+    /// known at runtime. Downstream generic code can branch on this
+    /// constant to specialize for static versus dynamic dimensions without
+    /// constructing a value (e.g. `if D::NDIM == Some(2) { ... }`).
     const NDIM: Option<usize>;
 
     /// Number of dimensions (rank).
@@ -85,6 +97,30 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// match the static rank of `Self` (e.g. `Ix3::try_from_slice(&[1, 2])`).
     /// For `IxDyn`, any slice length is accepted.
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError>
+    where
+        Self: Sized;
+
+    /// Converts this dimension into a dynamic dimension ([`IxDyn`]).
+    ///
+    /// Always succeeds. Static dimensions copy their axis lengths into an
+    /// owned `IxDyn`; `IxDyn` itself returns unchanged.
+    #[inline]
+    fn into_dyn(self) -> IxDyn
+    where
+        Self: Sized,
+    {
+        IxDyn::from_slice(self.slice())
+    }
+
+    /// Attempts to convert a dynamic dimension into this dimension type.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::DimensionMismatch` when `dyn_dim.ndim()` does
+    /// not match the static rank of `Self` (e.g. `Ix3::try_from_dyn` of a
+    /// rank-4 `IxDyn`). For `IxDyn` this is the identity conversion and is
+    /// infallible.
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError>
     where
         Self: Sized;
 
@@ -171,10 +207,10 @@ mod tests {
         assert_dimension(IxDyn::from_slice(&[1, 2]));
     }
 
-    /// `MAX_DIMENSION` equals `usize::MAX`.
+    /// `MAX_DIMENSION` equals the highest static rank (`Ix6` ⇒ 6).
     #[test]
-    fn test_max_dimension_is_usize_max() {
-        assert_eq!(MAX_DIMENSION, usize::MAX);
+    fn test_max_dimension_is_six() {
+        assert_eq!(MAX_DIMENSION, 6);
     }
 
     /// Public re-exports are reachable via `crate::dimension::*`.
