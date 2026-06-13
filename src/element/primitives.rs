@@ -40,14 +40,6 @@ pub trait Element:
     const ELEMENT_TYPE_NAME: &'static str;
 }
 
-/// Returns the `ElementType` discriminant for `A`.
-///
-/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated constant.
-/// This is a zero-cost const function.
-pub(crate) const fn element_type_of<A: Element>() -> ElementType {
-    A::ELEMENT_TYPE
-}
-
 /// `bool`: `zero()` is `false`, `one()` is `true`.
 impl Element for bool {
     fn zero() -> Self {
@@ -130,6 +122,14 @@ impl Element for Complex<f64> {
     }
     const ELEMENT_TYPE: ElementType = ElementType::Complex64;
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f64>";
+}
+
+/// Returns the `ElementType` discriminant for `A`.
+///
+/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated constant.
+/// This is a zero-cost const function.
+pub(crate) const fn element_type_of<A: Element>() -> ElementType {
+    A::ELEMENT_TYPE
 }
 
 #[cfg(test)]
