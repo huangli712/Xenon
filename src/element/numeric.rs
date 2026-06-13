@@ -4,7 +4,8 @@
 //! operators (`Add`, `Sub`, `Mul`, `Div`, `Neg`) and a unified `conjugate()`
 //! entry point.
 
-use core::ops::{Add, Div, Mul, Neg, Sub};
+use core::ops::{Add, Sub, Mul, Div, Neg};
+
 use crate::complex::Complex;
 use super::Element;
 
