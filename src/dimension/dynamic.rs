@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 
-use crate::error::InvalidShapeKind;
 use crate::error::XenonError;
 use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse};
 
@@ -105,22 +104,6 @@ impl Dimension for IxDyn {
     #[inline]
     fn slice(&self) -> &[usize] {
         &self.dims
-    }
-
-    /// Computes the total element count, checking for overflow.
-    fn checked_size(&self) -> Result<usize, XenonError> {
-        let mut acc = 1usize;
-        for (axis, &dim) in self.dims.iter().enumerate() {
-            acc = acc
-                .checked_mul(dim)
-                .ok_or_else(|| XenonError::InvalidShape {
-                    operation: Cow::Borrowed("Dimension::checked_size"),
-                    shape: self.dims.clone(),
-                    kind: InvalidShapeKind::ProductOverflow,
-                    offending_dim: Some(axis),
-                })?;
-        }
-        Ok(acc)
     }
 
     /// Validates without consuming the element count.

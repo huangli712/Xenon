@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::ops::Index;
 
 use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse, IxDyn};
-use crate::error::{XenonError, InvalidShapeKind};
+use crate::error::XenonError;
 
 // ----------------------------------- Ix0 -----------------------------------
 
@@ -292,23 +292,6 @@ impl Dimension for Ix2 {
     }
 
     #[inline]
-    fn checked_size(&self) -> Result<usize, XenonError> {
-        let dims = [self.0, self.1];
-        let mut acc = 1usize;
-        for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc
-                .checked_mul(dim)
-                .ok_or_else(|| XenonError::InvalidShape {
-                    operation: Cow::Borrowed("Dimension::checked_size"),
-                    shape: dims.into(),
-                    kind: InvalidShapeKind::ProductOverflow,
-                    offending_dim: Some(axis),
-                })?;
-        }
-        Ok(acc)
-    }
-
-    #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 2 {
             Ok(Ix2(slice[0], slice[1]))
@@ -431,23 +414,6 @@ impl Dimension for Ix3 {
     }
 
     #[inline]
-    fn checked_size(&self) -> Result<usize, XenonError> {
-        let dims = [self.0, self.1, self.2];
-        let mut acc = 1usize;
-        for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc
-                .checked_mul(dim)
-                .ok_or_else(|| XenonError::InvalidShape {
-                    operation: Cow::Borrowed("Dimension::checked_size"),
-                    shape: dims.into(),
-                    kind: InvalidShapeKind::ProductOverflow,
-                    offending_dim: Some(axis),
-                })?;
-        }
-        Ok(acc)
-    }
-
-    #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 3 {
             Ok(Ix3(slice[0], slice[1], slice[2]))
@@ -551,23 +517,6 @@ impl Dimension for Ix4 {
         // SAFETY: Ix4 uses #[repr(C)] and contains exactly four `usize`
         // fields laid out contiguously starting at `self.0`.
         unsafe { std::slice::from_raw_parts(self as *const Self as *const usize, 4) }
-    }
-
-    #[inline]
-    fn checked_size(&self) -> Result<usize, XenonError> {
-        let mut size = 1usize;
-        let axes = [self.0, self.1, self.2, self.3];
-        for (i, &ax) in axes.iter().enumerate() {
-            size = size
-                .checked_mul(ax)
-                .ok_or_else(|| XenonError::InvalidShape {
-                    operation: Cow::Borrowed("Dimension::checked_size"),
-                    shape: axes.into(),
-                    kind: InvalidShapeKind::ProductOverflow,
-                    offending_dim: Some(i),
-                })?;
-        }
-        Ok(size)
     }
 
     #[inline]
@@ -682,23 +631,6 @@ impl Dimension for Ix5 {
         // `*const usize` slice of length 5 preserves provenance, alignment,
         // and size.
         unsafe { core::slice::from_raw_parts(self as *const Self as *const usize, 5) }
-    }
-
-    #[inline]
-    fn checked_size(&self) -> Result<usize, XenonError> {
-        let dims = [self.0, self.1, self.2, self.3, self.4];
-        let mut acc = 1usize;
-        for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc
-                .checked_mul(dim)
-                .ok_or_else(|| XenonError::InvalidShape {
-                    operation: Cow::Borrowed("Dimension::checked_size"),
-                    shape: dims.into(),
-                    kind: InvalidShapeKind::ProductOverflow,
-                    offending_dim: Some(axis),
-                })?;
-        }
-        Ok(acc)
     }
 
     #[inline]
@@ -817,23 +749,6 @@ impl Dimension for Ix6 {
     }
 
     #[inline]
-    fn checked_size(&self) -> Result<usize, XenonError> {
-        let dims = [self.0, self.1, self.2, self.3, self.4, self.5];
-        let mut acc = 1usize;
-        for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc
-                .checked_mul(dim)
-                .ok_or_else(|| XenonError::InvalidShape {
-                    operation: Cow::Borrowed("Dimension::checked_size"),
-                    shape: dims.into(),
-                    kind: InvalidShapeKind::ProductOverflow,
-                    offending_dim: Some(axis),
-                })?;
-        }
-        Ok(acc)
-    }
-
-    #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 6 {
             Ok(Ix6(
@@ -949,6 +864,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::InvalidShapeKind;
     use std::mem::size_of;
 
     // ---------------------------- Per-type tests ---------------------------

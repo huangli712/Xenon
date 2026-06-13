@@ -1,10 +1,11 @@
 //! Dimension traits: [`Dimension`], [`Reverse`], [`RemoveAxis`].
 
+use std::borrow::Cow;
 use std::fmt::Debug;
 
 use super::axes::Axis;
 use crate::private::Sealed;
-use crate::error::XenonError;
+use crate::error::{InvalidShapeKind, XenonError};
 
 /// Maximum number of dimensions representable on this platform.
 pub const MAX_DIMENSION: usize = usize::MAX;
@@ -47,7 +48,22 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     ///
     /// Returns `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow }`
     /// when the cumulative product of the per-axis lengths overflows `usize`.
-    fn checked_size(&self) -> Result<usize, XenonError>;
+    #[inline]
+    fn checked_size(&self) -> Result<usize, XenonError> {
+        let dims = self.slice();
+        let mut acc = 1usize;
+        for (axis, &dim) in dims.iter().enumerate() {
+            acc = acc
+                .checked_mul(dim)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Dimension::checked_size"),
+                    shape: dims.to_vec(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(axis),
+                })?;
+        }
+        Ok(acc)
+    }
 
     /// Validates dimension metadata without consuming the element count.
     /// The default contract is equivalent to `self.checked_size().map(|_| ())`.
