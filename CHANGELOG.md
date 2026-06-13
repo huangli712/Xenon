@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.47] — 2026-06-13
+
+### Added
+
+- Element module tests: marker traits, conjugate, re/im, i64 overflow.
+- Norm boundary tests for `ComplexScalar` (zero, pure real, pure imaginary).
+- f32 `sin` test in `real.rs`.
+
+### Removed
+
+- `CastElement`/`EyeElement`/`UniqueElement` (consolidated into `SealedElement`).
+- Redundant `ELEMENT_TYPE_NAME` per-impl overrides and consistency test.
+- `compile_fail` doctests from `sealed.rs` (covered by unit tests).
+
+### Changed
+
+- Consolidated `CastElement`/`EyeElement`/`UniqueElement` into `SealedElement`.
+- Defaulted `ELEMENT_TYPE_NAME` on `Element` trait (derived from `ELEMENT_TYPE`).
+- Moved `element_type_of` from `types.rs` to `primitives.rs`.
+- Reorganized `real.rs` tests by trait function with section separators.
+- Replaced Unicode separators with ASCII in `checked.rs` and `complex/`.
+- Style: blank lines, imports, re-exports, and ordering across `element/`.
+
 ## [v0.0.46] — 2026-06-12
 
 ### Added

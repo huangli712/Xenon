@@ -724,7 +724,7 @@ dependencies = [
 
 [[package]]
 name = "xenon"
-version = "0.0.46"
+version = "0.0.47"
 dependencies = [
  "proptest",
  "pulp",
