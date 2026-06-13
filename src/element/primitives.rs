@@ -40,6 +40,14 @@ pub trait Element:
     const ELEMENT_TYPE_NAME: &'static str;
 }
 
+/// Returns the `ElementType` discriminant for `A`.
+///
+/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated constant.
+/// This is a zero-cost const function.
+pub(crate) const fn element_type_of<A: Element>() -> ElementType {
+    A::ELEMENT_TYPE
+}
+
 /// `bool`: `zero()` is `false`, `one()` is `true`.
 impl Element for bool {
     fn zero() -> Self {
@@ -248,5 +256,18 @@ mod tests {
         for a in [Complex::<f64>::new(1.0, 2.0), Complex::new(-3.0, 4.0)] {
             assert_eq!(co * a, a);
         }
+    }
+
+    /// Verifies the free function `element_type_of::<A>()` resolves
+    /// through `A::ELEMENT_TYPE` for all 7 element types.
+    #[test]
+    fn test_free_functions_dispatch() {
+        assert_eq!(element_type_of::<bool>(), ElementType::Bool);
+        assert_eq!(element_type_of::<i32>(), ElementType::I32);
+        assert_eq!(element_type_of::<i64>(), ElementType::I64);
+        assert_eq!(element_type_of::<f32>(), ElementType::F32);
+        assert_eq!(element_type_of::<f64>(), ElementType::F64);
+        assert_eq!(element_type_of::<Complex<f32>>(), ElementType::Complex32);
+        assert_eq!(element_type_of::<Complex<f64>>(), ElementType::Complex64);
     }
 }

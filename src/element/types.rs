@@ -1,8 +1,6 @@
-//! Element type discriminant and free lookup functions.
+//! Element type discriminant and display.
 
 use core::fmt::{Display, Formatter};
-
-use super::Element;
 
 /// Compile-time enumerated discriminant for every supported element type.
 ///
@@ -62,18 +60,9 @@ impl Display for ElementType {
     }
 }
 
-/// Returns the `ElementType` discriminant for `A`.
-///
-/// Resolves to `A::ELEMENT_TYPE` via the `Element` trait's associated constant.
-/// This is a zero-cost const function.
-pub(crate) const fn element_type_of<A: Element>() -> ElementType {
-    A::ELEMENT_TYPE
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::complex::Complex;
 
     /// Verifies `ElementType::name()` returns the correct string for
     /// every variant, covering all 7 closed element types.
@@ -99,19 +88,6 @@ mod tests {
         assert_eq!(ElementType::F64 as u8, 4);
         assert_eq!(ElementType::Complex32 as u8, 5);
         assert_eq!(ElementType::Complex64 as u8, 6);
-    }
-
-    /// Verifies the free function `element_type_of::<A>()` resolves
-    /// through `A::ELEMENT_TYPE` for all 7 element types.
-    #[test]
-    fn test_free_functions_dispatch() {
-        assert_eq!(element_type_of::<bool>(), ElementType::Bool);
-        assert_eq!(element_type_of::<i32>(), ElementType::I32);
-        assert_eq!(element_type_of::<i64>(), ElementType::I64);
-        assert_eq!(element_type_of::<f32>(), ElementType::F32);
-        assert_eq!(element_type_of::<f64>(), ElementType::F64);
-        assert_eq!(element_type_of::<Complex<f32>>(), ElementType::Complex32);
-        assert_eq!(element_type_of::<Complex<f64>>(), ElementType::Complex64);
     }
 
     /// Verifies the `Display` impl delegates to [`ElementType::name`]

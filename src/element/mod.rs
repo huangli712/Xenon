@@ -26,7 +26,7 @@
 //! | Sub-module | Contents |
 //! |------------|----------|
 //! | `primitives` | `Element` trait + impls for all 7 types |
-//! | `types` | `ElementType` discriminant + free functions |
+//! | `types` | `ElementType` discriminant + display |
 //! | `numeric` | `Numeric` trait + impls |
 //! | `real` | `RealScalar` trait + impls |
 //! | `complex` | `ComplexScalar` trait + impls |
@@ -46,7 +46,7 @@ mod numeric;
 mod real;
 mod complex;
 
-pub(crate) use types::element_type_of;
+pub(crate) use primitives::element_type_of;
 pub(crate) use order::OrderedCompareElement;
 pub(crate) use simd::SimdElement;
 pub(crate) use sealed::SealedElement;
