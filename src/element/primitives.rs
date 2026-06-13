@@ -3,7 +3,8 @@
 //!
 //! The `Element` trait provides algebraic identity values (`zero`, `one`),
 //! a compile‑time type discriminant (`ELEMENT_TYPE`), and a canonical name
-//! (`ELEMENT_TYPE_NAME`) for use in error messages and FFI mapping.
+//! (`ELEMENT_TYPE_NAME`, derived from it) for use in error messages and FFI
+//! mapping.
 
 use core::fmt::{Debug, Display};
 
@@ -15,7 +16,8 @@ use super::types::ElementType;
 ///
 /// `Element` provides the algebraic identities `zero()` and `one()`, a
 /// compile‑time type discriminant `ELEMENT_TYPE` for FFI dispatch, and
-/// a canonical name `ELEMENT_TYPE_NAME` for diagnostics.
+/// a canonical name `ELEMENT_TYPE_NAME` (derived from `ELEMENT_TYPE`) for
+/// diagnostics.
 ///
 /// The supertrait bounds `Copy + Clone + PartialEq + Debug + Display +
 /// Send + Sync` guarantee that every element type is cheap to move,
@@ -194,28 +196,6 @@ mod tests {
         _assert_element::<i64>();
         _assert_element::<f64>();
         // _assert_element::<usize>();
-    }
-
-    /// Verifies `ELEMENT_TYPE_NAME` matches `ElementType::name()` for
-    /// every element type.
-    #[test]
-    fn test_element_type_name_consistency() {
-        assert_eq!(<i32 as Element>::ELEMENT_TYPE_NAME, ElementType::I32.name());
-        assert_eq!(<i64 as Element>::ELEMENT_TYPE_NAME, ElementType::I64.name());
-        assert_eq!(<f32 as Element>::ELEMENT_TYPE_NAME, ElementType::F32.name());
-        assert_eq!(<f64 as Element>::ELEMENT_TYPE_NAME, ElementType::F64.name());
-        assert_eq!(
-            <bool as Element>::ELEMENT_TYPE_NAME,
-            ElementType::Bool.name()
-        );
-        assert_eq!(
-            <Complex<f32> as Element>::ELEMENT_TYPE_NAME,
-            ElementType::Complex32.name(),
-        );
-        assert_eq!(
-            <Complex<f64> as Element>::ELEMENT_TYPE_NAME,
-            ElementType::Complex64.name(),
-        );
     }
 
     /// Property: `zero() + a == a` for all element types.

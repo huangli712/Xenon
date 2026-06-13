@@ -164,19 +164,19 @@ mod tests {
         assert_eq!(<i64 as CheckedSub>::checked_sub(5, 3), Some(2));
         assert_eq!(<i32 as CheckedMul>::checked_mul(3, 4), Some(12));
         assert_eq!(<i64 as CheckedMul>::checked_mul(3, 4), Some(12));
-        assert_eq!(<i32 as CheckedNeg>::checked_neg(7), Some(-7));
-        assert_eq!(<i64 as CheckedNeg>::checked_neg(7), Some(-7));
         assert_eq!(<i32 as CheckedDiv>::checked_div(10, 3), Some(3));
         assert_eq!(<i64 as CheckedDiv>::checked_div(10, 3), Some(3));
+        assert_eq!(<i32 as CheckedNeg>::checked_neg(7), Some(-7));
+        assert_eq!(<i64 as CheckedNeg>::checked_neg(7), Some(-7));
 
         // Overflow / error
         assert_eq!(<i32 as CheckedAdd>::checked_add(i32::MAX, 1), None);
         assert_eq!(<i64 as CheckedAdd>::checked_add(i64::MAX, 1), None);
         assert_eq!(<i32 as CheckedSub>::checked_sub(i32::MIN, 1), None);
         assert_eq!(<i32 as CheckedMul>::checked_mul(i32::MAX, 2), None);
-        assert_eq!(<i32 as CheckedNeg>::checked_neg(i32::MIN), None);
         assert_eq!(<i32 as CheckedDiv>::checked_div(1, 0), None);
         assert_eq!(<i32 as CheckedDiv>::checked_div(i32::MIN, -1), None);
+        assert_eq!(<i32 as CheckedNeg>::checked_neg(i32::MIN), None);
     }
 
     /// Verifies the `i64` failure paths not exercised by
@@ -186,8 +186,8 @@ mod tests {
     fn test_checked_i64_overflow_paths() {
         assert_eq!(<i64 as CheckedSub>::checked_sub(i64::MIN, 1), None);
         assert_eq!(<i64 as CheckedMul>::checked_mul(i64::MAX, 2), None);
-        assert_eq!(<i64 as CheckedNeg>::checked_neg(i64::MIN), None);
         assert_eq!(<i64 as CheckedDiv>::checked_div(1, 0), None);
         assert_eq!(<i64 as CheckedDiv>::checked_div(i64::MIN, -1), None);
+        assert_eq!(<i64 as CheckedNeg>::checked_neg(i64::MIN), None);
     }
 }
