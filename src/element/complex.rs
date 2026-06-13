@@ -38,12 +38,15 @@ pub trait ComplexScalar: Numeric + Sealed {
 /// `Complex<f32>`: `Real = f32`, delegates to the inner `Complex` field.
 impl ComplexScalar for Complex<f32> {
     type Real = f32;
+
     fn re(self) -> f32 {
         self.re
     }
+   
     fn im(self) -> f32 {
         self.im
     }
+    
     fn norm(self) -> f32 {
         self.norm()
     }
@@ -83,20 +86,37 @@ mod tests {
         assert_eq!(check(Complex::<f64>::new(3.0, 4.0)), 5.0);
     }
 
-    /// Verifies `ComplexScalar::norm` for `Complex<f32>` with the
-    /// classic 3-4-5 right triangle.
+    /// Boundary: `norm` propagates NaN from any component for `f32`.
     #[test]
-    fn test_complex_f32_norm() {
-        let c = Complex::<f32>::new(3.0, 4.0);
-        assert_eq!(<Complex<f32> as ComplexScalar>::norm(c), 5.0);
+    fn test_boundary_f32_nan_norm_is_nan() {
+        let c = Complex::<f32>::new(f32::NAN, 0.0);
+        let n = <Complex<f32> as ComplexScalar>::norm(c);
+        assert!(f32::is_nan(n));
     }
 
-    /// Boundary: `norm` propagates NaN from any component.
+    /// Boundary: `norm` propagates NaN from any component for `f64`.
     #[test]
-    fn test_boundary_complex_nan_norm_is_nan() {
+    fn test_boundary_f64_nan_norm_is_nan() {
         let c = Complex::<f64>::new(f64::NAN, 0.0);
         let n = <Complex<f64> as ComplexScalar>::norm(c);
         assert!(f64::is_nan(n));
+    }
+
+    /// Norm boundary values: zero, pure real, pure imaginary.
+    #[test]
+    fn test_norm_boundary_values() {
+        assert_eq!(<Complex<f32> as ComplexScalar>::norm(
+            Complex::<f32>::new(0.0, 0.0)), 0.0_f32);
+        assert_eq!(<Complex<f32> as ComplexScalar>::norm(
+            Complex::<f32>::new(-2.5, 0.0)), 2.5_f32);
+        assert_eq!(<Complex<f32> as ComplexScalar>::norm(
+            Complex::<f32>::new(0.0, 3.0)), 3.0_f32);
+        assert_eq!(<Complex<f64> as ComplexScalar>::norm(
+            Complex::<f64>::new(0.0, 0.0)), 0.0_f64);
+        assert_eq!(<Complex<f64> as ComplexScalar>::norm(
+            Complex::<f64>::new(-2.5, 0.0)), 2.5_f64);
+        assert_eq!(<Complex<f64> as ComplexScalar>::norm(
+            Complex::<f64>::new(0.0, 3.0)), 3.0_f64);
     }
 
     /// Compile-time: verifies `ComplexScalar` trait bounds for both
