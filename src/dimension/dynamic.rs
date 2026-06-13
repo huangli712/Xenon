@@ -106,12 +106,6 @@ impl Dimension for IxDyn {
         &self.dims
     }
 
-    /// Validates without consuming the element count.
-    #[inline]
-    fn checked(&self) -> Result<(), XenonError> {
-        self.checked_size().map(|_| ())
-    }
-
     /// Builds from a slice; any rank is accepted.
     #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
