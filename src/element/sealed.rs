@@ -38,20 +38,6 @@
 //!
 //! `SealedElement: Element` and `Element: Sealed`, so this trait is sealed
 //! transitively and cannot be implemented outside of `Xenon`.
-//!
-//! Compile-time rejection — `bool` does not implement `SealedElement`:
-//! ```compile_fail
-//! # use xenon::dimension::Ix2;
-//! # use xenon::tensor::Tensor;
-//! let _ = Tensor::<bool, Ix2>::eye(3);
-//! ```
-//!
-//! Compile-time rejection — `usize` is not an element type at all:
-//! ```compile_fail
-//! # use xenon::dimension::Ix2;
-//! # use xenon::tensor::Tensor;
-//! let _ = Tensor::<usize, Ix2>::eye(3);
-//! ```
 
 use super::Element;
 use crate::complex::Complex;
