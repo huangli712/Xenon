@@ -8,10 +8,6 @@
 //! {i32, i64, f32, f64, Complex<f32>, Complex<f64>}
 //! ```
 //!
-//! It unifies three formerly separate, structurally identical per-operation
-//! markers — `EyeElement`, `UniqueElement`, and `CastElement` — each of which
-//! was `: Element + Sealed {}` with the same six impls, into a single trait.
-//!
 //! # Relationship to `Numeric`
 //!
 //! `SealedElement` covers the same six types as [`Numeric`](crate::element::Numeric),
@@ -30,7 +26,7 @@
 //! | Operation | Entry point | Why `bool` is excluded |
 //! |-----------|-------------|------------------------|
 //! | Identity matrix | `Tensor::eye` | a `bool` identity matrix has no meaningful `1`/`0` diagonal |
-//! | Deduplication | `TensorBase::unique` | `unique` over `bool` is degenerate (at most two values) and excluded per spec §15 |
+//! | Deduplication | `TensorBase::unique` | `unique` over `bool` is degenerate (at most two values) |
 //! | Type conversion | `TensorBase::cast` | the 6×6 numeric cast matrix has no `bool` row or column |
 //!
 //! Future numeric-only, arithmetic-free operations (for example additional set

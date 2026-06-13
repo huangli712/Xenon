@@ -17,12 +17,9 @@
 //! # `usize` is NOT an element type
 //!
 //! `usize` is reserved for indexing, shape metadata, and dimension
-//! expressions. It does not implement `Element` because:
-//!
-//! * It lacks an additive inverse (no negative values), preventing
-//!   it from forming the algebraic structure required by `Element`.
-//! * `Element` types require `zero()` and `one()` identities; `usize`
-//!   has no consistent negation semantics in this context.
+//! expressions. It is deliberately excluded from the sealed `Element`
+//! set so that tensor element types and index/shape types never overlap;
+//! the `Sealed` supertrait makes this exclusion enforceable.
 //!
 //! # Sub-modules
 //!

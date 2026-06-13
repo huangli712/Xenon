@@ -1,7 +1,7 @@
 //! Real-valued scalar trait and primitive implementations.
 //!
-//! `RealScalar` exposes 11 IEEE‑754 math functions and predicates, sealed to
-//! `f32` and `f64` only.
+//! `RealScalar` exposes 8 IEEE‑754 math functions plus 3 predicates, sealed
+//! to `f32` and `f64` only.
 
 use crate::private::Sealed;
 use super::Numeric;
@@ -12,10 +12,10 @@ use super::Numeric;
 /// (`abs`, `signum`, `sqrt`, `sin`, `exp`, `ln`, `floor`, `ceil`)
 /// and predicates for detecting NaN, infinity, and finiteness.
 ///
-/// Only `f32` and `f64` implement this trait. Integer types do not
-/// satisfy `PartialOrd` as a supertrait (they use `Ord` instead,
-/// constrained via `OrderedCompareElement`
-/// in comparison paths), and complex types are excluded by design.
+/// Only `f32` and `f64` implement this trait. Integer types are excluded
+/// because the IEEE‑754 math methods (`sqrt`, `sin`, `exp`, `ln`, ...) have
+/// no integer equivalent. `Complex<f32>` / `Complex<f64>` are excluded by the
+/// `PartialOrd` supertrait bound, which complex numbers do not implement.
 ///
 /// # Sealed
 ///
@@ -133,7 +133,7 @@ mod tests {
     use super::*;
     use crate::element::Element;
 
-    /// Verifies that the `RealScalar` API surface (11 math functions +
+    /// Verifies that the `RealScalar` API surface (8 math functions +
     /// 3 IEEE‑754 predicates) is well-formed and reachable through a
     /// generic `R: RealScalar` bound. Exercises both `f32` and `f64`.
     #[test]

@@ -88,8 +88,8 @@ mod tests {
         assert_eq!(ElementType::Complex64.name(), "Complex<f64>");
     }
 
-    /// Verifies `#[repr(u8)]` discriminant values match the design spec:
-    /// `Bool=0` through `Complex64=6`.
+    /// Verifies the `#[repr(u8)]` discriminant values `Bool=0` through
+    /// `Complex64=6`.
     #[test]
     fn test_element_type_discriminants() {
         assert_eq!(ElementType::Bool as u8, 0);
