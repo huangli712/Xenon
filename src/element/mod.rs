@@ -25,8 +25,8 @@
 //!
 //! | Sub-module | Contents |
 //! |------------|----------|
-//! | `primitives` | `Element` trait + impls for all 7 types |
 //! | `types` | `ElementType` discriminant + display |
+//! | `primitives` | `Element` trait + impls for all 7 types |
 //! | `numeric` | `Numeric` trait + impls |
 //! | `real` | `RealScalar` trait + impls |
 //! | `complex` | `ComplexScalar` trait + impls |
@@ -36,24 +36,25 @@
 //! | `checked` | Checked arithmetic traits |
 
 mod types;
-mod order;
-mod simd;
-mod sealed;
-mod checked;
 
 mod primitives;
 mod numeric;
 mod real;
 mod complex;
 
-pub(crate) use primitives::element_type_of;
-pub(crate) use order::OrderedCompareElement;
-pub(crate) use simd::SimdElement;
-pub(crate) use sealed::SealedElement;
-pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
+mod order;
+mod simd;
+mod sealed;
+mod checked;
 
 pub use types::ElementType;
 pub use primitives::Element;
 pub use numeric::Numeric;
 pub use real::RealScalar;
 pub use complex::ComplexScalar;
+
+pub(crate) use primitives::element_type_of;
+pub(crate) use order::OrderedCompareElement;
+pub(crate) use simd::SimdElement;
+pub(crate) use sealed::SealedElement;
+pub(crate) use checked::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv, CheckedNeg};
