@@ -6,6 +6,7 @@
 //! (`ELEMENT_TYPE_NAME`) for use in error messages and FFI mapping.
 
 use core::fmt::{Debug, Display};
+
 use crate::private::Sealed;
 use crate::complex::Complex;
 use super::types::ElementType;

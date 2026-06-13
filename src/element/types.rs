@@ -1,6 +1,7 @@
 //! Element type discriminant and free lookup functions.
 
 use core::fmt::{Display, Formatter};
+
 use super::Element;
 
 /// Compile-time enumerated discriminant for every supported element type.
@@ -10,7 +11,6 @@ use super::Element;
 /// integer tags. The enum is `#[non_exhaustive]` so that downstream code
 /// must handle future additions (e.g., new numeric types or complex
 /// precision levels).
-///
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 #[non_exhaustive]
