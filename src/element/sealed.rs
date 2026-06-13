@@ -1,0 +1,85 @@
+//! `SealedElement` sealed marker trait for numeric-only tensor operations.
+//!
+//! `SealedElement` is the shared compile-time gate for operations that are
+//! defined over Xenon's six numeric element types but are **not** meaningful
+//! for `bool`:
+//!
+//! ```text
+//! {i32, i64, f32, f64, Complex<f32>, Complex<f64>}
+//! ```
+//!
+//! It unifies three formerly separate, structurally identical per-operation
+//! markers — `EyeElement`, `UniqueElement`, and `CastElement` — each of which
+//! was `: Element + Sealed {}` with the same six impls, into a single trait.
+//!
+//! # Relationship to `Numeric`
+//!
+//! `SealedElement` covers the same six types as [`Numeric`](crate::element::Numeric),
+//! yet carries a deliberately weaker contract: it does **not** require the
+//! arithmetic operators (`Add`/`Sub`/`Mul`/`Div`/`Neg`). The operations gated
+//! by this trait only need "a numeric element type that is not `bool`", never
+//! ring arithmetic. Binding them to `Numeric` would over-constrain the public
+//! signature and misstate intent, so the marker is kept independent.
+//!
+//! # Application scenarios
+//!
+//! Reach for `SealedElement` as the bound whenever an operation must accept the
+//! full numeric set yet exclude `bool` at compile time, without depending on
+//! arithmetic. Current consumers:
+//!
+//! | Operation | Entry point | Why `bool` is excluded |
+//! |-----------|-------------|------------------------|
+//! | Identity matrix | `Tensor::eye` | a `bool` identity matrix has no meaningful `1`/`0` diagonal |
+//! | Deduplication | `TensorBase::unique` | `unique` over `bool` is degenerate (at most two values) and excluded per spec §15 |
+//! | Type conversion | `TensorBase::cast` | the 6×6 numeric cast matrix has no `bool` row or column |
+//!
+//! Future numeric-only, arithmetic-free operations (for example additional set
+//! operations like `intersect`/`union`, or histogram/value-table builders)
+//! should reuse this bound rather than re-declaring yet another identical
+//! marker trait.
+//!
+//! # Sealed
+//!
+//! `SealedElement: Element` and `Element: Sealed`, so this trait is sealed
+//! transitively and cannot be implemented outside of `Xenon`.
+//!
+//! Compile-time rejection — `bool` does not implement `SealedElement`:
+//! ```compile_fail
+//! # use xenon::dimension::Ix2;
+//! # use xenon::tensor::Tensor;
+//! let _ = Tensor::<bool, Ix2>::eye(3);
+//! ```
+//!
+//! Compile-time rejection — `usize` is not an element type at all:
+//! ```compile_fail
+//! # use xenon::dimension::Ix2;
+//! # use xenon::tensor::Tensor;
+//! let _ = Tensor::<usize, Ix2>::eye(3);
+//! ```
+
+use super::Element;
+use crate::complex::Complex;
+use crate::private::Sealed;
+
+/// Sealed marker for the six numeric element types, excluding `bool`.
+///
+/// Implementors: `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
+/// `bool` is intentionally excluded; `usize`/`isize` and other primitives are
+/// not `Element` types and therefore cannot implement this trait either.
+///
+/// This is a shared compile-time gate for numeric-only operations that do not
+/// need arithmetic operators (`eye`, `unique`, `cast`). See the
+/// [module documentation](self) for the full rationale and application
+/// scenarios.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
+pub trait SealedElement: Element + Sealed {}
+
+impl SealedElement for i32 {}
+impl SealedElement for i64 {}
+impl SealedElement for f32 {}
+impl SealedElement for f64 {}
+impl SealedElement for Complex<f32> {}
+impl SealedElement for Complex<f64> {}

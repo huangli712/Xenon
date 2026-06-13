@@ -15,28 +15,28 @@
 //!   real conversion.
 //!
 //! `CastTo` is `pub(crate)`.  Public compile-time gating is provided
-//! by `CastElement` (`crate::element`), a sealed marker that excludes
+//! by `SealedElement` (`crate::element`), a sealed marker that excludes
 //! `bool` and other non-numeric types.
 
 use std::borrow::Cow;
 
 use crate::complex::Complex;
-use crate::element::{Element, CastElement};
+use crate::element::{Element, SealedElement};
 use crate::error::{ConversionFailureReason, Result, XenonError};
 
 /// Crate-private sealed conversion dispatch trait.
 ///
 /// Serves as the static dispatch entry point for the three-tier conversion
 /// architecture (Tier-0 identity, Tier-1 lossless `From`, Tier-2 static lossy,
-/// Tier-3 dynamic). Sealed via `CastElement: Element: Sealed`, preventing
+/// Tier-3 dynamic). Sealed via `SealedElement: Element: Sealed`, preventing
 /// external crates from extending the conversion matrix.
 ///
 /// Tier-0/Tier-1 impls return `Ok(..)` directly; Tier-2 impls return a typed
 /// `Err(XenonError::TypeConversion {..})`; Tier-3 impls perform a dynamic
 /// `im == 0` check before delegating to the inner real conversion.
-pub(crate) trait CastTo<B>: CastElement
+pub(crate) trait CastTo<B>: SealedElement
 where
-    B: CastElement,
+    B: SealedElement,
 {
     /// Converts `self` into `B`.
     ///

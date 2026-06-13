@@ -35,17 +35,13 @@
 //! | `complex` | `ComplexScalar` trait + impls |
 //! | `order` | `OrderedCompareElement` marker trait |
 //! | `simd` | `SimdElement` marker trait |
-//! | `cast` | `CastElement` marker trait |
-//! | `eye` | `EyeElement` marker trait |
-//! | `unique` | `UniqueElement` marker trait |
+//! | `sealed` | `SealedElement` marker trait (`eye`/`unique`/`cast`) |
 //! | `checked` | Checked arithmetic traits |
 
 mod types;
 mod order;
 mod simd;
-mod cast;
-mod eye;
-mod unique;
+mod sealed;
 mod checked;
 
 mod primitives;
@@ -56,9 +52,7 @@ mod complex;
 pub(crate) use types::element_type_of;
 pub(crate) use order::OrderedCompareElement;
 pub(crate) use simd::SimdElement;
-pub(crate) use cast::CastElement;
-pub(crate) use eye::EyeElement;
-pub(crate) use unique::UniqueElement;
+pub(crate) use sealed::SealedElement;
 pub(crate) use checked::{CheckedAdd, CheckedDiv, CheckedMul, CheckedNeg, CheckedSub};
 
 pub use types::ElementType;

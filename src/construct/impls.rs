@@ -11,7 +11,7 @@ use crate::error::{InvalidShapeKind, XenonError};
 use crate::dimension::{Dimension, IntoDimension, Ix0, Ix1, Ix2};
 use crate::storage::{Owned, RawStorage, StorageOwned};
 use crate::layout::{Strides, compute_layout_flags};
-use crate::element::{Element, EyeElement};
+use crate::element::{Element, SealedElement};
 use crate::tensor::TensorBase;
 
 impl<A> TensorBase<Owned<A>, Ix0>
@@ -71,7 +71,7 @@ where
 
 impl<A> TensorBase<Owned<A>, Ix2>
 where
-    A: EyeElement,
+    A: SealedElement,
 {
     /// Create an n×n identity matrix.
     ///
@@ -563,7 +563,7 @@ mod tests {
     }
 
     /// `from_scalar` accepts `bool` (bound is `A: Element`), unlike `eye`
-    /// which requires the stricter `EyeElement` trait.
+    /// which requires the stricter `SealedElement` trait.
     #[test]
     fn test_from_scalar_bool() {
         let tensor = Tensor::<bool, Ix0>::from_scalar(true)

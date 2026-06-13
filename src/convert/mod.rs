@@ -9,7 +9,7 @@
 //!
 //! ## Public API
 //!
-//! `CastElement` (defined in `crate::element`) is re-exported here for path
+//! `SealedElement` (defined in `crate::element`) is re-exported here for path
 //! stability.  `CastTo` is `pub(crate)`; users interact with conversion
 //! through `TensorBase::cast()`.
 

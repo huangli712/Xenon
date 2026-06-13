@@ -13,16 +13,16 @@ fn test_conversion_respects_element_boundaries() {
     assert_eq!(converted.as_slice().expect("F-contiguous"), &[1.0, 2.0]);
 }
 
-// §8.3 L939 compile-time boundary: `bool` does NOT implement `CastElement`,
+// §8.3 L939 compile-time boundary: `bool` does NOT implement `SealedElement`,
 // the public sealed marker that gates `cast()`, so `cast::<f32>()` on a
 // `Tensor<bool, _>` is rejected at compile time rather than failing at
 // runtime. (The internal per-pair dispatch trait `CastTo` is `pub(crate)`
 // in `convert` and cannot be named from external crates; the boundary is
-// observed below through the public `CastElement` marker.)
+// observed below through the public `SealedElement` marker.)
 //
 // ```compile_fail
-// # use xenon::prelude::CastElement;
-// fn _assert_bool_cast<A: CastElement>() {}
+// # use xenon::prelude::SealedElement;
+// fn _assert_bool_cast<A: SealedElement>() {}
 // _assert_bool_cast::<bool>();
 // ```
 
@@ -65,7 +65,7 @@ fn test_cast_real_to_complex() {
     ]);
 }
 
-/// `bool` does NOT implement `CastElement`, so `bool` tensors cannot call
+/// `bool` does NOT implement `SealedElement`, so `bool` tensors cannot call
 /// `.cast::<T>()`. This is enforced at compile time:
 ///
 /// ```compile_fail
@@ -77,14 +77,14 @@ fn test_cast_real_to_complex() {
 /// ```
 ///
 /// The runtime test below verifies that `bool` is a valid `Element` but
-/// the `CastElement` trait is absent.
+/// the `SealedElement` trait is absent.
 #[test]
 fn test_bool_not_participating_in_cast() {
     let t = Tensor1::<bool>::from_shape_vec(Ix1(2), vec![true, false])
         .expect("valid construction");
     assert_eq!(t.len(), 2);
     // Calling t.cast::<f32>() on a `Tensor<bool, _>` does NOT compile
-    // because `bool` does not implement `CastElement`.
+    // because `bool` does not implement `SealedElement`.
     // The following line, if uncommented, would produce a compile error:
     // let _: Tensor1<f32> = t.cast().expect("would not compile");
 }

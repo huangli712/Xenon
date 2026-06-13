@@ -4,13 +4,13 @@
 //! provide tensor-level type conversion and ownership transfer.
 //!
 //! `CastTo` trait and tier impls are in `super::cast`.
-//! `CastElement` is defined in `crate::element`.
+//! `SealedElement` is defined in `crate::element`.
 
 use std::borrow::Cow;
 
 use crate::error::{Result, XenonError};
 use crate::dimension::Dimension;
-use crate::element::{Element, CastElement};
+use crate::element::{Element, SealedElement};
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{RawStorage, Storage, StorageIntoOwned, Owned};
 use crate::tensor::{Tensor, TensorBase};
@@ -99,7 +99,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: CastElement + Copy,
+    A: SealedElement + Copy,
 {
     /// Element-wise type conversion to target element type `B`.
     ///
@@ -107,7 +107,7 @@ where
     ///
     /// # Type Parameters
     ///
-    /// * `B` - Target element type, must implement `CastElement`.
+    /// * `B` - Target element type, must implement `SealedElement`.
     ///
     /// # Errors
     ///
@@ -119,7 +119,7 @@ where
     )]
     pub fn cast<B>(&self) -> Result<Tensor<B, D>>
     where
-        B: CastElement,
+        B: SealedElement,
         A: CastTo<B>,
     {
         let mut data: Vec<B> = Vec::with_capacity(self.len());

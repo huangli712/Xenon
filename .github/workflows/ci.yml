@@ -180,7 +180,7 @@ jobs:
           # Whitelist: public sealed traits requiring a `# Sealed` doc section
           WHITELIST=(
             "Dimension" "Reverse"
-            "Element" "Numeric" "RealScalar" "ComplexScalar" "CastElement"
+            "Element" "Numeric" "RealScalar" "ComplexScalar" "SealedElement"
             "RawStorage" "RawStorageMut" "Storage" "StorageMut" "StorageOwned" "StorageShared"
             "IsOwned" "IsView" "IsViewMut" "IsShared"
             "CastTo"

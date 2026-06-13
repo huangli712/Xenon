@@ -1,11 +1,11 @@
 //! Deduplication for tensor element values.
 //!
 //! The `unique` operation deduplicates a tensor's element values. Supported
-//! element types are gated by [`UniqueElement`](crate::element::UniqueElement):
+//! element types are gated by [`SealedElement`](crate::element::SealedElement):
 //! `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, and `Complex<f64>`.
 
 use crate::dimension::{Dimension, Ix1};
-use crate::element::UniqueElement;
+use crate::element::SealedElement;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
@@ -16,7 +16,7 @@ pub(crate) fn unique_impl<S, D, A>(tensor: &TensorBase<S, D>) -> Tensor<A, Ix1>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: UniqueElement,
+    A: SealedElement,
 {
     let mut out = Vec::new();
     for value in tensor.iter().copied() {
@@ -32,11 +32,11 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: UniqueElement,
+    A: SealedElement,
 {
     /// Returns unique elements as a 1D owned tensor.
     ///
-    /// See `UniqueElement` for supported types and equality semantics.
+    /// See `SealedElement` for supported types and equality semantics.
     pub fn unique(&self) -> Tensor<A, Ix1> {
         unique_impl(self)
     }
