@@ -26,3 +26,21 @@ impl SimdElement for i32 {}
 impl SimdElement for i64 {}
 impl SimdElement for Complex<f32> {}
 impl SimdElement for Complex<f64> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Compile-time verification that all 6 numeric element types
+    /// implement the `SimdElement` marker trait.
+    #[test]
+    fn test_marker_trait_impls() {
+        fn assert_simd<T: SimdElement>() {}
+        assert_simd::<f32>();
+        assert_simd::<f64>();
+        assert_simd::<i32>();
+        assert_simd::<i64>();
+        assert_simd::<Complex<f32>>();
+        assert_simd::<Complex<f64>>();
+    }
+}

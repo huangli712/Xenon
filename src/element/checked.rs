@@ -178,4 +178,16 @@ mod tests {
         assert_eq!(<i32 as CheckedDiv>::checked_div(1, 0), None);
         assert_eq!(<i32 as CheckedDiv>::checked_div(i32::MIN, -1), None);
     }
+
+    /// Verifies the `i64` failure paths not exercised by
+    /// `test_checked_arithmetic_traits` (which only covers `i32` for the
+    /// Sub / Mul / Neg / Div failure branches).
+    #[test]
+    fn test_checked_i64_overflow_paths() {
+        assert_eq!(<i64 as CheckedSub>::checked_sub(i64::MIN, 1), None);
+        assert_eq!(<i64 as CheckedMul>::checked_mul(i64::MAX, 2), None);
+        assert_eq!(<i64 as CheckedNeg>::checked_neg(i64::MIN), None);
+        assert_eq!(<i64 as CheckedDiv>::checked_div(1, 0), None);
+        assert_eq!(<i64 as CheckedDiv>::checked_div(i64::MIN, -1), None);
+    }
 }

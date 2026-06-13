@@ -153,4 +153,17 @@ mod tests {
         assert_eq!(<Complex<f64> as ComplexScalar>::norm(value), 5.0);
         assert_eq!(Complex::<f64>::zero(), Complex::new(0.0, 0.0));
     }
+
+    /// Verifies `conjugate()` concrete return values for `f32`, `f64`, and
+    /// `Complex<f32>`: identity on the real types and imaginary-part
+    /// negation on the complex type.
+    #[test]
+    fn test_conjugate_concrete_values() {
+        assert_eq!(<f32 as Numeric>::conjugate(3.5_f32), 3.5_f32);
+        assert_eq!(<f64 as Numeric>::conjugate(-2.25_f64), -2.25_f64);
+        assert_eq!(
+            <Complex<f32> as Numeric>::conjugate(Complex::new(3.0, 4.0)),
+            Complex::new(3.0, -4.0)
+        );
+    }
 }

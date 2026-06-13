@@ -83,3 +83,21 @@ impl SealedElement for f32 {}
 impl SealedElement for f64 {}
 impl SealedElement for Complex<f32> {}
 impl SealedElement for Complex<f64> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Compile-time verification that all 6 numeric element types
+    /// implement the `SealedElement` marker trait.
+    #[test]
+    fn test_marker_trait_impls() {
+        fn assert_sealed<T: SealedElement>() {}
+        assert_sealed::<i32>();
+        assert_sealed::<i64>();
+        assert_sealed::<f32>();
+        assert_sealed::<f64>();
+        assert_sealed::<Complex<f32>>();
+        assert_sealed::<Complex<f64>>();
+    }
+}

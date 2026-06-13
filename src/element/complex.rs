@@ -107,4 +107,17 @@ mod tests {
         assert_complex::<Complex<f32>>();
         assert_complex::<Complex<f64>>();
     }
+
+    /// Verifies `re()` and `im()` return the correct components for both
+    /// complex types; previously only `norm` was asserted with concrete
+    /// values.
+    #[test]
+    fn test_re_im_concrete_values() {
+        let c32 = Complex::<f32>::new(3.0, -4.0);
+        assert_eq!(<Complex<f32> as ComplexScalar>::re(c32), 3.0_f32);
+        assert_eq!(<Complex<f32> as ComplexScalar>::im(c32), -4.0_f32);
+        let c64 = Complex::<f64>::new(-1.5, 2.5);
+        assert_eq!(<Complex<f64> as ComplexScalar>::re(c64), -1.5_f64);
+        assert_eq!(<Complex<f64> as ComplexScalar>::im(c64), 2.5_f64);
+    }
 }
