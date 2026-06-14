@@ -14,6 +14,8 @@
 #[repr(transparent)]
 pub struct Axis(pub usize);
 
+// --- Axis methods -----------------------------------------------------------
+
 impl Axis {
     /// Create a new Axis with the given index.
     #[inline]

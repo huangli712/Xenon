@@ -8,6 +8,8 @@ use super::dynamic::IxDyn;
 use crate::private::Sealed;
 use crate::error::{InvalidShapeKind, XenonError};
 
+// --- Dimension trait --------------------------------------------------------
+
 /// Highest statically-ranked dimension supported (`Ix6`).
 ///
 /// Static dimension types span `Ix0` (rank 0) through `Ix6` (rank 6), so
@@ -142,6 +144,8 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     }
 }
 
+// --- Reverse trait ----------------------------------------------------------
+
 /// Sealed trait for reversing the axis order of a dimension.
 ///
 /// Every concrete `D` Xenon supports (Ix0..Ix6, IxDyn) implements
@@ -158,6 +162,8 @@ pub trait Reverse: Dimension + Sealed {
     /// Preserves the static rank (e.g., `Ix2 → Ix2`).
     fn reverse(self) -> Self;
 }
+
+// --- RemoveAxis trait -------------------------------------------------------
 
 /// Sealed trait for removing one axis from a dimension, producing a
 /// dimension of one rank lower (`D::Smaller`).

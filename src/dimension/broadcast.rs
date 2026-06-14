@@ -10,7 +10,7 @@ use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6, IxDyn};
 
 /// Trait for computing the output dimension type when broadcasting two arrays.
 ///
-/// Same static dimension broadcasts to itself: `IxN BroadcastDim IxN → IxN`.
+/// Same static dimension broadcasts to itself: `IxN BroadcastDimension IxN → IxN`.
 /// Cross static dimensions: higher-rank wins. Any IxDyn mixed: `IxDyn`.
 ///
 /// Sealed: closed to `Ix0..Ix6` and `IxDyn` only.
@@ -19,7 +19,7 @@ pub trait BroadcastDimension<Other: Dimension>: Dimension + Sealed {
     type Output: Dimension;
 }
 
-// --- Same static dimension: IxN BroadcastDim IxN → IxN (7 impls) ---
+// --- Same static dimension: IxN BroadcastDimension IxN → IxN (7 impls) ---
 
 impl BroadcastDimension<Ix0> for Ix0 {
     type Output = Ix0;
@@ -245,7 +245,7 @@ mod tests {
     use super::*;
     use std::any::TypeId;
 
-    /// Helper: assert that `<A as BroadcastDim<B>>::Output` is type-equal to
+    /// Helper: assert that `<A as BroadcastDimension<B>>::Output` is type-equal to
     /// `O`. Compiles only if the bound holds.
     fn assert_output<A, B, O>()
     where
@@ -307,7 +307,7 @@ mod tests {
         assert_output::<IxDyn, IxDyn, IxDyn>();
     }
 
-    /// Verifies that `<A as BroadcastDim<B>>::Output` equals
+    /// Verifies that `<A as BroadcastDimension<B>>::Output` equals
     /// `<B as BroadcastDim<A>>::Output` for each sample pair,
     /// confirming the bidirectional symmetry of the broadcast type.
     #[test]

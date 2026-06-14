@@ -23,6 +23,8 @@ pub struct IxDyn {
     dims: Vec<usize>,
 }
 
+// --- Inherent methods -------------------------------------------------------
+
 impl IxDyn {
     /// Creates an empty (0-dimensional) dynamic dimension.
     #[inline]
@@ -71,8 +73,10 @@ impl IxDyn {
     }
 }
 
+// --- Dimension impl ---------------------------------------------------------
+
 impl Dimension for IxDyn {
-    /// Maximum number of static dimensions: `None` for dynamic dimension.
+    /// Compile-time rank: `None` — rank is determined at runtime.
     const NDIM: Option<usize> = None;
 
     /// Returns the number of axes (rank).
@@ -112,6 +116,8 @@ impl Dimension for IxDyn {
     }
 }
 
+// --- Reverse impl -----------------------------------------------------------
+
 impl Reverse for IxDyn {
     /// Reverses the axis order in-place.
     fn reverse(self) -> Self {
@@ -120,6 +126,8 @@ impl Reverse for IxDyn {
         IxDyn { dims }
     }
 }
+
+// --- RemoveAxis impl --------------------------------------------------------
 
 impl RemoveAxis for IxDyn {
     /// The reduced-rank dimension type.

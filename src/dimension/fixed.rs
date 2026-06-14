@@ -898,8 +898,6 @@ impl Index<usize> for Ix6 {
 /// against the corresponding `[usize; N]` array.  If any `#[repr(C)]`
 /// attribute is removed or field types are altered, these assertions fail
 /// at compile time instead of silently introducing UB.
-///
-/// See the layout assertion block above.
 const _: () = {
     use core::mem::{align_of, offset_of, size_of};
 
