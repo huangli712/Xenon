@@ -2,11 +2,12 @@
 
 use std::borrow::Cow;
 use std::ops::Index;
+use std::slice;
 
-use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse, IxDyn};
 use crate::error::XenonError;
+use crate::dimension::{Axis, Dimension, RemoveAxis, Reverse, IxDyn};
 
-// ----------------------------------- Ix0 -----------------------------------
+// --- Ix0 --------------------------------------------------------------------
 
 /// Zero-dimensional index (scalar). Always has rank 0, size 1.
 /// This type is a ZST (Zero-Sized Type); `size_of::<Ix0>() == 0`.
@@ -88,8 +89,12 @@ impl Reverse for Ix0 {
 
 impl RemoveAxis for Ix0 {
     type Smaller = Ix0;
+    
     /// Always errors (Ix0 has no axes).
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         Err(XenonError::InvalidAxis {
             operation: Cow::Borrowed("Ix0::remove_axis"),
             axis: axis.0,
@@ -127,7 +132,7 @@ impl Index<usize> for Ix0 {
     }
 }
 
-// ----------------------------------- Ix1 -----------------------------------
+// --- Ix1 --------------------------------------------------------------------
 
 /// One-dimensional index.
 ///
@@ -155,7 +160,7 @@ impl Dimension for Ix1 {
 
     #[inline]
     fn slice(&self) -> &[usize] {
-        std::slice::from_ref(&self.0)
+        slice::from_ref(&self.0)
     }
 
     #[inline]
@@ -206,8 +211,12 @@ impl Reverse for Ix1 {
 
 impl RemoveAxis for Ix1 {
     type Smaller = Ix0;
+
     /// Removes axis 0, returning Ix0 and the length.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         if axis.0 != 0 {
             return Err(XenonError::InvalidAxis {
                 operation: Cow::Borrowed("Ix1::remove_axis"),
@@ -248,7 +257,7 @@ impl From<(usize,)> for Ix1 {
     }
 }
 
-// ----------------------------------- Ix2 -----------------------------------
+// --- Ix2 --------------------------------------------------------------------
 
 /// Two-dimensional index.
 ///
@@ -280,7 +289,7 @@ impl Dimension for Ix2 {
         // fields in declaration order. Reinterpreting &Ix2 as a
         // contiguous `*const usize` slice of length 2 preserves
         // provenance, alignment, and size.
-        unsafe { core::slice::from_raw_parts(self as *const Self as *const usize, 2) }
+        unsafe { slice::from_raw_parts(self as *const Self as *const usize, 2) }
     }
 
     #[inline]
@@ -326,8 +335,12 @@ impl Reverse for Ix2 {
 
 impl RemoveAxis for Ix2 {
     type Smaller = Ix1;
+    
     /// Removes the given axis, returning Ix1.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix1(self.1), self.0)),
             1 => Ok((Ix1(self.0), self.1)),
@@ -372,7 +385,7 @@ impl From<(usize, usize)> for Ix2 {
     }
 }
 
-// ----------------------------------- Ix3 -----------------------------------
+// --- Ix3 --------------------------------------------------------------------
 
 /// Three-dimensional index.
 ///
@@ -402,7 +415,7 @@ impl Dimension for Ix3 {
         // fields in declaration order. Reinterpreting &Ix3 as a
         // contiguous `*const usize` slice of length 3 is valid per
         // repr(C) layout guarantee.
-        unsafe { core::slice::from_raw_parts(self as *const Self as *const usize, 3) }
+        unsafe { slice::from_raw_parts(self as *const Self as *const usize, 3) }
     }
 
     #[inline]
@@ -448,8 +461,12 @@ impl Reverse for Ix3 {
 
 impl RemoveAxis for Ix3 {
     type Smaller = Ix2;
+
     /// Removes the given axis, returning Ix2.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix2(self.1, self.2), self.0)),
             1 => Ok((Ix2(self.0, self.2), self.1)),
@@ -496,7 +513,7 @@ impl Index<usize> for Ix3 {
     }
 }
 
-// ----------------------------------- Ix4 -----------------------------------
+// --- Ix4 --------------------------------------------------------------------
 
 /// Four-dimensional index.
 ///
@@ -524,7 +541,7 @@ impl Dimension for Ix4 {
     fn slice(&self) -> &[usize] {
         // SAFETY: Ix4 uses #[repr(C)] and contains exactly four `usize`
         // fields laid out contiguously starting at `self.0`.
-        unsafe { std::slice::from_raw_parts(self as *const Self as *const usize, 4) }
+        unsafe { slice::from_raw_parts(self as *const Self as *const usize, 4) }
     }
 
     #[inline]
@@ -570,8 +587,12 @@ impl Reverse for Ix4 {
 
 impl RemoveAxis for Ix4 {
     type Smaller = Ix3;
+
     /// Removes the given axis, returning Ix3.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix3(self.1, self.2, self.3), self.0)),
             1 => Ok((Ix3(self.0, self.2, self.3), self.1)),
@@ -620,7 +641,7 @@ impl Index<usize> for Ix4 {
     }
 }
 
-// ----------------------------------- Ix5 -----------------------------------
+// --- Ix5 --------------------------------------------------------------------
 
 /// Five-dimensional dimension.
 ///
@@ -655,7 +676,7 @@ impl Dimension for Ix5 {
         // fields in declaration order. Reinterpreting `&Ix5` as a contiguous
         // `*const usize` slice of length 5 preserves provenance, alignment,
         // and size.
-        unsafe { core::slice::from_raw_parts(self as *const Self as *const usize, 5) }
+        unsafe { slice::from_raw_parts(self as *const Self as *const usize, 5) }
     }
 
     #[inline]
@@ -701,8 +722,12 @@ impl Reverse for Ix5 {
 
 impl RemoveAxis for Ix5 {
     type Smaller = Ix4;
+
     /// Removes the given axis, returning Ix4.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix4(self.1, self.2, self.3, self.4), self.0)),
             1 => Ok((Ix4(self.0, self.2, self.3, self.4), self.1)),
@@ -753,7 +778,7 @@ impl Index<usize> for Ix5 {
     }
 }
 
-// ----------------------------------- Ix6 -----------------------------------
+// --- Ix6 --------------------------------------------------------------------
 
 /// Six-dimensional dimension.
 ///
@@ -788,7 +813,7 @@ impl Dimension for Ix6 {
         // fields in declaration order. Reinterpreting &Ix6 as a contiguous
         // *const usize slice of length 6 preserves provenance, alignment,
         // and size.
-        unsafe { std::slice::from_raw_parts(self as *const Self as *const usize, 6) }
+        unsafe { slice::from_raw_parts(self as *const Self as *const usize, 6) }
     }
 
     #[inline]
@@ -836,8 +861,12 @@ impl Reverse for Ix6 {
 
 impl RemoveAxis for Ix6 {
     type Smaller = Ix5;
+
     /// Removes the given axis, returning Ix5.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         match axis.0 {
             0 => Ok((Ix5(self.1, self.2, self.3, self.4, self.5), self.0)),
             1 => Ok((Ix5(self.0, self.2, self.3, self.4, self.5), self.1)),
@@ -890,7 +919,7 @@ impl Index<usize> for Ix6 {
     }
 }
 
-// ---------------------------- Layout Assertions ----------------------------
+// --- Layout Assertions ------------------------------------------------------
 
 /// Compile-time layout assertions for unsafe pointer casts in `slice()`.
 ///
@@ -952,10 +981,10 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::{align_of, size_of};
     use crate::error::InvalidShapeKind;
-    use std::mem::size_of;
 
-    // ---------------------------- Per-type tests ---------------------------
+    // --- Per-type tests -----------------------------------------------------
 
     /// Ix0 is a Zero-Sized Type.
     #[test]
@@ -1008,7 +1037,8 @@ mod tests {
                 offending_dim: Some(1),
                 ..
             } => {},
-            _ => panic!("expected InvalidShape with offending_dim: Some(1), got {err:?}"),
+            _ => panic!("expected InvalidShape with offending_dim: \
+                         Some(1), got {err:?}"),
         }
     }
 
@@ -1126,17 +1156,35 @@ mod tests {
         }
     }
 
-    // --------------------------- Cross-type tests --------------------------
+    // --- Cross-type tests ---------------------------------------------------
 
     /// `into_dyn` for each static rank.
     #[test]
     fn test_static_to_dyn() {
-        assert_eq!(Ix0.into_dyn().slice(), &[] as &[usize]);
-        assert_eq!(Ix1(2).into_dyn().slice(), &[2]);
-        assert_eq!(Ix2(2, 3).into_dyn().slice(), &[2, 3]);
-        assert_eq!(Ix3(2, 3, 4).into_dyn().slice(), &[2, 3, 4]);
-        assert_eq!(Ix4(2, 3, 4, 5).into_dyn().slice(), &[2, 3, 4, 5]);
-        assert_eq!(Ix5(2, 3, 4, 5, 6).into_dyn().slice(), &[2, 3, 4, 5, 6]);
+        assert_eq!(
+            Ix0.into_dyn().slice(),
+            &[] as &[usize]
+        );
+        assert_eq!(
+            Ix1(2).into_dyn().slice(),
+            &[2]
+        );
+        assert_eq!(
+            Ix2(2, 3).into_dyn().slice(), 
+            &[2, 3]
+        );
+        assert_eq!(
+            Ix3(2, 3, 4).into_dyn().slice(),
+            &[2, 3, 4]
+        );
+        assert_eq!(
+            Ix4(2, 3, 4, 5).into_dyn().slice(), 
+            &[2, 3, 4, 5]
+        );
+        assert_eq!(
+            Ix5(2, 3, 4, 5, 6).into_dyn().slice(), 
+            &[2, 3, 4, 5, 6]
+        );
         assert_eq!(
             Ix6(2, 3, 4, 5, 6, 7).into_dyn().slice(),
             &[2, 3, 4, 5, 6, 7]
@@ -1146,7 +1194,10 @@ mod tests {
     /// `try_from_dyn` succeeds when rank matches.
     #[test]
     fn test_dyn_to_static_success() {
-        assert_eq!(Ix0::try_from_dyn(IxDyn::new()), Ok(Ix0));
+        assert_eq!(
+            Ix0::try_from_dyn(IxDyn::new()),
+            Ok(Ix0)
+        );
         assert_eq!(
             Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4])),
             Ok(Ix3(2, 3, 4))
@@ -1260,7 +1311,6 @@ mod tests {
     /// for Ix1-Ix6.
     #[test]
     fn test_static_ix_layout_assertions_compile() {
-        use std::mem::{align_of, size_of};
         assert_eq!(size_of::<Ix1>(), size_of::<[usize; 1]>());
         assert_eq!(size_of::<Ix2>(), size_of::<[usize; 2]>());
         assert_eq!(size_of::<Ix3>(), size_of::<[usize; 3]>());
@@ -1274,8 +1324,6 @@ mod tests {
     /// Zero-dim axis ops return InvalidAxis (recoverable error).
     #[test]
     fn test_ix0_axis_returns_invalid_axis() {
-        use crate::dimension::Axis;
-        use crate::error::XenonError;
         assert!(matches!(
             Ix0.axis(Axis::new(0)),
             Err(XenonError::InvalidAxis { .. })
