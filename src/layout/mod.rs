@@ -12,7 +12,8 @@
 //! | `strides`   | `Strides` carrier and F-order stride computation |
 //! | `contiguous`| `is_f_contiguous` recognition algorithm |
 //! | `aligned`   | Raw-pointer alignment checks |
-//! | `flags`     | `LayoutFlags` bitfield, `LayoutState` enum, etc |
+//! | `flags`     | `LayoutFlags` bitfield, `compute_layout_flags` |
+//! | `state`     | `LayoutState` enum |
 //!
 //! # Public API
 //!
@@ -24,10 +25,12 @@
 mod aligned;
 mod contiguous;
 mod flags;
+mod state;
 mod strides;
 
 pub use contiguous::is_f_contiguous;
-pub use flags::{LayoutFlags, LayoutState};
+pub use flags::LayoutFlags;
+pub use state::LayoutState;
 pub use strides::Strides;
 
 pub(crate) use flags::compute_layout_flags;
