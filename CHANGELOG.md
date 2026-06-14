@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.48] — 2026-06-14
+
+### Added
+
+- Tests: IxDyn reverse, remove_axis, axis for static ranks, from_slice, as_str.
+- `Index<usize>` impls for Ix0, Ix3, Ix4, Ix5, Ix6; `From<()>` for Ix0.
+
+### Removed
+
+- Deleted `src/layout/aligned.rs`, `contiguous.rs`, `state.rs` (inlined into `compute.rs`).
+- Duplicate `checked_size` impls (Ix0..Ix6, IxDyn) consolidated into trait default.
+- `is_f_contiguous` tightened to `pub(crate)`; external tests moved in-module.
+- `BroadcastDim` renamed to `BroadcastDimension`.
+
+### Changed
+
+- Moved `checked_size` to `Dimension` trait default method.
+- Moved `into_dyn`/`try_from_dyn` to `Dimension` trait; added default `into_dyn`.
+- Renamed `BroadcastDim` → `BroadcastDimension`.
+- `MAX_DIMENSION` redefined from `usize::MAX` to `6` (highest static rank).
+- Inlined `aligned.rs`/`contiguous.rs` into `compute.rs`; deleted both files.
+- Merged `LayoutState` back into `flags.rs`; deleted `state.rs`.
+- Style: section separators, blank lines, import ordering across dimension/layout modules.
+
 ## [v0.0.47] — 2026-06-13
 
 ### Added
