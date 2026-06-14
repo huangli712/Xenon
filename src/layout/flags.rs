@@ -110,12 +110,13 @@ impl LayoutFlags {
     ///
     /// # Invariant
     ///
-    /// Correct only for `LayoutFlags` produced by `compute_layout_flags()`: that
-    /// entry point is the sole authority that sets `HAS_ZERO_STRIDE` and guarantees
-    /// `HAS_ZERO_STRIDE` is set if `any(stride == 0) && product(shape) > 0`.
+    /// Correct only for `LayoutFlags` produced by `compute_layout_flags()`:
+    /// that entry point is the sole authority that sets `HAS_ZERO_STRIDE`
+    /// and guarantees `HAS_ZERO_STRIDE` is set
+    /// if `any(stride == 0) && product(shape) > 0`.
     ///
-    /// As a consequence, `classify()` does NOT (and cannot — it has no `shape`
-    /// argument) re-check the `product(shape) > 0` half of the rule.
+    /// As a consequence, `classify()` does NOT (and cannot — it has no
+    /// `shape` argument) re-check the `product(shape) > 0` half of the rule.
     #[inline]
     pub const fn classify(self) -> LayoutState {
         if self.has_zero_stride() {

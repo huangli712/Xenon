@@ -3,6 +3,7 @@
 //! `has_zero_stride` / `should_set_zero_stride_flag` for broadcast detection.
 
 use std::borrow::Cow;
+
 use crate::error::{InvalidShapeKind, XenonError};
 use crate::dimension::Dimension;
 
