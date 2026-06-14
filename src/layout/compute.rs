@@ -101,7 +101,8 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
     // Step 1:
     //
     // HAS_ZERO_STRIDE := any(stride==0) && product(shape) > 0.
-    let is_broadcast_zero_stride = strides.should_set_zero_stride_flag(shape);
+    let is_broadcast_zero_stride = strides
+        .should_set_zero_stride_flag(shape);
 
     // Step 2:
     //
@@ -109,7 +110,8 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
     //
     // Empty-array degenerate metadata (product == 0) keeps
     // `is_broadcast_zero_stride == false` and can therefore still be F_CONTIGUOUS.
-    let f_contig = !is_broadcast_zero_stride && is_f_contiguous(shape, strides);
+    let f_contig = !is_broadcast_zero_stride 
+        && is_f_contiguous(shape, strides);
 
     // Step 3:
     //
@@ -131,9 +133,9 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::alloc::{Layout, alloc, dealloc};
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3};
     use super::super::LayoutState;
-    use std::alloc::{Layout, alloc, dealloc};
 
     // --- helpers ------------------------------------------------------------
 
