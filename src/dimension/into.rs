@@ -1,8 +1,8 @@
 //! Dimension conversion traits.
 
-use crate::dimension::Dimension;
-use crate::dimension::IxDyn;
-use crate::dimension::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
+use super::Dimension;
+use super::IxDyn;
+use super::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 
 /// Trait for types that can be converted into a dimension.
 ///
@@ -23,20 +23,22 @@ pub trait IntoDimension {
     fn into_dimension(self) -> Self::Dim;
 }
 
-// ── Identity impl: any Dimension type converts to itself ──
+// --- Identity impl ----------------------------------------------------------
 
 impl<D: Dimension> IntoDimension for D {
     type Dim = D;
+    
     #[inline]
     fn into_dimension(self) -> Self::Dim {
         self
     }
 }
 
-// ── Tuple impls: `()` through `(usize × 6)` → Ix0-Ix6 ──
+// --- Tuple impls ------------------------------------------------------------
 
 impl IntoDimension for () {
     type Dim = Ix0;
+    
     #[inline]
     fn into_dimension(self) -> Ix0 {
         Ix0
@@ -45,6 +47,7 @@ impl IntoDimension for () {
 
 impl IntoDimension for (usize,) {
     type Dim = Ix1;
+    
     #[inline]
     fn into_dimension(self) -> Ix1 {
         Ix1(self.0)
@@ -53,6 +56,7 @@ impl IntoDimension for (usize,) {
 
 impl IntoDimension for (usize, usize) {
     type Dim = Ix2;
+    
     #[inline]
     fn into_dimension(self) -> Ix2 {
         Ix2(self.0, self.1)
@@ -61,6 +65,7 @@ impl IntoDimension for (usize, usize) {
 
 impl IntoDimension for (usize, usize, usize) {
     type Dim = Ix3;
+    
     #[inline]
     fn into_dimension(self) -> Ix3 {
         Ix3(self.0, self.1, self.2)
@@ -69,6 +74,7 @@ impl IntoDimension for (usize, usize, usize) {
 
 impl IntoDimension for (usize, usize, usize, usize) {
     type Dim = Ix4;
+    
     #[inline]
     fn into_dimension(self) -> Ix4 {
         Ix4(self.0, self.1, self.2, self.3)
@@ -77,6 +83,7 @@ impl IntoDimension for (usize, usize, usize, usize) {
 
 impl IntoDimension for (usize, usize, usize, usize, usize) {
     type Dim = Ix5;
+    
     #[inline]
     fn into_dimension(self) -> Ix5 {
         Ix5(self.0, self.1, self.2, self.3, self.4)
@@ -85,16 +92,18 @@ impl IntoDimension for (usize, usize, usize, usize, usize) {
 
 impl IntoDimension for (usize, usize, usize, usize, usize, usize) {
     type Dim = Ix6;
+    
     #[inline]
     fn into_dimension(self) -> Ix6 {
         Ix6(self.0, self.1, self.2, self.3, self.4, self.5)
     }
 }
 
-// ── Array impls: `[usize; 0]` through `[usize; 6]` → Ix0-Ix6 ──
+// --- Array impls ------------------------------------------------------------
 
 impl IntoDimension for [usize; 0] {
     type Dim = Ix0;
+    
     #[inline]
     fn into_dimension(self) -> Ix0 {
         Ix0
@@ -103,6 +112,7 @@ impl IntoDimension for [usize; 0] {
 
 impl IntoDimension for [usize; 1] {
     type Dim = Ix1;
+    
     #[inline]
     fn into_dimension(self) -> Ix1 {
         Ix1(self[0])
@@ -111,6 +121,7 @@ impl IntoDimension for [usize; 1] {
 
 impl IntoDimension for [usize; 2] {
     type Dim = Ix2;
+    
     #[inline]
     fn into_dimension(self) -> Ix2 {
         Ix2(self[0], self[1])
@@ -119,6 +130,7 @@ impl IntoDimension for [usize; 2] {
 
 impl IntoDimension for [usize; 3] {
     type Dim = Ix3;
+    
     #[inline]
     fn into_dimension(self) -> Ix3 {
         Ix3(self[0], self[1], self[2])
@@ -127,6 +139,7 @@ impl IntoDimension for [usize; 3] {
 
 impl IntoDimension for [usize; 4] {
     type Dim = Ix4;
+    
     #[inline]
     fn into_dimension(self) -> Ix4 {
         Ix4(self[0], self[1], self[2], self[3])
@@ -135,6 +148,7 @@ impl IntoDimension for [usize; 4] {
 
 impl IntoDimension for [usize; 5] {
     type Dim = Ix5;
+    
     #[inline]
     fn into_dimension(self) -> Ix5 {
         Ix5(self[0], self[1], self[2], self[3], self[4])
@@ -143,16 +157,18 @@ impl IntoDimension for [usize; 5] {
 
 impl IntoDimension for [usize; 6] {
     type Dim = Ix6;
+    
     #[inline]
     fn into_dimension(self) -> Ix6 {
         Ix6(self[0], self[1], self[2], self[3], self[4], self[5])
     }
 }
 
-// ── Slice / Vec impls → IxDyn ──
+// --- Slice / Vec impls ------------------------------------------------------
 
 impl IntoDimension for &[usize] {
     type Dim = IxDyn;
+
     #[inline]
     fn into_dimension(self) -> IxDyn {
         IxDyn::from_slice(self)
@@ -161,6 +177,7 @@ impl IntoDimension for &[usize] {
 
 impl IntoDimension for Vec<usize> {
     type Dim = IxDyn;
+    
     #[inline]
     fn into_dimension(self) -> IxDyn {
         IxDyn::from_vec(self)
