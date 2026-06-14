@@ -69,7 +69,8 @@ impl<A> AlignedBuf<A> {
     /// allocating. The buffer starts with logical length 0.
     pub(crate) fn with_capacity_aligned(
         cap: usize,
-        align: usize
+        align: usize,
+        operation: &'static str,
     ) -> Result<Self, XenonError> {
         let align = align.max(align_of::<A>().max(1));
         if size_of::<A>() == 0 {
@@ -78,22 +79,28 @@ impl<A> AlignedBuf<A> {
         if cap == 0 {
             return Ok(Self::empty());
         }
-        let size = allocation_size::<A>(cap, align, "AlignedBuf::with_capacity_aligned")?;
+        let size = allocation_size::<A>(cap, align, operation)?;
         let ptr = AlignedAlloc::alloc(size, align)?;
         // SAFETY: AlignedAlloc::alloc returned a valid aligned allocation
         Ok(unsafe { Self::from_raw_parts(ptr.as_ptr() as *mut A, 0, cap, align) })
     }
 
     /// Copies elements from a `Vec` into a 64-byte aligned buffer.
-    pub(crate) fn from_vec(data: Vec<A>) -> Result<Self, XenonError>
+    pub(crate) fn from_vec(
+        data: Vec<A>,
+        operation: &'static str,
+    ) -> Result<Self, XenonError>
     where
         A: Copy,
     {
-        Self::from_vec_aligned(data)
+        Self::from_vec_aligned(data, operation)
     }
 
     /// Core implementation of `from_vec` with explicit alignment.
-    pub(crate) fn from_vec_aligned(data: Vec<A>) -> Result<Self, XenonError>
+    pub(crate) fn from_vec_aligned(
+        data: Vec<A>,
+        operation: &'static str,
+    ) -> Result<Self, XenonError>
     where
         A: Copy,
     {
@@ -105,7 +112,7 @@ impl<A> AlignedBuf<A> {
             return Ok(Self::empty());
         }
         let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let size = allocation_size::<A>(len, align, "AlignedBuf::from_vec_aligned")?;
+        let size = allocation_size::<A>(len, align, operation)?;
         let ptr = AlignedAlloc::alloc(size, align)?;
         let typed_ptr = ptr.as_ptr() as *mut A;
         // SAFETY: typed_ptr and data.as_ptr() are valid, non-overlapping
@@ -118,7 +125,10 @@ impl<A> AlignedBuf<A> {
     }
 
     /// Creates a 64-byte aligned buffer filled with zeros.
-    pub(crate) fn zeros(len: usize) -> Result<Self, XenonError>
+    pub(crate) fn zeros(
+        len: usize,
+        operation: &'static str,
+    ) -> Result<Self, XenonError>
     where
         A: Element + Default,
     {
@@ -129,19 +139,23 @@ impl<A> AlignedBuf<A> {
             return Ok(Self::empty());
         }
         let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let size = allocation_size::<A>(len, align, "AlignedBuf::zeros")?;
+        let size = allocation_size::<A>(len, align, operation)?;
         let ptr = AlignedAlloc::alloc_zeroed(size, align)?;
         // SAFETY: alloc_zeroed returned valid zeroed memory
         Ok(unsafe { Self::from_raw_parts(ptr.as_ptr() as *mut A, len, len, align) })
     }
 
     /// Creates a 64-byte aligned buffer filled with clones of `value`.
-    pub(crate) fn from_elem(len: usize, value: A) -> Result<Self, XenonError>
+    pub(crate) fn from_elem(
+        len: usize,
+        value: A,
+        operation: &'static str,
+    ) -> Result<Self, XenonError>
     where
         A: Clone,
     {
         let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let mut buf = Self::with_capacity_aligned(len, align)?;
+        let mut buf = Self::with_capacity_aligned(len, align, operation)?;
         for index in 0..len {
             // SAFETY: capacity >= len, ptr valid
             unsafe {
@@ -313,7 +327,7 @@ mod tests {
     /// SharedBuf compiles and wraps an AlignedBuf correctly.
     #[test]
     fn test_shared_buf_compile() {
-        let buf = AlignedBuf::<i32>::zeros(4)
+        let buf = AlignedBuf::<i32>::zeros(4, "AlignedBuf::zeros")
             .expect("AlignedBuf::zeros should succeed for small i32 input");
         let shared = SharedBuf { buf };
         assert_eq!(shared.buf.len(), 4);
@@ -327,7 +341,7 @@ mod tests {
     /// Alignment is clamped to at least the element type's alignment.
     #[test]
     fn test_aligned_buf_alignment_clamped() {
-        let buf = AlignedBuf::<u128>::with_capacity_aligned(4, 1)
+        let buf = AlignedBuf::<u128>::with_capacity_aligned(4, 1, "AlignedBuf::with_capacity_aligned")
             .expect("AlignedBuf::with_capacity_aligned should honor element alignment");
         assert_eq!((buf.as_ptr() as usize) % align_of::<u128>(), 0);
         assert_eq!(buf.capacity(), 4);
@@ -345,7 +359,7 @@ mod tests {
     /// Rejects allocation requests whose layout exceeds `isize::MAX`.
     #[test]
     fn test_aligned_buf_overflow() {
-        let err = AlignedBuf::<u8>::with_capacity_aligned(isize::MAX as usize, 64)
+        let err = AlignedBuf::<u8>::with_capacity_aligned(isize::MAX as usize, 64, "AlignedBuf::with_capacity_aligned")
             .expect_err("overflow layout should be rejected");
         match err {
             XenonError::InvalidShape {

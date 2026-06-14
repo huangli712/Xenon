@@ -3,15 +3,15 @@
 //! `Owned<A>` is the owning heap-allocated storage backed by `AlignedBuf<A>`.
 //! Construction goes through `AlignedAlloc` for 64-byte alignment.
 
-use core::mem::{align_of, size_of, ManuallyDrop};
-use core::ptr::{copy_nonoverlapping, drop_in_place, read, write};
+use core::mem::{align_of, ManuallyDrop};
+use core::ptr::{drop_in_place, read, write};
 
 use crate::element::Element;
 use crate::error::XenonError;
 use crate::private::Sealed;
 
 use super::alloc::AlignedAlloc;
-use super::buffer::{AlignedBuf, allocation_size};
+use super::buffer::AlignedBuf;
 use super::ArcRepr;
 use super::{RawStorage, Storage, StorageMut, StorageOwned, StorageIntoOwned};
 
@@ -52,7 +52,7 @@ impl<A> Owned<A> {
     {
         let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         Ok(Self {
-            data: AlignedBuf::with_capacity_aligned(cap, align)?,
+            data: AlignedBuf::with_capacity_aligned(cap, align, "Owned::with_capacity")?,
         })
     }
 
@@ -85,32 +85,8 @@ impl<A> Owned<A> {
     where
         A: Copy,
     {
-        let len = data.len();
-        if size_of::<A>() == 0 {
-            return Ok(Self {
-                data: AlignedBuf::zst(len),
-            });
-        }
-        if len == 0 {
-            return Ok(Self {
-                data: AlignedBuf::empty(),
-            });
-        }
-        let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let size = allocation_size::<A>(len, align, "Owned::from_vec_aligned")?;
-        let ptr = AlignedAlloc::alloc(size, align)?;
-        let typed_ptr = ptr.as_ptr() as *mut A;
-        // SAFETY: typed_ptr and data.as_ptr() are valid for len elements,
-        // non-overlapping (typed_ptr is freshly allocated)
-        unsafe {
-            copy_nonoverlapping(data.as_ptr(), typed_ptr, len);
-        }
-        drop(data);
-        // SAFETY: ptr was allocated by AlignedAlloc; len elements initialized
         Ok(Self {
-            data: unsafe {
-                AlignedBuf::from_raw_parts(typed_ptr, len, len, align)
-            },
+            data: AlignedBuf::from_vec_aligned(data, "Owned::from_vec_aligned")?,
         })
     }
 
@@ -127,24 +103,8 @@ impl<A> Owned<A> {
     where
         A: Element + Default,
     {
-        if size_of::<A>() == 0 {
-            return Ok(Self {
-                data: AlignedBuf::zst(len),
-            });
-        }
-        if len == 0 {
-            return Ok(Self {
-                data: AlignedBuf::empty(),
-            });
-        }
-        let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let size = allocation_size::<A>(len, align, "Owned::zeros")?;
-        let ptr = AlignedAlloc::alloc_zeroed(size, align)?;
-        // SAFETY: alloc_zeroed returned valid zeroed memory for len elements
         Ok(Self {
-            data: unsafe {
-                AlignedBuf::from_raw_parts(ptr.as_ptr() as *mut A, len, len, align)
-            },
+            data: AlignedBuf::zeros(len, "Owned::zeros")?,
         })
     }
 
@@ -161,18 +121,9 @@ impl<A> Owned<A> {
     where
         A: Element + Clone,
     {
-        let mut owned = Self::with_capacity(len)?;
-        for index in 0..len {
-            // SAFETY: capacity >= len, ptr is valid for len elements
-            unsafe {
-                write(owned.data.as_mut_ptr().add(index), value);
-            }
-        }
-        // SAFETY: all len elements have been initialized
-        unsafe {
-            owned.data.set_len(len);
-        }
-        Ok(owned)
+        Ok(Self {
+            data: AlignedBuf::from_elem(len, value, "Owned::from_elem")?,
+        })
     }
 
     /// Zero-copy conversion from `Owned<A>` to shared read-only `ArcRepr<A>`.
@@ -499,9 +450,31 @@ mod tests {
         };
         match err {
             XenonError::InvalidShape {
+                operation,
                 kind: InvalidShapeKind::ProductOverflow,
                 ..
-            } => {},
+            } => {
+                // S2: overflow provenance must name the public caller
+                // (Owned::zeros), not the internal AlignedBuf delegate.
+                assert_eq!(&*operation, "Owned::zeros");
+            },
+            other => panic!("expected InvalidShape::ProductOverflow, got {other:?}"),
+        }
+    }
+
+    /// Verifies that `Owned::from_elem`'s overflow error names the public
+    /// caller (S2 provenance), exercising the `from_elem` ->
+    /// `with_capacity_aligned` operation-forwarding path.
+    #[test]
+    fn test_owned_from_elem_overflow_provenance() {
+        let err = Owned::<bool>::from_elem(isize::MAX as usize, false)
+            .expect_err("layout overflow should return error");
+        match err {
+            XenonError::InvalidShape {
+                operation,
+                kind: InvalidShapeKind::ProductOverflow,
+                ..
+            } => assert_eq!(&*operation, "Owned::from_elem"),
             other => panic!("expected InvalidShape::ProductOverflow, got {other:?}"),
         }
     }

@@ -62,7 +62,7 @@ impl<A> ArcRepr<A> {
     where
         A: Copy,
     {
-        let buf = AlignedBuf::from_vec(data)?;
+        let buf = AlignedBuf::from_vec(data, "ArcRepr::from_vec")?;
         Ok(Self::from_aligned_buf(buf))
     }
 
@@ -79,7 +79,7 @@ impl<A> ArcRepr<A> {
     where
         A: Copy,
     {
-        let buf = AlignedBuf::from_vec_aligned(data)?;
+        let buf = AlignedBuf::from_vec_aligned(data, "ArcRepr::from_vec_aligned")?;
         Ok(Self::from_aligned_buf(buf))
     }
 
@@ -96,7 +96,7 @@ impl<A> ArcRepr<A> {
     where
         A: Element + Default,
     {
-        let buf = AlignedBuf::zeros(len)?;
+        let buf = AlignedBuf::zeros(len, "ArcRepr::zeros")?;
         Ok(Self::from_aligned_buf(buf))
     }
 
@@ -113,7 +113,7 @@ impl<A> ArcRepr<A> {
     where
         A: Element + Clone,
     {
-        let buf = AlignedBuf::from_elem(len, value)?;
+        let buf = AlignedBuf::from_elem(len, value, "ArcRepr::from_elem")?;
         Ok(Self::from_aligned_buf(buf))
     }
 
@@ -198,7 +198,7 @@ impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
         Self::Elem: Clone,
     {
         let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len(), align)
+        let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len(), align, "ArcRepr::into_owned_storage")
             .expect("allocation failed in ArcRepr::into_owned_storage");
         for i in 0..self.len() {
             // SAFETY: i < len, both src and dst pointers are valid
@@ -246,7 +246,7 @@ mod tests {
     fn test_arc_zst() {
         // ArcRepr::from_elem requires A: Element + Clone, which () does not
         // satisfy. Test the ZST code path through AlignedBuf directly.
-        let buf = AlignedBuf::<()>::from_elem(1024, ())
+        let buf = AlignedBuf::<()>::from_elem(1024, (), "AlignedBuf::from_elem")
             .expect("AlignedBuf::from_elem should succeed for ZST input");
         assert_eq!(buf.len(), 1024);
     }

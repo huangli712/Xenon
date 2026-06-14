@@ -146,7 +146,7 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
         Self::Elem: Clone,
     {
         let align = core::mem::align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
-        let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len, align)
+        let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len, align, "ViewMutRepr::into_owned_storage")
             .expect("allocation failed in ViewMutRepr::into_owned_storage");
         for i in 0..self.len {
             // SAFETY: i < len, both src and dst pointers are valid
