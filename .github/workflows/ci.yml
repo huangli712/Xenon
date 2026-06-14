@@ -181,8 +181,7 @@ jobs:
           WHITELIST=(
             "Dimension" "Reverse"
             "Element" "Numeric" "RealScalar" "ComplexScalar" "SealedElement"
-            "RawStorage" "RawStorageMut" "Storage" "StorageMut" "StorageOwned" "StorageShared"
-            "CastTo"
+            "RawStorage" "Storage" "StorageMut" "StorageOwned" "StorageShared"
           )
           fail=0
           for name in "${WHITELIST[@]}"; do
