@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 use std::fmt::Debug;
 
-use super::axes::Axis;
-use super::dynamic::IxDyn;
 use crate::private::Sealed;
 use crate::error::{InvalidShapeKind, XenonError};
+
+use super::{Axis, IxDyn};
 
 // --- Dimension trait --------------------------------------------------------
 
@@ -60,8 +60,8 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow }`
-    /// when the cumulative product of the per-axis lengths overflows `usize`.
+    /// Returns `XenonError::InvalidShape { kind: InvalidShapeKind }` when
+    /// the cumulative product of the per-axis lengths overflows `usize`.
     #[inline]
     fn checked_size(&self) -> Result<usize, XenonError> {
         let dims = self.slice();
@@ -189,7 +189,10 @@ pub trait RemoveAxis: Dimension + Sealed {
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.0 >= self.ndim()`.
     /// For `Ix0` (rank 0), every `axis` is invalid so this always errors.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError>;
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError>;
 }
 
 #[cfg(test)]
