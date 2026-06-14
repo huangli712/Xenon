@@ -283,9 +283,22 @@ mod tests {
     /// Sharing `&ViewMutRepr` across threads would expose a second
     /// write-capable alias, violating the exclusive-borrow model; this
     /// guards against an accidental `Sync` impl being added later.
+    ///
+    /// This is the ambiguity trick that `assert_not_impl_any!` expands to:
+    /// the `Sync`-gated `u8` impl applies only if the type is `Sync`. For a
+    /// concrete `!Sync` type only the blanket `()` impl matches, so the `_`
+    /// resolves unambiguously and this compiles. A future `Sync` impl would
+    /// make both impls apply, leaving `_` ambiguous and failing the build.
     #[test]
     fn test_view_mut_not_sync() {
-        static_assertions::assert_not_impl_any!(ViewMutRepr<'static, i32>: Sync);
+        trait AmbiguousIfSync<A> {
+            fn marker() {}
+        }
+        impl<T> AmbiguousIfSync<()> for T {}
+        impl<T: Sync> AmbiguousIfSync<u8> for T {}
+
+        // Resolves only while `ViewMutRepr<'static, i32>: !Sync`.
+        let _ = <ViewMutRepr<'static, i32> as AmbiguousIfSync<_>>::marker;
     }
 
     /// Mutable view implements Send for Send-compatible element types.
