@@ -11,7 +11,7 @@ use super::Strides;
 /// An F-contiguous layout has `stride[0] == 1` and strictly increasing
 /// strides for axes with extent > 1. Size-1 axes may have arbitrary
 /// strides. Empty and single-element tensors are always contiguous.
-pub fn is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
+pub(crate) fn is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
     let shape = shape.slice();
     let strides = strides.as_slice();
 
@@ -100,5 +100,19 @@ mod tests {
         let shape = Ix1(5);
         let strides = Strides::new(Ix1(1));
         assert!(is_f_contiguous(&shape, &strides));
+    }
+
+    /// `Strides::f_contiguous` output is always recognised as F-contiguous.
+    #[test]
+    fn test_f_contiguous_round_trip() {
+        let shape = Ix3(2, 3, 4);
+        let s = Strides::f_contiguous(&shape).expect("valid test shape");
+        assert_eq!(s.as_slice(), &[1, 2, 6]);
+        assert!(is_f_contiguous(&shape, &s));
+
+        let shape = Ix2(4, 5);
+        let s = Strides::f_contiguous(&shape).expect("valid test shape");
+        assert_eq!(s.as_slice(), &[1, 4]);
+        assert!(is_f_contiguous(&shape, &s));
     }
 }

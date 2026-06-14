@@ -17,7 +17,6 @@
 //!
 //! # Public API
 //!
-//! - `is_f_contiguous` — check F-contiguity from raw shape + strides
 //! - `Strides` — stride storage and helper methods
 //! - `LayoutFlags` — packed contiguity/alignment/broadcast flags
 //! - `LayoutState` — three-way classification: `FContiguous`, `NonContiguous`, `BroadcastView`
@@ -28,7 +27,6 @@ mod contiguous;
 mod flags;
 mod strides;
 
-pub use contiguous::is_f_contiguous;
 pub use flags::{LayoutFlags, LayoutState};
 pub use strides::Strides;
 
