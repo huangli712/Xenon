@@ -135,7 +135,10 @@ impl RemoveAxis for IxDyn {
 
     /// Removes one axis at the given index, returning the smaller
     /// dimension and the removed axis length.
-    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+    fn remove_axis(
+        &self,
+        axis: Axis
+    ) -> Result<(Self::Smaller, usize), XenonError> {
         if axis.0 >= self.ndim() {
             return Err(XenonError::InvalidAxis {
                 operation: Cow::Borrowed("IxDyn::remove_axis"),
@@ -176,7 +179,7 @@ mod tests {
         assert_eq!(IxDyn::from_slice(&[3, 0, 5]).checked_size(), Ok(0));
     }
 
-    /// Constructor coverage: from_vec / from_element / ones / zeros / into_vec.
+    /// Constructor coverage: from_vec / from_element / ones / zeros.
     #[test]
     fn test_ixdyn_constructors() {
         assert_eq!(IxDyn::from_vec(vec![1, 2, 3]).slice(), &[1, 2, 3]);
@@ -194,7 +197,8 @@ mod tests {
             Err(XenonError::InvalidShape { offending_dim, .. }) => {
                 assert_eq!(offending_dim, Some(1));
             },
-            other => panic!("expected InvalidShape with offending_dim, got {:?}", other),
+            other => panic!("expected InvalidShape with offending_dim, \
+                             got {:?}", other),
         }
     }
 
@@ -222,7 +226,8 @@ mod tests {
                     idx
                 );
             },
-            other => panic!("expected InvalidShape with offending_dim, got {:?}", other),
+            other => panic!("expected InvalidShape with offending_dim, \
+                             got {:?}", other),
         }
     }
 
