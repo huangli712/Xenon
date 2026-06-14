@@ -12,8 +12,9 @@
 //! | `strides`   | `Strides` carrier and F-order stride computation |
 //! | `contiguous`| `is_f_contiguous` recognition algorithm |
 //! | `aligned`   | Raw-pointer alignment checks |
-//! | `flags`     | `LayoutFlags` bitfield, `compute_layout_flags` |
+//! | `flags`     | `LayoutFlags` bitfield, `LayoutFlags::classify()` |
 //! | `state`     | `LayoutState` enum |
+//! | `compute`   | `compute_layout_flags` central entry point |
 //!
 //! # Public API
 //!
@@ -23,6 +24,7 @@
 //! - `LayoutState` — three-way classification: `FContiguous`, `NonContiguous`, `BroadcastView`
 
 mod aligned;
+mod compute;
 mod contiguous;
 mod flags;
 mod state;
@@ -33,4 +35,4 @@ pub use flags::LayoutFlags;
 pub use state::LayoutState;
 pub use strides::Strides;
 
-pub(crate) use flags::compute_layout_flags;
+pub(crate) use compute::compute_layout_flags;
