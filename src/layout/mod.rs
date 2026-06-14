@@ -10,7 +10,6 @@
 //! | Module      | Purpose |
 //! |-------------|---------|
 //! | `strides`   | `Strides` carrier and F-order stride computation |
-//! | `contiguous`| `is_f_contiguous` recognition algorithm |
 //! | `flags`     | `LayoutFlags` bitfield, `LayoutState` enum, `classify()` |
 //! | `compute`   | `compute_layout_flags` central entry point |
 //!
@@ -21,7 +20,6 @@
 //! - `LayoutState` — three-way classification: `FContiguous`, `NonContiguous`, `BroadcastView`
 
 mod compute;
-mod contiguous;
 mod flags;
 mod strides;
 
