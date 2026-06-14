@@ -130,6 +130,37 @@ impl<A> Clone for ArcRepr<A> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Send/Sync + Default + TryFrom for ArcRepr<A>
+// ---------------------------------------------------------------------------
+
+// SAFETY: `ArcRepr<A>` shares storage through atomic reference counting.
+// Moving the handle across threads is sound when `A` can be sent and shared
+// across threads, matching `Arc<[A]>` requirements.
+unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
+
+// SAFETY: `&ArcRepr<A>` may be accessed concurrently and exposes shared reads
+// of `A`. Concurrent shared reads are sound when `A: Sync`, and cloned handles
+// may move between threads when `A: Send`.
+unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
+
+impl<A> Default for ArcRepr<A> {
+    /// Returns an empty `ArcRepr` with no allocated storage.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<A: Element + Copy> TryFrom<Vec<A>> for ArcRepr<A> {
+    type Error = XenonError;
+
+    /// Converts a `Vec` into an `ArcRepr` by copying elements into an
+    /// aligned buffer.
+    fn try_from(value: Vec<A>) -> Result<Self, Self::Error> {
+        Self::from_vec(value)
+    }
+}
+
 impl<A> Sealed for ArcRepr<A> {}
 
 // SAFETY: ArcRepr satisfies RawStorage and Sealed, and represents Xenon's
@@ -186,37 +217,6 @@ impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
             }
         }
         Owned { data: buf }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Send/Sync + Default + TryFrom for ArcRepr<A>
-// ---------------------------------------------------------------------------
-
-// SAFETY: `ArcRepr<A>` shares storage through atomic reference counting.
-// Moving the handle across threads is sound when `A` can be sent and shared
-// across threads, matching `Arc<[A]>` requirements.
-unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
-
-// SAFETY: `&ArcRepr<A>` may be accessed concurrently and exposes shared reads
-// of `A`. Concurrent shared reads are sound when `A: Sync`, and cloned handles
-// may move between threads when `A: Send`.
-unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
-
-impl<A> Default for ArcRepr<A> {
-    /// Returns an empty `ArcRepr` with no allocated storage.
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<A: Element + Copy> TryFrom<Vec<A>> for ArcRepr<A> {
-    type Error = XenonError;
-
-    /// Converts a `Vec` into an `ArcRepr` by copying elements into an
-    /// aligned buffer.
-    fn try_from(value: Vec<A>) -> Result<Self, Self::Error> {
-        Self::from_vec(value)
     }
 }
 
