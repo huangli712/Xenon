@@ -2,8 +2,9 @@
 //! contiguity, and stride checks to produce `LayoutFlags`.
 
 use crate::dimension::Dimension;
-use super::flags::LayoutFlags;
-use super::strides::Strides;
+use super::{LayoutFlags, Strides};
+
+// --- alignment checks -------------------------------------------------------
 
 /// Check whether `ptr` satisfies the alignment requirement.
 ///
