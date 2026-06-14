@@ -182,7 +182,6 @@ jobs:
             "Dimension" "Reverse"
             "Element" "Numeric" "RealScalar" "ComplexScalar" "SealedElement"
             "RawStorage" "RawStorageMut" "Storage" "StorageMut" "StorageOwned" "StorageShared"
-            "IsOwned" "IsView" "IsViewMut" "IsShared"
             "CastTo"
           )
           fail=0

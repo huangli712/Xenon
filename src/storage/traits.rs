@@ -1,5 +1,5 @@
 //! Storage traits for Xenon backing buffers — raw pointer access, safe read,
-//! mutable access, ownership, shared access, and marker traits.
+//! mutable access, ownership, and shared access.
 //!
 //! This module defines the complete storage trait hierarchy:
 //!
@@ -20,9 +20,6 @@
 //!                      StorageOwned
 //! ```
 //!
-//! Marker traits (bound on [`RawStorage`]):
-//!   `IsOwned`, `IsView`, `IsViewMut`, `IsShared`
-//!
 //! Standalone conversion trait (bound on [`Storage`]):
 //!   `StorageIntoOwned`
 
@@ -31,62 +28,6 @@ use crate::error::XenonError;
 
 use super::Owned;
 use super::alloc::AlignedAlloc;
-
-// ---------------------------------------------------------------------------
-// Marker traits (IsOwned, IsView, IsViewMut, IsShared)
-// ---------------------------------------------------------------------------
-
-/// Marker trait for owned storage representations.
-///
-/// # Safety
-///
-/// Implementors must satisfy the [`RawStorage`] contract and represent a
-/// storage mode with exclusive ownership semantics controlled by this crate.
-/// This trait is sealed and must not be implemented outside Xenon.
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsOwned: RawStorage + Sealed {}
-
-/// Marker trait for immutable borrowed view storage representations.
-///
-/// # Safety
-///
-/// Implementors must satisfy the [`RawStorage`] contract and represent a
-/// read-only borrowed storage mode controlled by this crate. This trait is
-/// sealed and must not be implemented outside Xenon.
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsView: RawStorage + Sealed {}
-
-/// Marker trait for mutable borrowed view storage representations.
-///
-/// # Safety
-///
-/// Implementors must satisfy the [`RawStorage`] contract and represent an
-/// exclusive mutable borrowed storage mode controlled by this crate. This
-/// trait is sealed and must not be implemented outside Xenon.
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsViewMut: RawStorage + Sealed {}
-
-/// Marker trait for shared read-only storage representations.
-///
-/// # Safety
-///
-/// Implementors must satisfy the [`RawStorage`] contract and represent a
-/// shared read-only storage mode controlled by this crate. This trait is
-/// sealed and must not be implemented outside Xenon.
-///
-/// # Sealed
-///
-/// This trait is sealed and cannot be implemented outside of `Xenon`.
-pub unsafe trait IsShared: RawStorage + Sealed {}
 
 // ---------------------------------------------------------------------------
 // RawStorage — raw pointer access to underlying storage
@@ -362,16 +303,6 @@ mod tests {
     use super::*;
     use super::super::{Owned, ViewRepr, ViewMutRepr, ArcRepr};
     use core::ptr::NonNull;
-
-    /// Verify that all four marker traits exist and are properly sealed.
-    #[test]
-    fn test_marker_traits() {
-        fn _sealed<T: Sealed>() {}
-        fn _bound_owned<T: IsOwned>() {}
-        fn _bound_view<T: IsView>() {}
-        fn _bound_view_mut<T: IsViewMut>() {}
-        fn _bound_shared<T: IsShared>() {}
-    }
 
     // -----------------------------------------------------------------------
     // Basic module compile check
@@ -770,21 +701,6 @@ mod tests {
 
         assert_eq!(view.as_slice(), &[1, 2, 3]);
         assert_eq!(shared.as_slice(), &[1, 2, 3]);
-    }
-
-    /// Verifies that the four marker traits (`IsOwned`, `IsView`,
-    /// `IsViewMut`, `IsShared`) are implemented by the concrete storage types.
-    #[test]
-    fn test_marker_traits_sealed() {
-        fn assert_owned<T: IsOwned>() {}
-        fn assert_view<T: IsView>() {}
-        fn assert_view_mut<T: IsViewMut>() {}
-        fn assert_shared<T: IsShared>() {}
-
-        assert_owned::<Owned<i32>>();
-        assert_view::<ViewRepr<'_, i32>>();
-        assert_view_mut::<ViewMutRepr<'_, i32>>();
-        assert_shared::<ArcRepr<i32>>();
     }
 
     /// Verifies that `StorageIntoOwned::into_owned_storage` works

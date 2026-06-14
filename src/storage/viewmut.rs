@@ -10,7 +10,6 @@ use crate::private::Sealed;
 
 use super::alloc::AlignedAlloc;
 use super::buffer::AlignedBuf;
-use super::IsViewMut;
 use super::Owned;
 use super::ViewRepr;
 use super::{RawStorage, Storage, StorageMut, StorageIntoOwned};
@@ -103,10 +102,6 @@ impl<'a, A> ViewMutRepr<'a, A> {
 unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 impl<'a, A> Sealed for ViewMutRepr<'a, A> {}
-
-// SAFETY: ViewMutRepr satisfies RawStorage and Sealed, and represents Xenon's
-// exclusive mutable borrowed storage category.
-unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
 
 // SAFETY: ViewMutRepr is created only from an exclusive mutable borrow or an
 // unsafe raw-parts constructor whose caller guarantees a non-null, aligned,

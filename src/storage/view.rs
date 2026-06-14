@@ -10,7 +10,6 @@ use crate::private::Sealed;
 
 use super::alloc::AlignedAlloc;
 use super::buffer::AlignedBuf;
-use super::IsView;
 use super::Owned;
 use super::{RawStorage, Storage, StorageIntoOwned};
 
@@ -98,10 +97,6 @@ unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
 unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 impl<'a, A> Sealed for ViewRepr<'a, A> {}
-
-// SAFETY: ViewRepr satisfies RawStorage and Sealed, and represents Xenon's
-// immutable borrowed view storage category.
-unsafe impl<'a, A> IsView for ViewRepr<'a, A> {}
 
 // SAFETY: ptr is non-null, aligned, within one allocation; len is known.
 unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {

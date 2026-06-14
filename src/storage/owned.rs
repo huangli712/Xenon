@@ -12,7 +12,6 @@ use crate::private::Sealed;
 
 use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, allocation_size};
-use super::IsOwned;
 use super::ArcRepr;
 use super::{RawStorage, Storage, StorageMut, StorageOwned, StorageIntoOwned};
 
@@ -276,9 +275,6 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
 }
 
 impl<A> Sealed for Owned<A> {}
-
-// SAFETY: Owned<A> satisfies IsOwned's RawStorage + Sealed bounds.
-unsafe impl<A: Element> IsOwned for Owned<A> {}
 
 // SAFETY: Owned<A> implements RawStorage because AlignedBuf<A> maintains the
 // storage invariants:

@@ -14,7 +14,6 @@ use crate::element::Element;
 
 use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, SharedBuf};
-use super::IsShared;
 use super::Owned;
 use super::{RawStorage, Storage, StorageShared, StorageIntoOwned};
 
@@ -163,10 +162,6 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for ArcRepr<A> {
 }
 
 impl<A> Sealed for ArcRepr<A> {}
-
-// SAFETY: ArcRepr satisfies RawStorage and Sealed, and represents Xenon's
-// shared read-only storage category.
-unsafe impl<A: Element> IsShared for ArcRepr<A> {}
 
 // SAFETY: ArcRepr owns a single Arc<SharedBuf<A>> whose AlignedBuf<A>
 // maintains a non-null, aligned, fully initialized range of len elements

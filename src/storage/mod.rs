@@ -39,13 +39,6 @@ mod viewmut;
 mod arc;
 
 pub use traits::{
-    IsOwned,
-    IsView,
-    IsViewMut,
-    IsShared,
-};
-
-pub use traits::{
     RawStorage,
     Storage,
     StorageMut,
