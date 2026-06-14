@@ -133,6 +133,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::ptr::NonNull;
     use std::alloc::{Layout, alloc, dealloc};
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3};
     use super::super::LayoutState;
@@ -141,7 +142,7 @@ mod tests {
 
     /// Non-dereferenceable `u8` pointer for pointer-alignment-only tests.
     fn dangling_u8() -> *const u8 {
-        core::ptr::NonNull::<u8>::dangling().as_ptr()
+        NonNull::<u8>::dangling().as_ptr()
     }
 
     // --- alignment checks ---------------------------------------------------
