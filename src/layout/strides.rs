@@ -73,7 +73,8 @@ impl<D: Dimension> Strides<D> {
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::IndexOutOfBounds` if `axis >= self.as_slice().len()`.
+    /// Returns `XenonError::IndexOutOfBounds` 
+    /// if `axis >= self.as_slice().len()`.
     pub fn try_stride(&self, axis: usize) -> Result<usize, XenonError> {
         let strides = self.as_slice();
         strides
@@ -94,7 +95,7 @@ impl<D: Dimension> Strides<D> {
         self.as_slice().iter()
     }
 
-    /// Returns `true` iff any stride value equals 0.
+    /// Returns `true` if any stride value equals 0.
     ///
     /// **This is NOT the same as the `HAS_ZERO_STRIDE` flag value**: the
     /// flag is set only when `product(shape) > 0` additionally holds.
@@ -104,7 +105,7 @@ impl<D: Dimension> Strides<D> {
         self.as_slice().contains(&0)
     }
 
-    /// Returns `true` iff `any(stride == 0) && product(shape) > 0`.
+    /// Returns `true` if `any(stride == 0) && product(shape) > 0`.
     /// Empty-array degenerate metadata (`product(shape) == 0`) is
     /// excluded by this guard, so `compute_layout_flags` MUST call this
     /// helper instead of bare `has_zero_stride` when writing the bit.
@@ -135,14 +136,16 @@ mod tests {
     /// from_slice constructs strides from a valid slice.
     #[test]
     fn test_strides_from_slice_ok() {
-        let strides = Strides::<Ix2>::from_slice(&[1, 3]).expect("valid slice");
+        let strides = Strides::<Ix2>::from_slice(&[1, 3])
+            .expect("valid slice");
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
     /// from_slice returns DimensionMismatch for wrong-length slice.
     #[test]
     fn test_strides_from_slice_wrong_length() {
-        let err = Strides::<Ix2>::from_slice(&[1, 2, 3]).expect_err("expected error");
+        let err = Strides::<Ix2>::from_slice(&[1, 2, 3])
+            .expect_err("expected error");
         match err {
             XenonError::DimensionMismatch { .. } => {},
             other => panic!("expected DimensionMismatch, got {other:?}"),
@@ -154,28 +157,32 @@ mod tests {
     /// F-contiguous strides for [5] are [1].
     #[test]
     fn test_f_strides_1d() {
-        let strides = Strides::f_contiguous(&Ix1(5)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix1(5))
+            .expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1]);
     }
 
     /// F-contiguous strides for [3, 4] are [1, 3].
     #[test]
     fn test_f_strides_2d() {
-        let strides = Strides::f_contiguous(&Ix2(3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix2(3, 4))
+            .expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
     /// F-contiguous strides for [2, 3, 4] are [1, 2, 6].
     #[test]
     fn test_f_strides_3d() {
-        let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix3(2, 3, 4))
+            .expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
     }
 
     /// 0-D scalar produces empty strides.
     #[test]
     fn test_f_strides_scalar() {
-        let strides = Strides::f_contiguous(&Ix0).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix0)
+            .expect("valid test shape");
         assert_eq!(strides.as_slice(), &[] as &[usize]);
     }
 
@@ -183,13 +190,15 @@ mod tests {
     #[test]
     fn test_f_strides_overflow() {
         let shape = Ix2(usize::MAX, usize::MAX);
-        let err = Strides::f_contiguous(&shape).expect_err("expected overflow error");
+        let err = Strides::f_contiguous(&shape)
+            .expect_err("expected overflow error");
         match err {
             XenonError::InvalidShape {
                 kind: InvalidShapeKind::ProductOverflow,
                 ..
             } => {},
-            other => panic!("expected InvalidShape::ProductOverflow, got {other:?}"),
+            other => panic!("expected InvalidShape::ProductOverflow, \
+                             got {other:?}"),
         }
     }
 
@@ -198,7 +207,8 @@ mod tests {
     /// try_stride returns Ok(value) for valid axis.
     #[test]
     fn test_strides_try_stride_ok() {
-        let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix3(2, 3, 4))
+            .expect("valid test shape");
         assert_eq!(strides.try_stride(0).expect("valid axis"), 1);
         assert_eq!(strides.try_stride(1).expect("valid axis"), 2);
         assert_eq!(strides.try_stride(2).expect("valid axis"), 6);
@@ -207,7 +217,8 @@ mod tests {
     /// try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
     #[test]
     fn test_strides_try_stride_out_of_bounds() {
-        let strides = Strides::f_contiguous(&Ix2(3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix2(3, 4))
+            .expect("valid test shape");
         let err = strides
             .try_stride(2)
             .expect_err("expected out-of-bounds error");
@@ -220,7 +231,8 @@ mod tests {
     /// iter yields stride values in axis order.
     #[test]
     fn test_strides_iter() {
-        let strides = Strides::f_contiguous(&Ix3(2, 3, 4)).expect("valid test shape");
+        let strides = Strides::f_contiguous(&Ix3(2, 3, 4))
+            .expect("valid test shape");
         let collected: Vec<usize> = strides.iter().copied().collect();
         assert_eq!(collected, vec![1, 2, 6]);
     }
