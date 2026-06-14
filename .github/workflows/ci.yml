@@ -186,7 +186,7 @@ jobs:
           )
           fail=0
           for name in "${WHITELIST[@]}"; do
-            loc=$(grep -rn "pub trait ${name}\b" src/ || true)
+            loc=$(grep -rnE "pub (unsafe )?trait ${name}\b" src/ || true)
             if [ -z "$loc" ]; then
               echo "::warning::Sealed trait ${name} not found (may be feature-gated)."
               continue
