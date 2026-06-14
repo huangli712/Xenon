@@ -91,6 +91,16 @@ impl<'a, A> ViewMutRepr<'a, A> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Send for ViewMutRepr<'a, A>
+// ---------------------------------------------------------------------------
+
+// SAFETY: `ViewMutRepr` represents an exclusive mutable borrow of a logical
+// tensor region. Moving it to another thread transfers that exclusive access;
+// it does not create aliases. Moving contained element access across threads is
+// sound exactly when `A: Send`.
+unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
+
 impl<'a, A> Sealed for ViewMutRepr<'a, A> {}
 
 // SAFETY: ViewMutRepr satisfies RawStorage and Sealed, and represents Xenon's
@@ -157,16 +167,6 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
         Owned { data: buf }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Send for ViewMutRepr<'a, A>
-// ---------------------------------------------------------------------------
-
-// SAFETY: `ViewMutRepr` represents an exclusive mutable borrow of a logical
-// tensor region. Moving it to another thread transfers that exclusive access;
-// it does not create aliases. Moving contained element access across threads is
-// sound exactly when `A: Send`.
-unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 #[cfg(test)]
 mod tests {

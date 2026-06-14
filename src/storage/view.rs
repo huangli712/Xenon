@@ -83,6 +83,19 @@ impl<'a, A> ViewRepr<'a, A> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Send/Sync for ViewRepr<'a, A>
+// ---------------------------------------------------------------------------
+
+// SAFETY: `ViewRepr` is a borrowed read-only view. Moving it to another
+// thread only moves shared access to `A` values, which is sound exactly when
+// `A: Sync`. The lifetime `'a` still prevents outliving the borrowed storage.
+unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
+
+// SAFETY: Sharing `&ViewRepr` across threads permits only shared reads of
+// `A` through the original borrow. Shared reads are thread-safe when `A: Sync`.
+unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
+
 impl<'a, A> Sealed for ViewRepr<'a, A> {}
 
 // SAFETY: ViewRepr satisfies RawStorage and Sealed, and represents Xenon's
@@ -135,19 +148,6 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
         Owned { data: buf }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Send/Sync for ViewRepr<'a, A>
-// ---------------------------------------------------------------------------
-
-// SAFETY: `ViewRepr` is a borrowed read-only view. Moving it to another
-// thread only moves shared access to `A` values, which is sound exactly when
-// `A: Sync`. The lifetime `'a` still prevents outliving the borrowed storage.
-unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
-
-// SAFETY: Sharing `&ViewRepr` across threads permits only shared reads of
-// `A` through the original borrow. Shared reads are thread-safe when `A: Sync`.
-unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 #[cfg(test)]
 mod tests {
