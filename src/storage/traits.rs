@@ -20,8 +20,7 @@
 //!                      StorageOwned
 //! ```
 //!
-//! Standalone conversion trait (bound on [`Storage`]):
-//!   `StorageIntoOwned`
+//! Standalone conversion trait (bound on [`Storage`]): `StorageIntoOwned`
 
 use crate::private::Sealed;
 use crate::error::XenonError;
