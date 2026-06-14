@@ -242,11 +242,16 @@ mod tests {
     #[test]
     fn test_compute_layout_flags_construction_f_order() {
         let shape = Ix3(2, 3, 4);
-        let strides = Strides::f_contiguous(&shape).expect("valid test shape");
+        let strides = Strides::f_contiguous(&shape)
+            .expect("valid test shape");
         assert_eq!(strides.as_slice(), &[1, 2, 6]);
         assert!(is_f_contiguous(&shape, &strides));
 
-        let flags = compute_layout_flags::<u8, Ix3>(&shape, &strides, dangling_u8());
+        let flags = compute_layout_flags::<u8, Ix3>(
+            &shape,
+            &strides,
+            dangling_u8()
+        );
         assert!(flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
         assert!(!flags.is_aligned()); // dangling pointer is not 64-byte aligned
@@ -258,7 +263,11 @@ mod tests {
     fn test_compute_layout_flags_broadcast_view() {
         let shape = Ix2(5, 4);
         let strides = Strides::new(Ix2(1, 0));
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling_u8());
+        let flags = compute_layout_flags::<u8, Ix2>(
+            &shape,
+            &strides,
+            dangling_u8()
+        );
         assert!(flags.has_zero_stride());
         assert!(!flags.is_f_contiguous());
         assert_eq!(flags.classify(), LayoutState::BroadcastView);
@@ -269,7 +278,11 @@ mod tests {
     fn test_compute_layout_flags_empty_degenerate_zero_stride() {
         let shape = Ix2(0, 3);
         let strides = Strides::new(Ix2(1, 0));
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling_u8());
+        let flags = compute_layout_flags::<u8, Ix2>(
+            &shape,
+            &strides,
+            dangling_u8()
+        );
         assert!(
             !flags.has_zero_stride(),
             "empty array degenerate zero stride must NOT set HAS_ZERO_STRIDE"
@@ -287,7 +300,11 @@ mod tests {
     fn test_compute_layout_flags_transpose_non_contiguous() {
         let shape = Ix2(3, 2);
         let strides = Strides::new(Ix2(2, 1));
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling_u8());
+        let flags = compute_layout_flags::<u8, Ix2>(
+            &shape,
+            &strides,
+            dangling_u8()
+        );
         assert!(!flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
         assert_eq!(flags.classify(), LayoutState::NonContiguous);
@@ -298,7 +315,11 @@ mod tests {
     fn test_compute_layout_flags_slice_size1_axis() {
         let shape = Ix3(5, 1, 4);
         let strides = Strides::new(Ix3(1, 999, 5));
-        let flags = compute_layout_flags::<u8, Ix3>(&shape, &strides, dangling_u8());
+        let flags = compute_layout_flags::<u8, Ix3>(
+            &shape,
+            &strides,
+            dangling_u8()
+        );
         assert!(flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
     }
@@ -308,7 +329,11 @@ mod tests {
     fn test_compute_layout_flags_scalar() {
         let shape = Ix0;
         let strides = Strides::new(Ix0);
-        let flags = compute_layout_flags::<u8, Ix0>(&shape, &strides, dangling_u8());
+        let flags = compute_layout_flags::<u8, Ix0>(
+            &shape,
+            &strides,
+            dangling_u8()
+        );
         assert!(flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
         assert_eq!(flags.classify(), LayoutState::FContiguous);
@@ -317,12 +342,18 @@ mod tests {
     /// Non-empty tensor with 64-byte-aligned pointer reports aligned.
     #[test]
     fn test_compute_layout_flags_aligned_non_empty() {
-        let layout = Layout::from_size_align(128, 64).expect("valid layout");
+        let layout = Layout::from_size_align(128, 64)
+            .expect("valid layout");
         let ptr = unsafe { alloc(layout) };
         assert!(!ptr.is_null(), "allocator returned null");
         let shape = Ix2(4, 8);
-        let strides = Strides::f_contiguous(&shape).expect("valid test shape");
-        let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, ptr);
+        let strides = Strides::f_contiguous(&shape)
+            .expect("valid test shape");
+        let flags = compute_layout_flags::<u8, Ix2>(
+            &shape,
+            &strides,
+            ptr
+        );
         assert!(flags.is_f_contiguous());
         assert!(flags.is_aligned());
         assert!(!flags.has_zero_stride());
