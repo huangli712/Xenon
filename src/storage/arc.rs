@@ -12,6 +12,7 @@ use crate::private::Sealed;
 use crate::error::XenonError;
 use crate::element::Element;
 
+use super::alloc::AlignedAlloc;
 use super::buffer::{AlignedBuf, SharedBuf};
 use super::IsShared;
 use super::Owned;
@@ -201,7 +202,7 @@ impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
     where
         Self::Elem: Clone,
     {
-        let align = align_of::<A>().max(64);
+        let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len(), align)
             .expect("allocation failed in ArcRepr::into_owned_storage");
         for i in 0..self.len() {

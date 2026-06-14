@@ -8,6 +8,7 @@ use core::marker::PhantomData;
 
 use crate::private::Sealed;
 
+use super::alloc::AlignedAlloc;
 use super::buffer::AlignedBuf;
 use super::IsViewMut;
 use super::Owned;
@@ -149,7 +150,7 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     where
         Self::Elem: Clone,
     {
-        let align = core::mem::align_of::<A>().max(64);
+        let align = core::mem::align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len, align)
             .expect("allocation failed in ViewMutRepr::into_owned_storage");
         for i in 0..self.len {
@@ -276,6 +277,15 @@ mod tests {
         let view = ViewMutRepr::from_mut_slice(&mut data);
         fn assert_marker<T: FailsIfViewMutBecomesClone>(_: T) {}
         assert_marker(view);
+    }
+
+    /// Compile-time assertion: ViewMutRepr must NOT implement Sync.
+    /// Sharing `&ViewMutRepr` across threads would expose a second
+    /// write-capable alias, violating the exclusive-borrow model; this
+    /// guards against an accidental `Sync` impl being added later.
+    #[test]
+    fn test_view_mut_not_sync() {
+        static_assertions::assert_not_impl_any!(ViewMutRepr<'static, i32>: Sync);
     }
 
     /// Mutable view implements Send for Send-compatible element types.

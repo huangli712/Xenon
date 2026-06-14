@@ -30,6 +30,7 @@ use crate::private::Sealed;
 use crate::error::XenonError;
 
 use super::Owned;
+use super::alloc::AlignedAlloc;
 
 // ---------------------------------------------------------------------------
 // Marker traits (IsOwned, IsView, IsViewMut, IsShared)
@@ -130,7 +131,7 @@ pub unsafe trait RawStorage: Sealed {
 
     /// Checks if the storage satisfies the current default alignment (64 bytes).
     fn is_aligned(&self) -> bool {
-        self.is_aligned_to(64)
+        self.is_aligned_to(AlignedAlloc::DEFAULT_ALIGNMENT)
     }
 }
 

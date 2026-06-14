@@ -8,6 +8,7 @@ use core::marker::PhantomData;
 
 use crate::private::Sealed;
 
+use super::alloc::AlignedAlloc;
 use super::buffer::AlignedBuf;
 use super::IsView;
 use super::Owned;
@@ -130,7 +131,7 @@ impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
     where
         Self::Elem: Clone,
     {
-        let align = core::mem::align_of::<A>().max(64);
+        let align = core::mem::align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         let mut buf: AlignedBuf<A> = AlignedBuf::with_capacity_aligned(self.len, align)
             .expect("allocation failed in ViewRepr::into_owned_storage");
         for i in 0..self.len {

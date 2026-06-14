@@ -39,9 +39,6 @@ pub struct Owned<A> {
 }
 
 impl<A> Owned<A> {
-    /// Default alignment: 64 bytes (AVX-512 cache line).
-    pub const DEFAULT_ALIGNMENT: usize = 64;
-
     /// Creates an empty owned storage.
     pub(crate) fn new() -> Self {
         Self {
@@ -54,7 +51,7 @@ impl<A> Owned<A> {
     where
         A: Element,
     {
-        let align = align_of::<A>().max(Self::DEFAULT_ALIGNMENT);
+        let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         Ok(Self {
             data: AlignedBuf::with_capacity_aligned(cap, align)?,
         })
@@ -100,7 +97,7 @@ impl<A> Owned<A> {
                 data: AlignedBuf::empty(),
             });
         }
-        let align = align_of::<A>().max(Self::DEFAULT_ALIGNMENT);
+        let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         let size = allocation_size::<A>(len, align, "Owned::from_vec_aligned")?;
         let ptr = AlignedAlloc::alloc(size, align)?;
         let typed_ptr = ptr.as_ptr() as *mut A;
@@ -141,7 +138,7 @@ impl<A> Owned<A> {
                 data: AlignedBuf::empty(),
             });
         }
-        let align = align_of::<A>().max(Self::DEFAULT_ALIGNMENT);
+        let align = align_of::<A>().max(AlignedAlloc::DEFAULT_ALIGNMENT);
         let size = allocation_size::<A>(len, align, "Owned::zeros")?;
         let ptr = AlignedAlloc::alloc_zeroed(size, align)?;
         // SAFETY: alloc_zeroed returned valid zeroed memory for len elements
@@ -520,7 +517,7 @@ mod tests {
         let owned = Owned::<f64>::zeros(8)
             .expect("Owned::zeros should succeed for small f64 input");
         assert_eq!(
-            (owned.data.as_ptr() as usize) % Owned::<f64>::DEFAULT_ALIGNMENT,
+            (owned.data.as_ptr() as usize) % AlignedAlloc::DEFAULT_ALIGNMENT,
             0
         );
     }
@@ -532,7 +529,7 @@ mod tests {
         let owned = Owned::from_vec(vec![1.0_f64, 2.0])
             .expect("Owned::from_vec should succeed for small f64 input");
         assert_eq!(
-            (owned.data.as_ptr() as usize) % Owned::<f64>::DEFAULT_ALIGNMENT,
+            (owned.data.as_ptr() as usize) % AlignedAlloc::DEFAULT_ALIGNMENT,
             0
         );
     }
