@@ -17,44 +17,6 @@ use crate::element::Element;
 use super::alloc::AlignedAlloc;
 
 // ---------------------------------------------------------------------------
-// Internal helper
-// ---------------------------------------------------------------------------
-
-/// Validates the allocation layout for `len` elements of type `A`.
-///
-/// Checks that `len * size_of::<A>()` fits within `isize::MAX` after
-/// accounting for alignment padding. Returns the raw byte size on success.
-///
-/// # Errors
-///
-/// Returns `XenonError::InvalidShape` with `ProductOverflow` if the request
-/// would overflow `isize::MAX`.
-pub(crate) fn allocation_size<A>(
-    len: usize,
-    align: usize,
-    operation: &'static str,
-) -> Result<usize, XenonError> {
-    let size = len
-        .checked_mul(size_of::<A>())
-        .ok_or_else(|| XenonError::InvalidShape {
-            operation: Cow::Borrowed(operation),
-            shape: vec![len],
-            kind: InvalidShapeKind::ProductOverflow,
-            offending_dim: Some(0),
-        })?;
-    let max_size = (isize::MAX as usize).saturating_sub(align.saturating_sub(1));
-    if size > max_size {
-        return Err(XenonError::InvalidShape {
-            operation: Cow::Borrowed(operation),
-            shape: vec![len],
-            kind: InvalidShapeKind::ProductOverflow,
-            offending_dim: Some(0),
-        });
-    }
-    Ok(size)
-}
-
-// ---------------------------------------------------------------------------
 // AlignedBuf<A> — internal aligned buffer
 // ---------------------------------------------------------------------------
 
@@ -300,6 +262,44 @@ impl<A> Drop for AlignedBuf<A> {
 #[derive(Debug)]
 pub(crate) struct SharedBuf<A> {
     pub(crate) buf: AlignedBuf<A>,
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper
+// ---------------------------------------------------------------------------
+
+/// Validates the allocation layout for `len` elements of type `A`.
+///
+/// Checks that `len * size_of::<A>()` fits within `isize::MAX` after
+/// accounting for alignment padding. Returns the raw byte size on success.
+///
+/// # Errors
+///
+/// Returns `XenonError::InvalidShape` with `ProductOverflow` if the request
+/// would overflow `isize::MAX`.
+pub(crate) fn allocation_size<A>(
+    len: usize,
+    align: usize,
+    operation: &'static str,
+) -> Result<usize, XenonError> {
+    let size = len
+        .checked_mul(size_of::<A>())
+        .ok_or_else(|| XenonError::InvalidShape {
+            operation: Cow::Borrowed(operation),
+            shape: vec![len],
+            kind: InvalidShapeKind::ProductOverflow,
+            offending_dim: Some(0),
+        })?;
+    let max_size = (isize::MAX as usize).saturating_sub(align.saturating_sub(1));
+    if size > max_size {
+        return Err(XenonError::InvalidShape {
+            operation: Cow::Borrowed(operation),
+            shape: vec![len],
+            kind: InvalidShapeKind::ProductOverflow,
+            offending_dim: Some(0),
+        });
+    }
+    Ok(size)
 }
 
 #[cfg(test)]
