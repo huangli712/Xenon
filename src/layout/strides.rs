@@ -120,6 +120,8 @@ mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix1, Ix2, Ix3};
 
+    // --- Strides::new / as_slice --------------------------------------------
+
     /// Strides::new wraps a dimension value.
     #[test]
     fn test_strides_new_ix2() {

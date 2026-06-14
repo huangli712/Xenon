@@ -131,12 +131,14 @@ mod tests {
     use super::super::LayoutState;
     use std::alloc::{Layout, alloc, dealloc};
 
-    // --- alignment helpers --------------------------------------------------
+    // --- helpers -----------------------------------------------------------
 
     /// Non-dereferenceable `u8` pointer for pointer-alignment-only tests.
     fn dangling_u8() -> *const u8 {
         core::ptr::NonNull::<u8>::dangling().as_ptr()
     }
+
+    // --- alignment checks --------------------------------------------------
 
     /// 64-byte-aligned pointer passes all alignment checks.
     #[test]
