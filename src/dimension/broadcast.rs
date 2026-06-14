@@ -19,67 +19,84 @@ pub trait BroadcastDimension<Other: Dimension>: Dimension + Sealed {
     type Output: Dimension;
 }
 
-// --- Same static dimension: IxN BroadcastDimension IxN → IxN (7 impls) ---
+// --- Same static dimension: IxN BroadcastDimension IxN → IxN (7 impls) ------
 
 impl BroadcastDimension<Ix0> for Ix0 {
     type Output = Ix0;
 }
+
 impl BroadcastDimension<Ix1> for Ix1 {
     type Output = Ix1;
 }
+
 impl BroadcastDimension<Ix2> for Ix2 {
     type Output = Ix2;
 }
+
 impl BroadcastDimension<Ix3> for Ix3 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix4> for Ix4 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix5> for Ix5 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix6> for Ix6 {
     type Output = Ix6;
 }
 
-// --- Cross static rank: take higher rank (42 impls, all bidirectional pairs) ---
+// --- Cross static rank: take higher rank (42 impls, all bidirectional pairs)
 
 // Ix0 × {Ix1..Ix6}: 12 impls (6 each direction).
 
 impl BroadcastDimension<Ix0> for Ix1 {
     type Output = Ix1;
 }
+
 impl BroadcastDimension<Ix0> for Ix2 {
     type Output = Ix2;
 }
+
 impl BroadcastDimension<Ix0> for Ix3 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix0> for Ix4 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix0> for Ix5 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix0> for Ix6 {
     type Output = Ix6;
 }
+
 impl BroadcastDimension<Ix1> for Ix0 {
     type Output = Ix1;
 }
+
 impl BroadcastDimension<Ix2> for Ix0 {
     type Output = Ix2;
 }
+
 impl BroadcastDimension<Ix3> for Ix0 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix4> for Ix0 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix5> for Ix0 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix6> for Ix0 {
     type Output = Ix6;
 }
@@ -89,30 +106,39 @@ impl BroadcastDimension<Ix6> for Ix0 {
 impl BroadcastDimension<Ix1> for Ix2 {
     type Output = Ix2;
 }
+
 impl BroadcastDimension<Ix1> for Ix3 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix1> for Ix4 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix1> for Ix5 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix1> for Ix6 {
     type Output = Ix6;
 }
+
 impl BroadcastDimension<Ix2> for Ix1 {
     type Output = Ix2;
 }
+
 impl BroadcastDimension<Ix3> for Ix1 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix4> for Ix1 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix5> for Ix1 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix6> for Ix1 {
     type Output = Ix6;
 }
@@ -122,24 +148,31 @@ impl BroadcastDimension<Ix6> for Ix1 {
 impl BroadcastDimension<Ix2> for Ix3 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix2> for Ix4 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix2> for Ix5 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix2> for Ix6 {
     type Output = Ix6;
 }
+
 impl BroadcastDimension<Ix3> for Ix2 {
     type Output = Ix3;
 }
+
 impl BroadcastDimension<Ix4> for Ix2 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix5> for Ix2 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix6> for Ix2 {
     type Output = Ix6;
 }
@@ -149,18 +182,23 @@ impl BroadcastDimension<Ix6> for Ix2 {
 impl BroadcastDimension<Ix3> for Ix4 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix3> for Ix5 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix3> for Ix6 {
     type Output = Ix6;
 }
+
 impl BroadcastDimension<Ix4> for Ix3 {
     type Output = Ix4;
 }
+
 impl BroadcastDimension<Ix5> for Ix3 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix6> for Ix3 {
     type Output = Ix6;
 }
@@ -170,12 +208,15 @@ impl BroadcastDimension<Ix6> for Ix3 {
 impl BroadcastDimension<Ix4> for Ix5 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix4> for Ix6 {
     type Output = Ix6;
 }
+
 impl BroadcastDimension<Ix5> for Ix4 {
     type Output = Ix5;
 }
+
 impl BroadcastDimension<Ix6> for Ix4 {
     type Output = Ix6;
 }
@@ -185,56 +226,70 @@ impl BroadcastDimension<Ix6> for Ix4 {
 impl BroadcastDimension<Ix5> for Ix6 {
     type Output = Ix6;
 }
+
 impl BroadcastDimension<Ix6> for Ix5 {
     type Output = Ix6;
 }
 
-// --- Static × IxDyn: always IxDyn (14 impls, 7 bidirectional pairs) ---
+// --- Static × IxDyn: always IxDyn (14 impls, 7 bidirectional pairs) ---------
 
 impl BroadcastDimension<IxDyn> for Ix0 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<IxDyn> for Ix1 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<IxDyn> for Ix2 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<IxDyn> for Ix3 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<IxDyn> for Ix4 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<IxDyn> for Ix5 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<IxDyn> for Ix6 {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix0> for IxDyn {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix1> for IxDyn {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix2> for IxDyn {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix3> for IxDyn {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix4> for IxDyn {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix5> for IxDyn {
     type Output = IxDyn;
 }
+
 impl BroadcastDimension<Ix6> for IxDyn {
     type Output = IxDyn;
 }
 
-// --- IxDyn × IxDyn: 1 impl ---
+// --- IxDyn × IxDyn: 1 impl --------------------------------------------------
 
 impl BroadcastDimension<IxDyn> for IxDyn {
     type Output = IxDyn;
@@ -245,8 +300,8 @@ mod tests {
     use super::*;
     use std::any::TypeId;
 
-    /// Helper: assert that `<A as BroadcastDimension<B>>::Output` is type-equal to
-    /// `O`. Compiles only if the bound holds.
+    /// Helper: assert that `<A as BroadcastDimension<B>>::Output` is
+    /// type-equal to `O`. Compiles only if the bound holds.
     fn assert_output<A, B, O>()
     where
         A: BroadcastDimension<B, Output = O>,
