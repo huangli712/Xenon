@@ -1340,7 +1340,7 @@ mod tests {
         assert_eq!(dim.axis(Axis::new(2)), Ok(4));
     }
 
-    // ---------------------------- Reverse tests ----------------------------
+    // --- Reverse tests ------------------------------------------------------
 
     /// `reverse()` for Ix0 and Ix1 is identity.
     #[test]
@@ -1366,7 +1366,7 @@ mod tests {
         assert_eq!(dim.reverse().reverse(), dim);
     }
 
-    // --------------------------- RemoveAxis tests --------------------------
+    // --- RemoveAxis tests ---------------------------------------------------
 
     /// Ix0 has no axes, so `remove_axis` always errors.
     #[test]
