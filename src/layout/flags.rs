@@ -32,6 +32,8 @@ impl LayoutState {
     }
 }
 
+// --- LayoutFlags bitfield ---------------------------------------------------
+
 /// 8-bit packed layout flags: F_CONTIGUOUS (bit 0), ALIGNED (bit 2),
 /// HAS_ZERO_STRIDE (bit 3). Bits 1, 4-7 are reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

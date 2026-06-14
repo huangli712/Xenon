@@ -28,6 +28,8 @@ fn is_aligned(ptr: *const u8) -> bool {
     is_aligned_to(ptr, 64)
 }
 
+// --- contiguity detection ---------------------------------------------------
+
 /// Returns `true` if the tensor is F-contiguous.
 ///
 /// An F-contiguous layout has `stride[0] == 1` and strictly increasing
@@ -69,6 +71,8 @@ fn is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
     }
     true
 }
+
+// --- central entry point ----------------------------------------------------
 
 /// Central entry for computing `LayoutFlags` from `shape + strides + ptr`.
 ///
@@ -130,14 +134,14 @@ mod tests {
     use super::super::LayoutState;
     use std::alloc::{Layout, alloc, dealloc};
 
-    // --- helpers -----------------------------------------------------------
+    // --- helpers ------------------------------------------------------------
 
     /// Non-dereferenceable `u8` pointer for pointer-alignment-only tests.
     fn dangling_u8() -> *const u8 {
         core::ptr::NonNull::<u8>::dangling().as_ptr()
     }
 
-    // --- alignment checks --------------------------------------------------
+    // --- alignment checks ---------------------------------------------------
 
     /// 64-byte-aligned pointer passes all alignment checks.
     #[test]
