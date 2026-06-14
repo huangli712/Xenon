@@ -1,8 +1,5 @@
-//! `compute_layout_flags` — central entry point for computing `LayoutFlags`
-//! from `shape + strides + ptr`.
-//!
-//! This is the **single source of truth** for the `HAS_ZERO_STRIDE` bit
-//! and for the F-order / alignment flags as cached in `TensorBase`.
+//! `compute_layout_flags` — central entry point that combines alignment,
+//! contiguity, and stride checks to produce `LayoutFlags`.
 
 use crate::dimension::Dimension;
 use super::aligned::is_aligned;
@@ -67,7 +64,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 mod tests {
     use super::*;
     use crate::dimension::{Ix0, Ix2, Ix3};
-    use crate::layout::LayoutState;
+    use super::super::LayoutState;
 
     /// Non-dereferenceable `u8` pointer for pointer-alignment-only tests.
     fn dangling_u8() -> *const u8 {

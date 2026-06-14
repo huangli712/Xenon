@@ -1,10 +1,36 @@
-//! `LayoutFlags` bitfield: packed contiguity / alignment / broadcast flags.
+//! `LayoutFlags` bitfield and `LayoutState` classification.
 //!
-//! Bitfield constants, query/setter methods, and `LayoutFlags::classify()`
-//! fast-path constructor are implemented here. `LayoutState` lives in
-//! `state`; flag computation (`compute_layout_flags`) lives in `compute`.
+//! Bitfield constants, query/setter methods, `LayoutFlags::classify()`
+//! fast-path constructor, and the `LayoutState` enum are implemented here.
+//! Flag computation (`compute_layout_flags`) lives in `compute`.
 
-use super::state::LayoutState;
+/// Classification of tensor memory layout contiguity status.
+///
+/// Variants are mutually exclusive. `BroadcastView` applies only when
+/// `product(shape) > 0 && any(stride == 0)`; empty tensors with degenerate
+/// zero strides remain `FContiguous`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutState {
+    /// Fortran-contiguous: first stride = 1, F-order progression.
+    FContiguous,
+
+    /// Arbitrary non-broadcast view that is not F-contiguous.
+    NonContiguous,
+
+    /// Non-empty view with at least one zero-stride axis (broadcast).
+    BroadcastView,
+}
+
+impl LayoutState {
+    /// Returns a human-readable label for the layout classification.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LayoutState::FContiguous => "f-contiguous",
+            LayoutState::BroadcastView => "broadcast",
+            LayoutState::NonContiguous => "non-contiguous",
+        }
+    }
+}
 
 /// 8-bit packed layout flags: F_CONTIGUOUS (bit 0), ALIGNED (bit 2),
 /// HAS_ZERO_STRIDE (bit 3). Bits 1, 4-7 are reserved.

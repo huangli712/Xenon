@@ -8,7 +8,9 @@ use super::Strides;
 
 /// Returns `true` if the tensor is F-contiguous.
 ///
-/// Recognises F-contiguous memory layouts:
+/// An F-contiguous layout has `stride[0] == 1` and strictly increasing
+/// strides for axes with extent > 1. Size-1 axes may have arbitrary
+/// strides. Empty and single-element tensors are always contiguous.
 pub fn is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
     let shape = shape.slice();
     let strides = strides.as_slice();
