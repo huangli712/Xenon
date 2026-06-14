@@ -4,6 +4,8 @@
 //! fast-path classifier, and the `LayoutState` enum are implemented here.
 //! Flag computation (`compute_layout_flags`) lives in `compute`.
 
+// --- LayoutState classification ---------------------------------------------
+
 /// Classification of tensor memory layout contiguity status.
 ///
 /// Variants are mutually exclusive. `BroadcastView` applies only when
