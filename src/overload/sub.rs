@@ -9,7 +9,7 @@ use core::ops::Sub;
 use crate::error::Result;
 use crate::math::BinaryArith;
 use crate::complex::Complex;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::dimension::{BroadcastDimension, Dimension, Ix0};
 use crate::storage::{Owned, ViewRepr};
 use crate::tensor::{Tensor, TensorBase};
 
@@ -22,10 +22,10 @@ use super::scalar::Scalar;
 impl<A, D, E> Sub<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` between two tensors with broadcasting.
     fn sub(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
@@ -36,10 +36,10 @@ where
 impl<'b, A, D, E> Sub<&'b TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` between two tensors with
     /// broadcasting. Both operands are borrowed.
@@ -51,10 +51,10 @@ where
 impl<'a, A, D, E> Sub<&'a TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` with broadcasting. Borrows the
     /// right operand, consumes the left.
@@ -66,10 +66,10 @@ where
 impl<A, D, E> Sub<TensorBase<Owned<A>, E>> for &TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` with broadcasting. Borrows the
     /// left operand, consumes the right.
@@ -85,8 +85,8 @@ where
 impl<A, D> Sub<A> for TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
 
@@ -99,8 +99,8 @@ where
 impl<A, D> Sub<A> for &TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
 
@@ -117,8 +117,8 @@ where
 impl<A, D> Sub<TensorBase<Owned<A>, D>> for Scalar<A>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
 
@@ -132,8 +132,8 @@ where
 impl<'a, A, D> Sub<&'a TensorBase<Owned<A>, D>> for Scalar<A>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
 
@@ -150,8 +150,8 @@ where
 
 impl<D> Sub<TensorBase<Owned<f32>, D>> for f32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
     
@@ -164,8 +164,8 @@ where
 
 impl<'a, D> Sub<&'a TensorBase<Owned<f32>, D>> for f32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
     
@@ -178,8 +178,8 @@ where
 
 impl<D> Sub<TensorBase<Owned<f64>, D>> for f64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
     
@@ -192,8 +192,8 @@ where
 
 impl<'a, D> Sub<&'a TensorBase<Owned<f64>, D>> for f64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
     
@@ -206,8 +206,8 @@ where
 
 impl<D> Sub<TensorBase<Owned<i32>, D>> for i32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
     
@@ -220,8 +220,8 @@ where
 
 impl<'a, D> Sub<&'a TensorBase<Owned<i32>, D>> for i32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
     
@@ -234,8 +234,8 @@ where
 
 impl<D> Sub<TensorBase<Owned<i64>, D>> for i64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
     
@@ -248,8 +248,8 @@ where
 
 impl<'a, D> Sub<&'a TensorBase<Owned<i64>, D>> for i64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
     
@@ -262,8 +262,8 @@ where
 
 impl<D> Sub<TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
     
@@ -276,8 +276,8 @@ where
 
 impl<'a, D> Sub<&'a TensorBase<Owned<Complex<f32>>, D>> for Complex<f32>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
     
@@ -290,8 +290,8 @@ where
 
 impl<D> Sub<TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
     
@@ -304,8 +304,8 @@ where
 
 impl<'a, D> Sub<&'a TensorBase<Owned<Complex<f64>>, D>> for Complex<f64>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
     
@@ -328,10 +328,10 @@ impl<'a, 'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
     for &'a TensorBase<ViewRepr<'a, A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` between two tensor views with
     /// broadcasting. Both operands are borrowed.
@@ -344,10 +344,10 @@ impl<'a, 'b, A, D, E> Sub<&'b TensorBase<Owned<A>, E>>
     for &'a TensorBase<ViewRepr<'a, A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` between two tensor views with
     /// broadcasting. Both operands are borrowed.
@@ -360,10 +360,10 @@ impl<'b, A, D, E> Sub<&'b TensorBase<ViewRepr<'b, A>, E>>
     for &TensorBase<Owned<A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+    D: Dimension + BroadcastDimension<E>,
+    E: Dimension + BroadcastDimension<D, Output = <D as BroadcastDimension<E>>::Output>,
 {
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>>;
+    type Output = Result<Tensor<A, <D as BroadcastDimension<E>>::Output>>;
 
     /// Performs element-wise `subtraction` between two tensor views with
     /// broadcasting. Both operands are borrowed.
@@ -379,8 +379,8 @@ where
 impl<'a, A, D> Sub<A> for TensorBase<ViewRepr<'a, A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
 
@@ -393,8 +393,8 @@ where
 impl<'a, 'b, A, D> Sub<A> for &'b TensorBase<ViewRepr<'a, A>, D>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
 
@@ -411,8 +411,8 @@ where
 impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
     
@@ -426,8 +426,8 @@ where
 impl<'a, 'b, A, D> Sub<&'b TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
 where
     A: BinaryArith,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<A, D>;
     
@@ -440,8 +440,8 @@ where
 
 impl<'a, D> Sub<TensorBase<ViewRepr<'a, f32>, D>> for f32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
 
@@ -454,8 +454,8 @@ where
 
 impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, f32>, D>> for f32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f32, D>;
 
@@ -468,8 +468,8 @@ where
 
 impl<'a, D> Sub<TensorBase<ViewRepr<'a, f64>, D>> for f64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
 
@@ -482,8 +482,8 @@ where
 
 impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, f64>, D>> for f64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<f64, D>;
 
@@ -496,8 +496,8 @@ where
 
 impl<'a, D> Sub<TensorBase<ViewRepr<'a, i32>, D>> for i32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
 
@@ -510,8 +510,8 @@ where
 
 impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, i32>, D>> for i32
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i32, D>;
 
@@ -524,8 +524,8 @@ where
 
 impl<'a, D> Sub<TensorBase<ViewRepr<'a, i64>, D>> for i64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
 
@@ -538,8 +538,8 @@ where
 
 impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, i64>, D>> for i64
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<i64, D>;
 
@@ -552,8 +552,8 @@ where
 
 impl<'a, D> Sub<TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
 
@@ -566,8 +566,8 @@ where
 
 impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, Complex<f32>>, D>> for Complex<f32>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f32>, D>;
 
@@ -580,8 +580,8 @@ where
 
 impl<'a, D> Sub<TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
 
@@ -594,8 +594,8 @@ where
 
 impl<'a, 'b, D> Sub<&'b TensorBase<ViewRepr<'a, Complex<f64>>, D>> for Complex<f64>
 where
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
 {
     type Output = Tensor<Complex<f64>, D>;
 

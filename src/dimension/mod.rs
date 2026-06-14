@@ -29,7 +29,7 @@ pub use types::MAX_DIMENSION;
 
 pub use types::{Dimension, Reverse, RemoveAxis};
 pub use axes::Axis;
-pub use broadcast::BroadcastDim;
+pub use broadcast::BroadcastDimension;
 pub use dynamic::IxDyn;
 pub use fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 pub use into::IntoDimension;

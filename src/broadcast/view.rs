@@ -1,7 +1,7 @@
 //! Broadcast view construction and the shared two-input broadcast prologue.
 
 use crate::error::XenonError;
-use crate::dimension::{BroadcastDim, Dimension, IntoDimension};
+use crate::dimension::{BroadcastDimension, Dimension, IntoDimension};
 use crate::element::Element;
 use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, ViewRepr};
@@ -12,9 +12,9 @@ use super::shape::{broadcast_shape, broadcast_strides};
 /// The two broadcast views plus the common output dimension produced by
 /// [`broadcast_with`].
 pub(crate) type BroadcastViews<'a, 'b, A, D1, D2> = (
-    TensorView<'a, A, <D1 as BroadcastDim<D2>>::Output>,
-    TensorView<'b, A, <D1 as BroadcastDim<D2>>::Output>,
-    <D1 as BroadcastDim<D2>>::Output,
+    TensorView<'a, A, <D1 as BroadcastDimension<D2>>::Output>,
+    TensorView<'b, A, <D1 as BroadcastDimension<D2>>::Output>,
+    <D1 as BroadcastDimension<D2>>::Output,
 );
 
 /// Broadcast both operands to their common shape, returning the two
@@ -29,11 +29,11 @@ where
     A: Element,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
+    D1: Dimension + BroadcastDimension<D2>,
     D2: Dimension,
 {
     let out_shape = broadcast_shape(a.shape(), b.shape())?;
-    let out_dim = <D1 as BroadcastDim<D2>>::Output::try_from_slice(out_shape.slice())
+    let out_dim = <D1 as BroadcastDimension<D2>>::Output::try_from_slice(out_shape.slice())
         .expect("broadcast_shape validated the output shape");
     let a_view = broadcast_to(a, out_dim.clone())?;
     let b_view = broadcast_to(b, out_dim.clone())?;

@@ -8,7 +8,7 @@ use crate::broadcast::broadcast_with;
 use crate::dispatch::{ExecPath, select_exec_path};
 
 use crate::complex::Complex;
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::dimension::{BroadcastDimension, Dimension, Ix0};
 use crate::element::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
 use crate::element::{Element, Numeric, SimdElement};
 use crate::storage::Storage;
@@ -325,10 +325,10 @@ where
     pub fn add<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
-    ) -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    ) -> Result<Tensor<A, <D as BroadcastDimension<E>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<E>,
+        D: BroadcastDimension<E>,
         E: Dimension,
     {
         apply_binary_with_dispatch(
@@ -348,10 +348,10 @@ where
     pub fn sub<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
-    ) -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    ) -> Result<Tensor<A, <D as BroadcastDimension<E>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<E>,
+        D: BroadcastDimension<E>,
         E: Dimension,
     {
         apply_binary_with_dispatch(
@@ -371,10 +371,10 @@ where
     pub fn mul<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
-    ) -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    ) -> Result<Tensor<A, <D as BroadcastDimension<E>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<E>,
+        D: BroadcastDimension<E>,
         E: Dimension,
     {
         apply_binary_with_dispatch(
@@ -394,10 +394,10 @@ where
     pub fn div<S2, E>(
         &self,
         other: &TensorBase<S2, E>,
-    ) -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    ) -> Result<Tensor<A, <D as BroadcastDimension<E>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<E>,
+        D: BroadcastDimension<E>,
         E: Dimension,
     {
         apply_binary_with_dispatch(
@@ -417,8 +417,8 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
-    Ix0: BroadcastDim<D, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
+    Ix0: BroadcastDimension<D, Output = D>,
     A: BinaryArith,
 {
     /// Element-wise tensor + scalar.
@@ -541,18 +541,18 @@ pub(crate) fn apply_binary_checked<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     mut f: F,
-) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+) -> Result<Tensor<A, <D1 as BroadcastDimension<D2>>::Output>, XenonError>
 where
     A: Element,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
+    D1: Dimension + BroadcastDimension<D2>,
     D2: Dimension,
     F: FnMut(A, A, usize, &[usize]) -> A,
 {
     let (a_view, b_view, out_dim) = broadcast_with(a, b)?;
     let shape_slice: Vec<usize> = out_dim.slice().to_vec();
-    let mut result = Tensor::<A, <D1 as BroadcastDim<D2>>::Output>::zeros(out_dim)?;
+    let mut result = Tensor::<A, <D1 as BroadcastDimension<D2>>::Output>::zeros(out_dim)?;
     for (idx, (dst, (a_val, b_val))) in result
         .iter_mut()
         .zip(a_view.iter().zip(b_view.iter()))
@@ -615,12 +615,12 @@ pub(crate) fn apply_binary_with_dispatch<A, S1, S2, D1, D2, F>(
     b: &TensorBase<S2, D2>,
     step: F,
     op: BinaryOp,
-) -> Result<Tensor<A, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+) -> Result<Tensor<A, <D1 as BroadcastDimension<D2>>::Output>, XenonError>
 where
     A: Element + SimdElement + 'static,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
+    D1: Dimension + BroadcastDimension<D2>,
     D2: Dimension,
     F: Fn(A, A, usize, &[usize]) -> A + Copy + Send + Sync,
 {

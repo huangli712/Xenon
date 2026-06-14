@@ -7,7 +7,7 @@ use crate::dispatch::{ExecPath, select_exec_path};
 
 use super::binary::apply_binary_serial;
 
-use crate::dimension::{BroadcastDim, Dimension, Ix0};
+use crate::dimension::{BroadcastDimension, Dimension, Ix0};
 use crate::element::{Element, OrderedCompareElement};
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
@@ -40,10 +40,10 @@ where
     pub fn equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
-    ) -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    ) -> Result<Tensor<bool, <D as BroadcastDimension<DB>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<DB>,
+        D: BroadcastDimension<DB>,
         DB: Dimension,
     {
         apply_compare_with_dispatch(self, other, |a, b| a == b)
@@ -59,10 +59,10 @@ where
     pub fn not_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
-    ) -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    ) -> Result<Tensor<bool, <D as BroadcastDimension<DB>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<DB>,
+        D: BroadcastDimension<DB>,
         DB: Dimension,
     {
         apply_compare_with_dispatch(self, other, |a, b| a != b)
@@ -73,7 +73,7 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
     A: Element + PartialEq,
 {
     /// Element-wise equality comparison with a scalar right-hand side.
@@ -135,10 +135,10 @@ where
     pub fn less<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
-    ) -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    ) -> Result<Tensor<bool, <D as BroadcastDimension<DB>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<DB>,
+        D: BroadcastDimension<DB>,
         DB: Dimension,
     {
         apply_compare_with_dispatch(self, other, |a, b| a < b)
@@ -155,10 +155,10 @@ where
     pub fn less_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
-    ) -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    ) -> Result<Tensor<bool, <D as BroadcastDimension<DB>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<DB>,
+        D: BroadcastDimension<DB>,
         DB: Dimension,
     {
         apply_compare_with_dispatch(self, other, |a, b| a <= b)
@@ -173,10 +173,10 @@ where
     pub fn greater<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
-    ) -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    ) -> Result<Tensor<bool, <D as BroadcastDimension<DB>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<DB>,
+        D: BroadcastDimension<DB>,
         DB: Dimension,
     {
         apply_compare_with_dispatch(self, other, |a, b| a > b)
@@ -193,10 +193,10 @@ where
     pub fn greater_equal<S2, DB>(
         &self,
         other: &TensorBase<S2, DB>,
-    ) -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    ) -> Result<Tensor<bool, <D as BroadcastDimension<DB>>::Output>, XenonError>
     where
         S2: Storage<Elem = A>,
-        D: BroadcastDim<DB>,
+        D: BroadcastDimension<DB>,
         DB: Dimension,
     {
         apply_compare_with_dispatch(self, other, |a, b| a >= b)
@@ -207,7 +207,7 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
-    D: Dimension + BroadcastDim<Ix0, Output = D>,
+    D: Dimension + BroadcastDimension<Ix0, Output = D>,
     A: OrderedCompareElement,
 {
     /// Element-wise less-than comparison with a scalar right-hand side.
@@ -288,12 +288,12 @@ pub(in crate::math) fn apply_compare_with_dispatch<A, S1, S2, D1, D2, F>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
     op: F,
-) -> Result<Tensor<bool, <D1 as BroadcastDim<D2>>::Output>, XenonError>
+) -> Result<Tensor<bool, <D1 as BroadcastDimension<D2>>::Output>, XenonError>
 where
     A: Element,
     S1: Storage<Elem = A>,
     S2: Storage<Elem = A>,
-    D1: Dimension + BroadcastDim<D2>,
+    D1: Dimension + BroadcastDimension<D2>,
     D2: Dimension,
     F: Fn(A, A) -> bool + Copy + Send + Sync,
 {

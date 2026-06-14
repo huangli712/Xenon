@@ -14,7 +14,7 @@
 //! - **W20 integration**: transpose shape/data/view-kind/involution tests
 //!   using `from_raw_vec_unchecked` (made `pub` in W20T4).
 
-use xenon::dimension::{Axis, BroadcastDim, Dimension, Ix0, Ix1, Ix2, Ix3, Ix6, IxDyn};
+use xenon::dimension::{Axis, BroadcastDimension, Dimension, Ix0, Ix1, Ix2, Ix3, Ix6, IxDyn};
 use xenon::element::Element;
 use xenon::error::XenonError;
 use xenon::storage::Owned;
@@ -108,12 +108,12 @@ fn test_shape_boundary_cases() {
 #[test]
 fn test_broadcast_dim_compatibility() {
     // Same-rank: Ix2 BroadcastDim Ix2 → Ix2.
-    fn _check_same<D: BroadcastDim<D, Output = D>>() {}
+    fn _check_same<D: BroadcastDimension<D, Output = D>>() {}
     _check_same::<Ix2>();
     // Cross-rank: Ix1 BroadcastDim Ix3 → Ix3 (higher rank wins).
     fn _check_cross<A, B, O>()
     where
-        A: BroadcastDim<B, Output = O>,
+        A: BroadcastDimension<B, Output = O>,
         B: Dimension,
         O: Dimension,
     {

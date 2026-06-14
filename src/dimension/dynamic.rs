@@ -217,4 +217,47 @@ mod tests {
             other => panic!("expected InvalidShape with offending_dim, got {:?}", other),
         }
     }
+
+    /// `reverse()` reverses axis order for IxDyn.
+    #[test]
+    fn test_ixdyn_reverse() {
+        let dim = IxDyn::from_slice(&[1, 2, 3, 4]);
+        assert_eq!(dim.reverse().slice(), &[4, 3, 2, 1]);
+        // Empty and single-element edge cases.
+        assert_eq!(IxDyn::new().reverse().slice(), &[] as &[usize]);
+        assert_eq!(IxDyn::from_slice(&[5]).reverse().slice(), &[5]);
+    }
+
+    /// `remove_axis` for IxDyn: success at each valid index.
+    #[test]
+    fn test_ixdyn_remove_axis() {
+        let dim = IxDyn::from_slice(&[2, 3, 4]);
+        assert_eq!(
+            dim.remove_axis(Axis::new(0)),
+            Ok((IxDyn::from_slice(&[3, 4]), 2))
+        );
+        assert_eq!(
+            dim.remove_axis(Axis::new(1)),
+            Ok((IxDyn::from_slice(&[2, 4]), 3))
+        );
+        assert_eq!(
+            dim.remove_axis(Axis::new(2)),
+            Ok((IxDyn::from_slice(&[2, 3]), 4))
+        );
+    }
+
+    /// `remove_axis` for IxDyn: OOB and empty-dim return InvalidAxis.
+    #[test]
+    fn test_ixdyn_remove_axis_oob() {
+        let dim = IxDyn::from_slice(&[2, 3, 4]);
+        assert!(matches!(
+            dim.remove_axis(Axis::new(3)),
+            Err(XenonError::InvalidAxis { .. })
+        ));
+        // Empty IxDyn: every axis index is invalid.
+        assert!(matches!(
+            IxDyn::new().remove_axis(Axis::new(0)),
+            Err(XenonError::InvalidAxis { .. })
+        ));
+    }
 }

@@ -1284,6 +1284,16 @@ mod tests {
         ));
     }
 
+    /// `axis()` returns the length for a valid axis index.
+    #[test]
+    fn test_axis_returns_length_for_valid_index() {
+        let dim = Ix2(3, 4);
+        assert_eq!(dim.axis(Axis::new(0)), Ok(3));
+        assert_eq!(dim.axis(Axis::new(1)), Ok(4));
+        let dim = Ix3(2, 3, 4);
+        assert_eq!(dim.axis(Axis::new(2)), Ok(4));
+    }
+
     // ---------------------------- Reverse tests ----------------------------
 
     /// `reverse()` for Ix0 and Ix1 is identity.
