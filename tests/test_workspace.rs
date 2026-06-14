@@ -212,6 +212,17 @@ fn test_workspace_error_boundary_mapping() {
 #[test]
 fn test_workspace_not_send_not_sync() {
     // Workspace must be !Send + !Sync because it contains PhantomData<*mut ()>.
-    // We verify this at compile time via static_assertions.
-    static_assertions::assert_not_impl_any!(Workspace: Send, Sync);
+    // Verified at compile time via the ambiguity trick (the mechanism
+    // assert_not_impl_any! expands to): the Send-/Sync-gated impls apply only
+    // if Workspace implements that trait, so for a !Send + !Sync type only the
+    // blanket `()` impl matches and `_` resolves. A future Send or Sync impl
+    // would make resolution ambiguous and fail the build.
+    trait AmbiguousIfImpl<A> {
+        fn marker() {}
+    }
+    impl<T> AmbiguousIfImpl<()> for T {}
+    impl<T: Send> AmbiguousIfImpl<u8> for T {}
+    impl<T: Sync> AmbiguousIfImpl<u16> for T {}
+
+    let _ = <Workspace as AmbiguousIfImpl<_>>::marker;
 }

@@ -34,7 +34,6 @@ all-features = true
 
 [dev-dependencies]
 proptest = "1"
-static_assertions = "1"
 
 [[bench]]
 name = "math"

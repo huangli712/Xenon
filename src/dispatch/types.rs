@@ -181,7 +181,19 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_parallel_guard_is_not_send_or_sync() {
-        static_assertions::assert_not_impl_any!(ParallelGuard: Send, Sync);
+        // Ambiguity trick (the mechanism assert_not_impl_any! expands to):
+        // the Send-/Sync-gated impls apply only if ParallelGuard implements
+        // that trait. For a !Send + !Sync type only the blanket `()` impl
+        // matches, so `_` resolves; a future Send/Sync impl would make
+        // resolution ambiguous and fail the build.
+        trait AmbiguousIfImpl<A> {
+            fn marker() {}
+        }
+        impl<T> AmbiguousIfImpl<()> for T {}
+        impl<T: Send> AmbiguousIfImpl<u8> for T {}
+        impl<T: Sync> AmbiguousIfImpl<u16> for T {}
+
+        let _ = <ParallelGuard as AmbiguousIfImpl<_>>::marker;
     }
 
     /// Verify the placeholder `ParallelGuard` (without `parallel`
@@ -189,7 +201,8 @@ mod tests {
     #[cfg(not(feature = "parallel"))]
     #[test]
     fn test_placeholder_parallel_guard_is_send_sync() {
-        static_assertions::assert_impl_all!(ParallelGuard: Send, Sync);
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ParallelGuard>();
     }
 
     // ----------------- ParallelExecStrategy construction --------------------
