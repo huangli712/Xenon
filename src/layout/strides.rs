@@ -127,6 +127,25 @@ mod tests {
         assert_eq!(strides.as_slice(), &[1, 3]);
     }
 
+    // --- Strides::from_slice ------------------------------------------------
+
+    /// from_slice constructs strides from a valid slice.
+    #[test]
+    fn test_strides_from_slice_ok() {
+        let strides = Strides::<Ix2>::from_slice(&[1, 3]).expect("valid slice");
+        assert_eq!(strides.as_slice(), &[1, 3]);
+    }
+
+    /// from_slice returns DimensionMismatch for wrong-length slice.
+    #[test]
+    fn test_strides_from_slice_wrong_length() {
+        let err = Strides::<Ix2>::from_slice(&[1, 2, 3]).expect_err("expected error");
+        match err {
+            XenonError::DimensionMismatch { .. } => {},
+            other => panic!("expected DimensionMismatch, got {other:?}"),
+        }
+    }
+
     // --- Strides::f_contiguous ----------------------------------------------
 
     /// F-contiguous strides for [5] are [1].

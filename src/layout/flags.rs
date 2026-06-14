@@ -200,4 +200,14 @@ mod tests {
     fn test_classify_empty_non_contiguous() {
         assert_eq!(LayoutFlags::EMPTY.classify(), LayoutState::NonContiguous);
     }
+
+    // --- LayoutState::as_str ------------------------------------------------
+
+    /// as_str() returns the correct label for each variant.
+    #[test]
+    fn test_layout_state_as_str() {
+        assert_eq!(LayoutState::FContiguous.as_str(), "f-contiguous");
+        assert_eq!(LayoutState::NonContiguous.as_str(), "non-contiguous");
+        assert_eq!(LayoutState::BroadcastView.as_str(), "broadcast");
+    }
 }

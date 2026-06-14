@@ -240,6 +240,7 @@ mod tests {
         let flags = compute_layout_flags::<u8, Ix3>(&shape, &strides, dangling_u8());
         assert!(flags.is_f_contiguous());
         assert!(!flags.has_zero_stride());
+        assert!(!flags.is_aligned()); // dangling pointer is not 64-byte aligned
         assert_eq!(flags.classify(), LayoutState::FContiguous);
     }
 
