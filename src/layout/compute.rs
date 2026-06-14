@@ -60,9 +60,8 @@ fn is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
         if extent != 1 && stride != expected {
             return false;
         }
-        // `expected_stride` accumulator: overflow saturates conservatively;
-        // any subsequent stride that has to equal a saturated value will
-        // simply fail the equality check and short-circuit to `false`.
+        // `expected` accumulator: on overflow, return `false` immediately
+        // — an overflowing cumulative product cannot match any valid stride.
         expected = match expected.checked_mul(extent) {
             Some(v) => v,
             None => return false,

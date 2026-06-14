@@ -1,7 +1,7 @@
 //! `LayoutFlags` bitfield and `LayoutState` classification.
 //!
 //! Bitfield constants, query/setter methods, `LayoutFlags::classify()`
-//! fast-path constructor, and the `LayoutState` enum are implemented here.
+//! fast-path classifier, and the `LayoutState` enum are implemented here.
 //! Flag computation (`compute_layout_flags`) lives in `compute`.
 
 /// Classification of tensor memory layout contiguity status.
