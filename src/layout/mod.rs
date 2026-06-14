@@ -7,23 +7,16 @@
 //!
 //! # Submodules
 //!
-//! | Module      | Purpose |
-//! |-------------|---------|
-//! | `strides`   | `Strides` carrier and F-order stride computation |
-//! | `flags`     | `LayoutFlags` bitfield, `LayoutState` enum, `classify()` |
-//! | `compute`   | `compute_layout_flags` central entry point |
-//!
-//! # Public API
-//!
-//! - `Strides` — stride storage and helper methods
-//! - `LayoutFlags` — packed contiguity/alignment/broadcast flags
-//! - `LayoutState` — three-way classification: `FContiguous`, `NonContiguous`, `BroadcastView`
+//! | Module    | Purpose                                                  |
+//! |-----------|----------------------------------------------------------|
+//! | `strides` | `Strides` carrier and F-order stride computation         |
+//! | `flags`   | `LayoutFlags` bitfield, `LayoutState` enum, `classify()` |
+//! | `compute` | `compute_layout_flags` central entry point               |
 
-mod compute;
 mod flags;
 mod strides;
+mod compute;
 
 pub use flags::{LayoutFlags, LayoutState};
 pub use strides::Strides;
-
 pub(crate) use compute::compute_layout_flags;
