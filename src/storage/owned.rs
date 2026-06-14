@@ -243,6 +243,41 @@ impl<A: Element + Clone> Clone for Owned<A> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Send/Sync for Owned<A>
+// ---------------------------------------------------------------------------
+
+// SAFETY: `Owned<A>` has exclusive ownership of its allocation and moving it to
+// another thread moves the only owner. Element values are only moved across
+// threads when `A: Send`, so no non-Send element can cross a thread boundary.
+unsafe impl<A: Send> Send for Owned<A> {}
+
+// SAFETY: Shared access to `Owned<A>` only exposes shared access to initialized
+// `A` elements and immutable metadata. Sharing those elements across threads is
+// sound exactly when `A: Sync`.
+unsafe impl<A: Sync> Sync for Owned<A> {}
+
+// ---------------------------------------------------------------------------
+// TryFrom<Vec<A>> + Default for Owned<A>
+// ---------------------------------------------------------------------------
+
+impl<A> Default for Owned<A> {
+    /// Returns an empty `Owned` with no allocated storage.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
+    type Error = crate::error::XenonError;
+
+    /// Converts a `Vec` into `Owned` by copying elements into an aligned
+    /// buffer.
+    fn try_from(value: Vec<A>) -> Result<Self, Self::Error> {
+        Self::from_vec(value)
+    }
+}
+
 impl<A> Sealed for Owned<A> {}
 
 // SAFETY: Owned<A> satisfies IsOwned's RawStorage + Sealed bounds.
@@ -411,41 +446,6 @@ impl<A: Element + Clone> StorageIntoOwned for Owned<A> {
         Self::Elem: Clone,
     {
         self
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Send/Sync for Owned<A>
-// ---------------------------------------------------------------------------
-
-// SAFETY: `Owned<A>` has exclusive ownership of its allocation and moving it to
-// another thread moves the only owner. Element values are only moved across
-// threads when `A: Send`, so no non-Send element can cross a thread boundary.
-unsafe impl<A: Send> Send for Owned<A> {}
-
-// SAFETY: Shared access to `Owned<A>` only exposes shared access to initialized
-// `A` elements and immutable metadata. Sharing those elements across threads is
-// sound exactly when `A: Sync`.
-unsafe impl<A: Sync> Sync for Owned<A> {}
-
-// ---------------------------------------------------------------------------
-// TryFrom<Vec<A>> + Default for Owned<A>
-// ---------------------------------------------------------------------------
-
-impl<A> Default for Owned<A> {
-    /// Returns an empty `Owned` with no allocated storage.
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
-    type Error = crate::error::XenonError;
-
-    /// Converts a `Vec` into `Owned` by copying elements into an aligned
-    /// buffer.
-    fn try_from(value: Vec<A>) -> Result<Self, Self::Error> {
-        Self::from_vec(value)
     }
 }
 
